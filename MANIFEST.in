@@ -1,0 +1,15 @@
+# Include additional files in package distribution
+include README.md
+include LICENSE
+include requirements.txt
+include requirements-dev.txt
+include schema.sql
+include examples.py
+
+# Include config file
+recursive-include mindcore *.yaml
+
+# Exclude test files
+recursive-exclude mindcore/tests *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]

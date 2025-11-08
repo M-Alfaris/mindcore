@@ -1,0 +1,51 @@
+# Mindcore Configuration File
+# Version: 0.1.0
+
+# Database Configuration
+database:
+  host: localhost
+  port: 5432
+  database: mindcore
+  user: postgres
+  password: postgres
+  # For production, use environment variables:
+  # host: ${DB_HOST}
+  # port: ${DB_PORT}
+  # database: ${DB_NAME}
+  # user: ${DB_USER}
+  # password: ${DB_PASSWORD}
+
+# OpenAI Configuration
+openai:
+  # API key - IMPORTANT: Set this via environment variable OPENAI_API_KEY
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 1000
+
+# Cache Configuration
+cache:
+  # Maximum number of messages per user/thread in cache
+  max_size: 50
+  # Time-to-live in seconds (not currently enforced, but reserved for future use)
+  ttl: 3600
+
+# API Server Configuration
+api:
+  host: 0.0.0.0
+  port: 8000
+  debug: false
+  # CORS settings
+  cors:
+    allow_origins:
+      - "*"
+    allow_credentials: true
+    allow_methods:
+      - "*"
+    allow_headers:
+      - "*"
+
+# Logging Configuration
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
