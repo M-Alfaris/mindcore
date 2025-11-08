@@ -18,6 +18,12 @@ from .helper import (
     validate_message_dict,
     format_context_for_prompt,
 )
+from .security import (
+    SecurityValidator,
+    RateLimiter,
+    SecurityAuditor,
+    get_rate_limiter,
+)
 
 __all__ = [
     "get_logger",
@@ -34,4 +40,8 @@ __all__ = [
     "merge_metadata",
     "validate_message_dict",
     "format_context_for_prompt",
+    "SecurityValidator",
+    "RateLimiter",
+    "SecurityAuditor",
+    "get_rate_limiter",
 ]
