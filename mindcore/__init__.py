@@ -16,7 +16,7 @@ from .core import (
     AssembledContext,
 )
 from .agents import EnrichmentAgent, ContextAssemblerAgent
-from .utils import get_logger, validate_message_dict, generate_message_id
+from .utils import get_logger, generate_message_id, SecurityValidator
 
 logger = get_logger(__name__)
 
@@ -95,10 +95,15 @@ class Mindcore:
 
         Returns:
             Enriched Message object.
+
+        Raises:
+            ValueError: If message validation fails.
         """
-        # Validate message
-        if not validate_message_dict(message_dict):
-            raise ValueError("Invalid message dictionary. Required fields: user_id, thread_id, session_id, role, text")
+        # Validate message with security checks
+        is_valid, error_msg = SecurityValidator.validate_message_dict(message_dict)
+        if not is_valid:
+            logger.error(f"Message validation failed: {error_msg}")
+            raise ValueError(f"Invalid message: {error_msg}")
 
         # Enrich message
         message = self.enrichment_agent.process(message_dict)
@@ -132,7 +137,16 @@ class Mindcore:
 
         Returns:
             AssembledContext object with summarized context.
+
+        Raises:
+            ValueError: If parameters validation fails.
         """
+        # Validate query parameters
+        is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
+        if not is_valid:
+            logger.error(f"Query validation failed: {error_msg}")
+            raise ValueError(f"Invalid query parameters: {error_msg}")
+
         # Get messages from cache first
         cached_messages = self.cache.get_recent_messages(user_id, thread_id, limit=max_messages)
 

@@ -25,9 +25,22 @@ Mindcore is a lightweight, open-source Python framework that provides intelligen
   - `/context` - Retrieve assembled context for queries
 
 - **🔌 Easy Integration**
-  - Works with LangChain, custom AI systems, or standalone
+  - Works with LangChain, LlamaIndex, custom AI systems, or standalone
+  - Framework adapters for seamless integration
   - JSON-based input/output for universal compatibility
   - Pip-installable package
+
+- **🔒 Production-Ready Security**
+  - SQL injection protection with parameterized queries
+  - Input validation and sanitization
+  - Rate limiting support
+  - Security headers and best practices
+
+- **💰 Cost Efficient**
+  - **Saves 60-90% on token costs** vs traditional approaches
+  - Uses cheap GPT-4o-mini for enrichment/assembly
+  - Only sends compressed context to main LLM
+  - See [COST_EFFICIENCY.md](COST_EFFICIENCY.md) for detailed analysis
 
 ---
 
@@ -387,6 +400,161 @@ mindcore.ingest_message({
 
 print(response.content)
 ```
+
+---
+
+## 🔌 Framework Adapters
+
+Mindcore provides plug-and-play adapters for popular AI frameworks:
+
+### LangChain Adapter
+
+```python
+from mindcore import Mindcore
+from mindcore.adapters import LangChainAdapter
+from langchain.schema import HumanMessage, AIMessage
+
+mindcore = Mindcore()
+adapter = LangChainAdapter(mindcore)
+
+# Automatically ingest LangChain messages
+messages = [
+    HumanMessage(content="Hello!"),
+    AIMessage(content="Hi there!")
+]
+
+adapter.ingest_langchain_conversation(
+    messages=messages,
+    user_id="user123",
+    thread_id="thread456",
+    session_id="session789"
+)
+
+# Use as LangChain memory
+memory = adapter.as_langchain_memory("user123", "thread456", "session789")
+
+# Or create automatic callback
+callback = adapter.create_langchain_callback("user123", "thread456", "session789")
+llm = ChatOpenAI(callbacks=[callback])  # Auto-ingest all messages
+```
+
+### LlamaIndex Adapter
+
+```python
+from mindcore.adapters import LlamaIndexAdapter
+
+adapter = LlamaIndexAdapter(mindcore)
+
+# Create chat memory
+memory = adapter.create_chat_memory("user123", "thread456", "session789")
+
+# Get messages
+messages = memory.get_messages()
+
+# Add message
+memory.add_message(role="user", content="Hello!")
+```
+
+### Custom AI Systems
+
+```python
+# Direct integration - works with any system
+message = mindcore.ingest_message({
+    "user_id": "user123",
+    "thread_id": "thread456",
+    "session_id": "session789",
+    "role": "user",
+    "text": "Your message here"
+})
+
+# Get context
+context = mindcore.get_context(
+    user_id="user123",
+    thread_id="thread456",
+    query="your query"
+)
+
+# Use context.assembled_context in your prompts
+```
+
+See `examples_adapters.py` for complete examples.
+
+---
+
+## 🔒 Security
+
+Mindcore implements production-grade security:
+
+### Built-in Protections
+
+- ✅ **SQL Injection Protection** - Parameterized queries throughout
+- ✅ **Input Validation** - Strict validation of all user inputs
+- ✅ **Rate Limiting** - Configurable rate limiting support
+- ✅ **Sanitization** - Text sanitization and length limits
+- ✅ **Security Headers** - Recommended security headers for API
+
+### Using Security Features
+
+```python
+from mindcore.utils import SecurityValidator, get_rate_limiter
+
+# Validate messages automatically (done by Mindcore)
+is_valid, error = SecurityValidator.validate_message_dict(message_dict)
+
+# Rate limiting
+rate_limiter = get_rate_limiter()
+if not rate_limiter.is_allowed(user_id):
+    raise Exception("Rate limit exceeded")
+
+# Get remaining requests
+remaining = rate_limiter.get_remaining(user_id)
+```
+
+### Security Best Practices
+
+```python
+# Use environment variables for secrets
+export OPENAI_API_KEY="your-key"
+export DB_PASSWORD="your-password"
+
+# Enable SSL for database
+# Use HTTPS for API endpoints
+# Implement authentication for production
+```
+
+See [SECURITY.md](SECURITY.md) for comprehensive security documentation.
+
+---
+
+## 💰 Cost Efficiency
+
+Mindcore saves **60-90% on token costs** compared to traditional memory management:
+
+### Why Mindcore is Cheaper
+
+| Approach | Cost for 200 msgs, 20 requests |
+|----------|-------------------------------|
+| **Traditional** (Full history every time) | $2.60 |
+| **Mindcore** (Intelligent compression) | $0.20 |
+| **Savings** | **92%** |
+
+### How It Works
+
+1. **Enrichment uses GPT-4o-mini** ($0.15/1M tokens vs $2.50/1M for GPT-4o)
+2. **Context assembly uses GPT-4o-mini** (cheap summarization)
+3. **Main LLM gets compressed context** (1.5k tokens vs 50k+ full history)
+4. **One-time enrichment** (metadata never recomputed)
+
+### Run Your Own Benchmark
+
+```python
+from mindcore.utils.cost_analysis import run_cost_benchmark
+
+report = run_cost_benchmark()
+print(report)
+```
+
+See [COST_EFFICIENCY.md](COST_EFFICIENCY.md) for detailed cost analysis and ROI calculations.
 
 ---
 
