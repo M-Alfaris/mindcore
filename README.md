@@ -1,6 +1,4 @@
-<div align="center">
-
-# >� Mindcore
+# Mindcore
 
 **Intelligent Memory & Context Management for AI Agents**
 
@@ -11,121 +9,93 @@
 
 **Save 60-90% on token costs** with intelligent memory management powered by lightweight AI agents.
 
-[Features](#-features) " [Quick Start](#-quick-start) " [Installation](#-installation) " [Documentation](#-documentation) " [Examples](#-examples)
-
-</div>
+**[Features](#features) • [Quick Start](#quick-start) • [Installation](#installation) • [Documentation](#documentation) • [Examples](#examples)**
 
 ---
 
-## <� What is Mindcore?
+## What is Mindcore?
 
-Mindcore is a production-ready Python framework that provides **intelligent memory and context management** for AI agents. It uses two specialized lightweight AI agents (GPT-4o-mini) to automatically enrich conversations with metadata and intelligently retrieve relevant historical context.
+Mindcore is a **production-ready Python framework** that provides intelligent memory and context management for AI agents. It uses two specialized lightweight AI agents (GPT-4o-mini) to automatically enrich conversations with metadata and intelligently retrieve relevant historical context.
 
 ### The Problem
 
 Traditional approaches send **entire conversation history** with every LLM request:
-- L Wasted tokens on irrelevant messages
-- L Costs scale linearly with conversation length
-- L Slow responses with large histories
-- L Hit context window limits quickly
+- Wasted tokens on irrelevant messages
+- Costs scale linearly with conversation length
+- Slow responses with large histories
+- Hit context window limits quickly
 
 ### The Mindcore Solution
 
-**Two lightweight agents** work behind the scenes:
+**Two lightweight AI agents** work behind the scenes:
+
 1. **MetadataAgent** - Enriches each message once with topics, sentiment, intent, importance
 2. **ContextAgent** - Intelligently selects and summarizes only relevant history
 
-**Result:** Send 1.5k tokens instead of 50k+ � **60-90% cost savings** =�
+**Result:** Send 1.5k tokens instead of 50k+ = **60-90% cost savings!**
 
 ---
 
-## ( Features
+## Features
 
-<table>
-<tr>
-<td width="50%">
-
-### > **Intelligent AI Agents**
+### Intelligent AI Agents
 - **MetadataAgent**: Auto-enriches messages with metadata
 - **ContextAgent**: Assembles relevant context on demand
 - Powered by cost-effective GPT-4o-mini
 
-</td>
-<td width="50%">
-
-### =� **Massive Cost Savings**
+### Massive Cost Savings
 - **60-90% reduction** in token costs
 - Saves $4M/year for enterprise platforms
 - Scales efficiently as conversations grow
 
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### =� **Dual-Layer Storage**
+### Dual-Layer Storage
 - **PostgreSQL** for persistent storage
 - **In-memory cache** for blazing-fast retrieval
 - Automatic schema management
 
-</td>
-<td width="50%">
-
-### = **Production-Grade Security**
+### Production-Grade Security
 - SQL injection protection (parameterized queries)
 - Input validation & sanitization
 - Rate limiting support
 - Comprehensive security documentation
 
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### = **Framework Integration**
+### Framework Integration
 - **LangChain** - Callbacks, memory interface
 - **LlamaIndex** - Chat memory integration
 - **Custom AI** - Works with any system
-- Plug-and-play adapters
+- Plug-and-play integrations
 
-</td>
-<td width="50%">
-
-### =� **Developer Experience**
+### Developer Experience
 - Clean, intuitive API
 - 3 lines to get started
 - Comprehensive documentation
 - Type hints & docstrings throughout
 
-</td>
-</tr>
-</table>
-
 ---
 
-## =� Quick Start
+## Quick Start
 
-### Install
+### 1. Install
 
 ```bash
 pip install -e .
 ```
 
-### Set Up Database
+### 2. Set Up Database
 
 ```bash
 createdb mindcore
 psql -d mindcore -f schema.sql
 ```
 
-### Configure
+### 3. Configure
 
 ```bash
 export OPENAI_API_KEY="your-openai-api-key"
 export DB_PASSWORD="your-db-password"
 ```
 
-### Use
+### 4. Use
 
 ```python
 from mindcore import MindcoreClient
@@ -159,11 +129,11 @@ print(context.assembled_context)  # Compressed, relevant summary
 print(context.key_points)         # ['Use modular design', 'Implement error handling', ...]
 ```
 
-**That's it!** 3 methods: `ingest_message()`, `get_context()`, done. 
+**That's it!** Just 2 methods: `ingest_message()` and `get_context()`.
 
 ---
 
-## =� Installation
+## Installation
 
 ### Prerequisites
 
@@ -211,11 +181,11 @@ export DB_PASSWORD="postgres"
 
 ---
 
-## =� Documentation
+## Documentation
 
 ### Core API
 
-#### **MindcoreClient**
+#### MindcoreClient
 
 The main client for all operations.
 
@@ -226,13 +196,13 @@ client = MindcoreClient()  # or MindcoreClient("path/to/config.yaml")
 ```
 
 **Methods:**
-- `ingest_message(message_dict)` � Enrich and store message
-- `get_context(user_id, thread_id, query, max_messages=50)` � Get assembled context
-- `get_message(message_id)` � Fetch single message
-- `clear_cache(user_id, thread_id)` � Clear cached messages
-- `close()` � Cleanup connections
+- `ingest_message(message_dict)` - Enrich and store message
+- `get_context(user_id, thread_id, query, max_messages=50)` - Get assembled context
+- `get_message(message_id)` - Fetch single message
+- `clear_cache(user_id, thread_id)` - Clear cached messages
+- `close()` - Cleanup connections
 
-#### **MetadataAgent**
+#### MetadataAgent
 
 Automatically enriches messages with intelligent metadata.
 
@@ -251,7 +221,7 @@ enriched_message = agent.process(message_dict)
 - Named entity recognition
 - Key phrase extraction
 
-#### **ContextAgent**
+#### ContextAgent
 
 Intelligently assembles relevant historical context.
 
@@ -270,7 +240,7 @@ context = agent.process(messages_list, query="user query")
 
 ---
 
-## = Framework Integrations
+## Framework Integrations
 
 ### LangChain
 
@@ -334,7 +304,7 @@ your_llm_call(f"Context: {context.assembled_context}\n\nUser: {user_message}")
 
 ---
 
-## =� Examples
+## Examples
 
 ### Basic Usage
 
@@ -409,21 +379,21 @@ print(report)
 # Traditional: $2.60 | Mindcore: $0.20 | Saved: $2.40 (92%)
 ```
 
-See `examples.py` and `examples_adapters.py` for more!
+See `examples.py` and `examples_adapters.py` for complete examples!
 
 ---
 
-## = Security
+## Security
 
 Mindcore implements **production-grade security**:
 
 ### Built-in Protections
 
- **SQL Injection Protection** - All queries use parameterized statements
- **Input Validation** - Strict validation of all user inputs
- **Rate Limiting** - Configurable request limits
- **Sanitization** - Text sanitization and length limits
- **Security Headers** - Recommended headers for API
+- **SQL Injection Protection** - All queries use parameterized statements
+- **Input Validation** - Strict validation of all user inputs
+- **Rate Limiting** - Configurable request limits
+- **Sanitization** - Text sanitization and length limits
+- **Security Headers** - Recommended headers for API
 
 ### Usage
 
@@ -446,7 +416,7 @@ See **[SECURITY.md](SECURITY.md)** for comprehensive security documentation.
 
 ---
 
-## =� Cost Efficiency
+## Cost Efficiency
 
 Mindcore **saves 60-90% on token costs** compared to traditional approaches.
 
@@ -463,7 +433,7 @@ Mindcore **saves 60-90% on token costs** compared to traditional approaches.
 |----------|-------------|----------|----------------|
 | Customer Support (1k users/day) | $225k | $45k | **$180k** |
 | AI Assistant (per user) | $61k | $4k | **$57k** |
-| Enterprise Platform (10k users) | $4.5M | $450k | **$4.05M** =� |
+| Enterprise Platform (10k users) | $4.5M | $450k | **$4.05M** |
 
 ### Why It Works
 
@@ -476,46 +446,46 @@ See **[COST_EFFICIENCY.md](COST_EFFICIENCY.md)** for detailed analysis.
 
 ---
 
-## <� Architecture
+## Architecture
 
 ```
 mindcore/
-   __init__.py              # Main client & public API
-   config.yaml              # Configuration
-
-   core/                    # Core functionality
-      config_loader.py     # YAML config management
-      db_manager.py        # PostgreSQL operations
-      cache_manager.py     # In-memory caching
-      schemas.py           # Data models
-
-   agents/                  # AI agents
-      base_agent.py        # Base agent class
-      enrichment_agent.py  # MetadataAgent
-      context_assembler_agent.py  # ContextAgent
-
-   integrations/            # Framework adapters
-      base_adapter.py      # Base integration
-      langchain_adapter.py # LangChain integration
-      llamaindex_adapter.py # LlamaIndex integration
-
-   api/                     # FastAPI server
-      server.py            # API application
-      routes/
-          ingest.py        # POST /ingest
-          context.py       # POST /context
-
-   utils/                   # Utilities
-       security.py          # Security validation
-       cost_analysis.py     # Cost benchmarking
-       logger.py            # Logging
-       tokenizer.py         # Text processing
-       helper.py            # Helper functions
+├── __init__.py              # Main client & public API
+├── config.yaml              # Configuration
+│
+├── core/                    # Core functionality
+│   ├── config_loader.py     # YAML config management
+│   ├── db_manager.py        # PostgreSQL operations
+│   ├── cache_manager.py     # In-memory caching
+│   └── schemas.py           # Data models
+│
+├── agents/                  # AI agents
+│   ├── base_agent.py        # Base agent class
+│   ├── enrichment_agent.py  # MetadataAgent
+│   └── context_assembler_agent.py  # ContextAgent
+│
+├── integrations/            # Framework integrations
+│   ├── base_adapter.py      # Base integration
+│   ├── langchain_adapter.py # LangChain integration
+│   └── llamaindex_adapter.py # LlamaIndex integration
+│
+├── api/                     # FastAPI server
+│   ├── server.py            # API application
+│   └── routes/
+│       ├── ingest.py        # POST /ingest
+│       └── context.py       # POST /context
+│
+└── utils/                   # Utilities
+    ├── security.py          # Security validation
+    ├── cost_analysis.py     # Cost benchmarking
+    ├── logger.py            # Logging
+    ├── tokenizer.py         # Text processing
+    └── helper.py            # Helper functions
 ```
 
 ---
 
-## >� Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -530,7 +500,7 @@ pytest mindcore/tests/test_enrichment.py -v
 
 ---
 
-## < FastAPI Server
+## FastAPI Server
 
 Start the API server for remote access:
 
@@ -545,6 +515,7 @@ python -m mindcore.api.server
 ### API Endpoints
 
 **POST /ingest** - Ingest message
+
 ```bash
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
@@ -558,6 +529,7 @@ curl -X POST http://localhost:8000/ingest \
 ```
 
 **POST /context** - Get context
+
 ```bash
 curl -X POST http://localhost:8000/context \
   -H "Content-Type: application/json" \
@@ -569,6 +541,7 @@ curl -X POST http://localhost:8000/context \
 ```
 
 **GET /health** - Health check
+
 ```bash
 curl http://localhost:8000/health
 ```
@@ -577,7 +550,7 @@ curl http://localhost:8000/health
 
 ---
 
-## > Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -589,13 +562,13 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-## =� License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## =O Acknowledgments
+## Acknowledgments
 
 - Powered by [OpenAI](https://openai.com/) GPT-4o-mini
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
@@ -603,7 +576,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## =� Support
+## Support
 
 - **Documentation:** [README.md](README.md), [SECURITY.md](SECURITY.md), [COST_EFFICIENCY.md](COST_EFFICIENCY.md)
 - **Issues:** [GitHub Issues](https://github.com/M-Alfaris/mindcore/issues)
@@ -611,10 +584,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<div align="center">
+**Built with ❤️ by the Mindcore team**
 
-**Built with d by the Mindcore team**
-
-[ Back to Top](#-mindcore)
-
-</div>
+**[⬆ Back to Top](#mindcore)**
