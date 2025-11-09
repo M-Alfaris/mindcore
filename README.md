@@ -65,6 +65,12 @@ Traditional approaches send **entire conversation history** with every LLM reque
 - **Custom AI** - Works with any system
 - Plug-and-play integrations
 
+### Flexibility & Customization
+- **Multiple LLM Providers** - OpenAI, Ollama (local), LM Studio, Anthropic
+- **Pluggable Importance** - 6 algorithms: LLM, keyword, length, sentiment, composite, custom
+- **Custom Prompts** - Centralized prompt management with YAML config
+- **Zero Vendor Lock-in** - Run 100% local with Ollama
+
 ### Developer Experience
 - Clean, intuitive API
 - 3 lines to get started
@@ -139,7 +145,7 @@ print(context.key_points)         # ['Use modular design', 'Implement error hand
 
 - **Python 3.10+**
 - **PostgreSQL** database
-- **OpenAI API key**
+- **LLM Provider** - OpenAI API key (or Ollama/LM Studio for local)
 
 ### From Source
 
@@ -237,6 +243,400 @@ context = agent.process(messages_list, query="user query")
 - `key_points` - Important takeaways
 - `relevant_message_ids` - IDs of relevant messages
 - `metadata` - Topics, sentiment, importance
+
+---
+
+## Advanced Configuration
+
+### LLM Providers
+
+Mindcore supports multiple LLM providers, giving you full flexibility to use commercial APIs or run 100% locally.
+
+#### Supported Providers
+
+| Provider | Type | Cost | Models |
+|----------|------|------|--------|
+| **OpenAI** | Cloud | Paid | GPT-4o, GPT-4o-mini |
+| **Ollama** | Local | Free | Llama2, Mistral, CodeLlama, etc. |
+| **LM Studio** | Local | Free | Any GGUF model |
+| **Anthropic** | Cloud | Paid | Claude 3 (Haiku, Sonnet, Opus) |
+
+#### Configuration
+
+Edit `mindcore/config.yaml`:
+
+```yaml
+llm:
+  provider: openai  # Options: openai, ollama, lmstudio, anthropic
+  api_key: ${OPENAI_API_KEY}  # Not required for ollama/lmstudio
+  model: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 1000
+  base_url: null  # Optional custom endpoint
+```
+
+#### OpenAI (Default)
+
+```python
+from mindcore import MindcoreClient
+
+# Uses OpenAI by default (from config)
+client = MindcoreClient()
+```
+
+**Configuration:**
+```yaml
+llm:
+  provider: openai
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini  # or gpt-4o
+```
+
+#### Ollama (Local, Free)
+
+**1. Install Ollama:**
+```bash
+# Install from https://ollama.ai
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a model
+ollama pull llama2
+# or: ollama pull mistral, codellama, etc.
+
+# Start Ollama (runs on http://localhost:11434)
+ollama serve
+```
+
+**2. Configure:**
+```yaml
+llm:
+  provider: ollama
+  model: llama2  # or mistral, codellama, etc.
+  base_url: http://localhost:11434  # Default Ollama URL
+```
+
+**3. Use:**
+```python
+from mindcore import MindcoreClient
+
+client = MindcoreClient()  # Auto-uses Ollama from config
+# Now runs 100% locally - no API costs!
+```
+
+See `examples_ollama.py` for complete example.
+
+#### LM Studio (Local, Free)
+
+**1. Setup LM Studio:**
+- Download from https://lmstudio.ai
+- Load any GGUF model
+- Start local server (default: http://localhost:1234)
+
+**2. Configure:**
+```yaml
+llm:
+  provider: lmstudio
+  model: local-model  # Model name from LM Studio
+  base_url: http://localhost:1234/v1
+```
+
+**3. Use:**
+```python
+from mindcore import MindcoreClient
+
+client = MindcoreClient()  # Uses LM Studio
+```
+
+#### Anthropic (Claude)
+
+```yaml
+llm:
+  provider: anthropic
+  api_key: ${ANTHROPIC_API_KEY}
+  model: claude-3-haiku-20240307  # Fast & cheap
+  # or: claude-3-sonnet-20240229, claude-3-opus-20240229
+```
+
+#### Programmatic Provider Selection
+
+```python
+from mindcore.llm_providers import get_llm_provider
+
+# Get provider by name
+provider = get_llm_provider(
+    provider_name="ollama",
+    model="llama2"
+)
+
+# Or use specific provider class
+from mindcore.llm_providers import OllamaProvider
+
+provider = OllamaProvider(
+    model="mistral",
+    base_url="http://localhost:11434"
+)
+```
+
+**All providers:**
+```python
+from mindcore.llm_providers import (
+    OpenAIProvider,
+    OllamaProvider,
+    LMStudioProvider,
+    AnthropicProvider,
+    OpenAICompatibleProvider  # For custom APIs
+)
+```
+
+---
+
+### Importance Algorithms
+
+Mindcore provides **6 importance scoring algorithms** - choose one or create your own!
+
+#### Available Algorithms
+
+| Algorithm | Description | Use Case |
+|-----------|-------------|----------|
+| **llm** | LLM-generated importance (default) | Most accurate, uses AI |
+| **keyword** | Keyword-based scoring | Fast, customizable |
+| **length** | Message length-based | Simple heuristic |
+| **sentiment** | Sentiment intensity | Emotion-driven |
+| **composite** | Weighted combination | Best of all worlds |
+| **custom** | Your own algorithm | Domain-specific needs |
+
+#### Configuration
+
+Edit `mindcore/config.yaml`:
+
+```yaml
+importance:
+  algorithm: llm  # Options: llm, keyword, length, sentiment, composite
+
+  # Keyword configuration (if algorithm: keyword)
+  keywords:
+    high_importance:
+      - urgent
+      - critical
+      - important
+      - asap
+      - deadline
+    low_importance:
+      - maybe
+      - perhaps
+      - casual
+      - fyi
+```
+
+#### LLM-Based (Default)
+
+Uses AI-generated importance during metadata enrichment.
+
+```yaml
+importance:
+  algorithm: llm
+```
+
+**Pros:** Most accurate, contextual
+**Cons:** Requires LLM call (minimal cost with GPT-4o-mini)
+
+#### Keyword-Based
+
+Scores based on keyword presence.
+
+```yaml
+importance:
+  algorithm: keyword
+  keywords:
+    high_importance: [urgent, critical, important, deadline, asap]
+    low_importance: [maybe, casual, fyi, whenever]
+```
+
+**Pros:** Fast, no LLM needed, customizable
+**Cons:** Less contextual than LLM
+
+**Programmatic:**
+```python
+from mindcore.importance import KeywordImportance
+
+scorer = KeywordImportance(
+    high_importance_keywords=['urgent', 'critical', 'deadline'],
+    low_importance_keywords=['maybe', 'fyi']
+)
+
+importance = scorer.calculate("Urgent: Please review ASAP")
+print(importance)  # 0.8
+```
+
+#### Length-Based
+
+Importance based on message length.
+
+```yaml
+importance:
+  algorithm: length
+```
+
+**Logic:**
+- Very short (< 10 chars): 0.2 (greetings)
+- Medium (10-200): 0.2-0.8 (normal)
+- Long (200-400): 0.8 (detailed)
+- Very long (> 400): 0.5-0.8 (might be spam)
+
+#### Sentiment-Based
+
+Higher importance for emotionally charged messages.
+
+```yaml
+importance:
+  algorithm: sentiment
+```
+
+**Logic:**
+- Neutral sentiment: 0.4
+- Strong positive/negative: up to 0.9
+
+#### Composite
+
+Weighted combination of multiple algorithms.
+
+```yaml
+importance:
+  algorithm: composite
+```
+
+**Default weights:**
+- LLM: 50%
+- Keyword: 30%
+- Length: 20%
+
+**Programmatic:**
+```python
+from mindcore.importance import (
+    CompositeImportance,
+    KeywordImportance,
+    LengthBasedImportance
+)
+
+scorer = CompositeImportance(algorithms=[
+    (KeywordImportance(), 0.5),
+    (LengthBasedImportance(), 0.5)
+])
+
+importance = scorer.calculate("Important message", metadata={})
+```
+
+#### Custom Algorithm
+
+Create your own importance algorithm:
+
+```python
+from mindcore.importance import ImportanceAlgorithm
+
+class MyCustomImportance(ImportanceAlgorithm):
+    def calculate(self, text: str, metadata=None, **kwargs) -> float:
+        # Your custom logic here
+        if "urgent" in text.lower():
+            return 1.0
+        return 0.5
+
+# Use it
+scorer = MyCustomImportance()
+importance = scorer.calculate("Urgent request")
+```
+
+See `examples_custom_importance.py` for complete example.
+
+---
+
+### Custom Prompts
+
+Customize the AI agent prompts without modifying code.
+
+#### Centralized Prompts
+
+All prompts are in `mindcore/prompts.py`:
+
+```python
+from mindcore.prompts import (
+    ENRICHMENT_SYSTEM_PROMPT,
+    CONTEXT_ASSEMBLY_SYSTEM_PROMPT,
+    get_enrichment_prompt,
+    get_context_assembly_prompt
+)
+```
+
+#### Method 1: Edit prompts.py
+
+Directly edit `mindcore/prompts.py`:
+
+```python
+ENRICHMENT_SYSTEM_PROMPT = """Your custom enrichment prompt here..."""
+
+CONTEXT_ASSEMBLY_SYSTEM_PROMPT = """Your custom context assembly prompt here..."""
+```
+
+#### Method 2: YAML Configuration
+
+Create `custom_prompts.yaml`:
+
+```yaml
+enrichment_system_prompt: |
+  You are a specialized metadata enrichment agent for technical support.
+  Focus on extracting:
+  - Technical terms and product names
+  - Issue severity
+  - Customer sentiment
+
+  Return JSON with topics, categories, importance, sentiment, etc.
+
+context_assembly_system_prompt: |
+  You are a context assembly agent for customer support.
+  Prioritize:
+  - Previous issues reported
+  - Solutions that worked
+  - Customer preferences
+
+  Return JSON with assembled_context, key_points, relevant_message_ids.
+```
+
+**Configure:**
+```yaml
+# In config.yaml
+prompts:
+  custom_path: /path/to/custom_prompts.yaml
+```
+
+#### Method 3: Programmatic
+
+```python
+from mindcore import MetadataAgent, ContextAgent
+
+custom_enrichment_prompt = """Your custom prompt..."""
+
+agent = MetadataAgent(
+    api_key="your-key",
+    system_prompt=custom_enrichment_prompt
+)
+```
+
+#### Default Prompts
+
+**Enrichment Prompt** focuses on:
+- Topics and categories
+- Sentiment analysis
+- Intent detection
+- Importance scoring (0.0-1.0)
+- Named entities
+- Key phrases
+
+**Context Assembly Prompt** focuses on:
+- Relevant context extraction
+- Key points identification
+- Sentiment trends
+- Topic summarization
+
+See `examples_custom_prompts.py` for complete example.
 
 ---
 
@@ -379,7 +779,12 @@ print(report)
 # Traditional: $2.60 | Mindcore: $0.20 | Saved: $2.40 (92%)
 ```
 
-See `examples.py` and `examples_adapters.py` for complete examples!
+**More Examples:**
+- `examples.py` - Basic usage
+- `examples_adapters.py` - Framework integrations (LangChain, LlamaIndex)
+- `examples_ollama.py` - Using Ollama for 100% local inference
+- `examples_custom_importance.py` - Custom importance algorithms
+- `examples_custom_prompts.py` - Custom AI agent prompts
 
 ---
 
@@ -580,7 +985,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Documentation:** [README.md](README.md), [SECURITY.md](SECURITY.md), [COST_EFFICIENCY.md](COST_EFFICIENCY.md)
 - **Issues:** [GitHub Issues](https://github.com/M-Alfaris/mindcore/issues)
-- **Examples:** `examples.py`, `examples_adapters.py`
+- **Examples:** `examples.py`, `examples_adapters.py`, `examples_ollama.py`, `examples_custom_importance.py`, `examples_custom_prompts.py`
 
 ---
 
