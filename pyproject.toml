@@ -42,9 +42,13 @@ dependencies = [
     "uvicorn[standard]>=0.23.0",
     "pyyaml>=6.0",
     "pydantic>=2.0.0",
+    "requests>=2.31.0",  # For Ollama provider
 ]
 
 [project.optional-dependencies]
+anthropic = [
+    "anthropic>=0.18.0",  # For Anthropic Claude provider
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
@@ -54,18 +58,21 @@ dev = [
     "mypy>=1.0.0",
     "isort>=5.12.0",
 ]
+all = [
+    "anthropic>=0.18.0",
+]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/mindcore"
-Documentation = "https://github.com/yourusername/mindcore#readme"
-Repository = "https://github.com/yourusername/mindcore"
-Issues = "https://github.com/yourusername/mindcore/issues"
+Homepage = "https://github.com/M-Alfaris/mindcore"
+Documentation = "https://github.com/M-Alfaris/mindcore#readme"
+Repository = "https://github.com/M-Alfaris/mindcore"
+Issues = "https://github.com/M-Alfaris/mindcore/issues"
 
 [project.scripts]
 mindcore-server = "mindcore.api.server:run_server"
 
 [tool.setuptools]
-packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils"]
+packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.integrations", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.tests"]
 
 [tool.setuptools.package-data]
 mindcore = ["config.yaml"]

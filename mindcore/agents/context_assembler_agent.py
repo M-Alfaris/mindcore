@@ -4,11 +4,14 @@ Context Assembly AI Agent.
 Retrieves and assembles relevant historical context.
 """
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from .base_agent import BaseAgent
 from ..core.schemas import Message, AssembledContext
 from ..utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from ..llm_providers import LLMProvider
 
 logger = get_logger(__name__)
 
@@ -25,48 +28,46 @@ class ContextAssemblerAgent(BaseAgent):
     - Return structured context
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.3):
+    def __init__(
+        self,
+        llm_provider: Optional['LLMProvider'] = None,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+        temperature: float = 0.3,
+        system_prompt: Optional[str] = None
+    ):
         """
         Initialize context assembler agent.
 
         Args:
-            api_key: OpenAI API key.
+            llm_provider: Optional LLM provider instance.
+            api_key: API key (used if llm_provider not provided).
             model: Model name.
             temperature: Temperature for generation.
+            system_prompt: Optional custom system prompt. If not provided, uses default.
         """
-        super().__init__(api_key, model, temperature, max_tokens=1500)
-        self.system_prompt = self._create_system_prompt()
+        super().__init__(llm_provider, api_key, model, temperature, max_tokens=1500)
+
+        # Use custom prompt or default
+        if system_prompt:
+            self.system_prompt = system_prompt
+        else:
+            # Import here to avoid circular dependency
+            from ..prompts import CONTEXT_ASSEMBLY_SYSTEM_PROMPT
+            self.system_prompt = CONTEXT_ASSEMBLY_SYSTEM_PROMPT
 
     def _create_system_prompt(self) -> str:
         """
         Create system prompt for context assembly.
 
+        Deprecated: Use system_prompt parameter in __init__ instead.
+        Kept for backward compatibility.
+
         Returns:
             System prompt string.
         """
-        return """You are a context assembly AI agent. Your task is to analyze a conversation history and current query to extract and summarize the most relevant context.
-
-You will receive:
-1. A list of historical messages with metadata
-2. A current query or topic
-
-Your task is to return a JSON object with:
-
-{
-  "assembled_context": "A clear, concise summary of relevant historical context that would help understand the current query. Focus on key facts, decisions, and relevant background.",
-  "key_points": ["List of 3-5 most important points from the history"],
-  "relevant_message_ids": ["List of message IDs that were most relevant"],
-  "metadata": {
-    "topics": ["main topics covered"],
-    "sentiment": {
-      "overall": "positive/negative/neutral",
-      "trend": "improving/declining/stable"
-    },
-    "importance": 0.0-1.0 (overall importance of this context)
-  }
-}
-
-Be selective and concise. Only include truly relevant information."""
+        from ..prompts import CONTEXT_ASSEMBLY_SYSTEM_PROMPT
+        return CONTEXT_ASSEMBLY_SYSTEM_PROMPT
 
     def process(self, messages: List[Message], query: str) -> AssembledContext:
         """
@@ -84,22 +85,21 @@ Be selective and concise. Only include truly relevant information."""
         # Format messages for the prompt
         formatted_messages = self._format_messages(messages)
 
-        # Prepare messages for OpenAI
-        prompt = f"""Historical Messages:
-{formatted_messages}
+        # Use prompts module for user prompt
+        from ..prompts import get_context_assembly_prompt
 
-Current Query/Topic:
-{query}
-
-Analyze the messages and provide relevant context for the current query."""
+        user_prompt = get_context_assembly_prompt(
+            formatted_messages=formatted_messages,
+            query=query
+        )
 
         api_messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": user_prompt}
         ]
 
         try:
-            # Call OpenAI
+            # Call LLM
             response = self._call_openai(api_messages)
 
             # Parse response
