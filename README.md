@@ -1,6 +1,4 @@
-<div align="center">
-
-# >� Mindcore
+# Mindcore
 
 **Intelligent Memory & Context Management for AI Agents**
 
@@ -11,121 +9,99 @@
 
 **Save 60-90% on token costs** with intelligent memory management powered by lightweight AI agents.
 
-[Features](#-features) " [Quick Start](#-quick-start) " [Installation](#-installation) " [Documentation](#-documentation) " [Examples](#-examples)
-
-</div>
+**[Features](#features) • [Quick Start](#quick-start) • [Installation](#installation) • [Documentation](#documentation) • [Examples](#examples)**
 
 ---
 
-## <� What is Mindcore?
+## What is Mindcore?
 
-Mindcore is a production-ready Python framework that provides **intelligent memory and context management** for AI agents. It uses two specialized lightweight AI agents (GPT-4o-mini) to automatically enrich conversations with metadata and intelligently retrieve relevant historical context.
+Mindcore is a **production-ready Python framework** that provides intelligent memory and context management for AI agents. It uses two specialized lightweight AI agents (GPT-4o-mini) to automatically enrich conversations with metadata and intelligently retrieve relevant historical context.
 
 ### The Problem
 
 Traditional approaches send **entire conversation history** with every LLM request:
-- L Wasted tokens on irrelevant messages
-- L Costs scale linearly with conversation length
-- L Slow responses with large histories
-- L Hit context window limits quickly
+- Wasted tokens on irrelevant messages
+- Costs scale linearly with conversation length
+- Slow responses with large histories
+- Hit context window limits quickly
 
 ### The Mindcore Solution
 
-**Two lightweight agents** work behind the scenes:
+**Two lightweight AI agents** work behind the scenes:
+
 1. **MetadataAgent** - Enriches each message once with topics, sentiment, intent, importance
 2. **ContextAgent** - Intelligently selects and summarizes only relevant history
 
-**Result:** Send 1.5k tokens instead of 50k+ � **60-90% cost savings** =�
+**Result:** Send 1.5k tokens instead of 50k+ = **60-90% cost savings!**
 
 ---
 
-## ( Features
+## Features
 
-<table>
-<tr>
-<td width="50%">
-
-### > **Intelligent AI Agents**
+### Intelligent AI Agents
 - **MetadataAgent**: Auto-enriches messages with metadata
 - **ContextAgent**: Assembles relevant context on demand
 - Powered by cost-effective GPT-4o-mini
 
-</td>
-<td width="50%">
-
-### =� **Massive Cost Savings**
+### Massive Cost Savings
 - **60-90% reduction** in token costs
 - Saves $4M/year for enterprise platforms
 - Scales efficiently as conversations grow
 
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### =� **Dual-Layer Storage**
+### Dual-Layer Storage
 - **PostgreSQL** for persistent storage
 - **In-memory cache** for blazing-fast retrieval
 - Automatic schema management
 
-</td>
-<td width="50%">
-
-### = **Production-Grade Security**
+### Production-Grade Security
 - SQL injection protection (parameterized queries)
 - Input validation & sanitization
 - Rate limiting support
 - Comprehensive security documentation
 
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### = **Framework Integration**
+### Framework Integration
 - **LangChain** - Callbacks, memory interface
 - **LlamaIndex** - Chat memory integration
 - **Custom AI** - Works with any system
-- Plug-and-play adapters
+- Plug-and-play integrations
 
-</td>
-<td width="50%">
+### Flexibility & Customization
+- **Multiple LLM Providers** - OpenAI, Ollama (local), LM Studio, Anthropic
+- **Pluggable Importance** - 6 algorithms: LLM, keyword, length, sentiment, composite, custom
+- **Custom Prompts** - Centralized prompt management with YAML config
+- **Zero Vendor Lock-in** - Run 100% local with Ollama
 
-### =� **Developer Experience**
+### Developer Experience
 - Clean, intuitive API
 - 3 lines to get started
 - Comprehensive documentation
 - Type hints & docstrings throughout
 
-</td>
-</tr>
-</table>
-
 ---
 
-## =� Quick Start
+## Quick Start
 
-### Install
+### 1. Install
 
 ```bash
 pip install -e .
 ```
 
-### Set Up Database
+### 2. Set Up Database
 
 ```bash
 createdb mindcore
 psql -d mindcore -f schema.sql
 ```
 
-### Configure
+### 3. Configure
 
 ```bash
 export OPENAI_API_KEY="your-openai-api-key"
 export DB_PASSWORD="your-db-password"
 ```
 
-### Use
+### 4. Use
 
 ```python
 from mindcore import MindcoreClient
@@ -159,17 +135,17 @@ print(context.assembled_context)  # Compressed, relevant summary
 print(context.key_points)         # ['Use modular design', 'Implement error handling', ...]
 ```
 
-**That's it!** 3 methods: `ingest_message()`, `get_context()`, done. 
+**That's it!** Just 2 methods: `ingest_message()` and `get_context()`.
 
 ---
 
-## =� Installation
+## Installation
 
 ### Prerequisites
 
 - **Python 3.10+**
 - **PostgreSQL** database
-- **OpenAI API key**
+- **LLM Provider** - OpenAI API key (or Ollama/LM Studio for local)
 
 ### From Source
 
@@ -211,11 +187,11 @@ export DB_PASSWORD="postgres"
 
 ---
 
-## =� Documentation
+## Documentation
 
 ### Core API
 
-#### **MindcoreClient**
+#### MindcoreClient
 
 The main client for all operations.
 
@@ -226,13 +202,13 @@ client = MindcoreClient()  # or MindcoreClient("path/to/config.yaml")
 ```
 
 **Methods:**
-- `ingest_message(message_dict)` � Enrich and store message
-- `get_context(user_id, thread_id, query, max_messages=50)` � Get assembled context
-- `get_message(message_id)` � Fetch single message
-- `clear_cache(user_id, thread_id)` � Clear cached messages
-- `close()` � Cleanup connections
+- `ingest_message(message_dict)` - Enrich and store message
+- `get_context(user_id, thread_id, query, max_messages=50)` - Get assembled context
+- `get_message(message_id)` - Fetch single message
+- `clear_cache(user_id, thread_id)` - Clear cached messages
+- `close()` - Cleanup connections
 
-#### **MetadataAgent**
+#### MetadataAgent
 
 Automatically enriches messages with intelligent metadata.
 
@@ -251,7 +227,7 @@ enriched_message = agent.process(message_dict)
 - Named entity recognition
 - Key phrase extraction
 
-#### **ContextAgent**
+#### ContextAgent
 
 Intelligently assembles relevant historical context.
 
@@ -270,7 +246,401 @@ context = agent.process(messages_list, query="user query")
 
 ---
 
-## = Framework Integrations
+## Advanced Configuration
+
+### LLM Providers
+
+Mindcore supports multiple LLM providers, giving you full flexibility to use commercial APIs or run 100% locally.
+
+#### Supported Providers
+
+| Provider | Type | Cost | Models |
+|----------|------|------|--------|
+| **OpenAI** | Cloud | Paid | GPT-4o, GPT-4o-mini |
+| **Ollama** | Local | Free | Llama2, Mistral, CodeLlama, etc. |
+| **LM Studio** | Local | Free | Any GGUF model |
+| **Anthropic** | Cloud | Paid | Claude 3 (Haiku, Sonnet, Opus) |
+
+#### Configuration
+
+Edit `mindcore/config.yaml`:
+
+```yaml
+llm:
+  provider: openai  # Options: openai, ollama, lmstudio, anthropic
+  api_key: ${OPENAI_API_KEY}  # Not required for ollama/lmstudio
+  model: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 1000
+  base_url: null  # Optional custom endpoint
+```
+
+#### OpenAI (Default)
+
+```python
+from mindcore import MindcoreClient
+
+# Uses OpenAI by default (from config)
+client = MindcoreClient()
+```
+
+**Configuration:**
+```yaml
+llm:
+  provider: openai
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini  # or gpt-4o
+```
+
+#### Ollama (Local, Free)
+
+**1. Install Ollama:**
+```bash
+# Install from https://ollama.ai
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a model
+ollama pull llama2
+# or: ollama pull mistral, codellama, etc.
+
+# Start Ollama (runs on http://localhost:11434)
+ollama serve
+```
+
+**2. Configure:**
+```yaml
+llm:
+  provider: ollama
+  model: llama2  # or mistral, codellama, etc.
+  base_url: http://localhost:11434  # Default Ollama URL
+```
+
+**3. Use:**
+```python
+from mindcore import MindcoreClient
+
+client = MindcoreClient()  # Auto-uses Ollama from config
+# Now runs 100% locally - no API costs!
+```
+
+See `examples_ollama.py` for complete example.
+
+#### LM Studio (Local, Free)
+
+**1. Setup LM Studio:**
+- Download from https://lmstudio.ai
+- Load any GGUF model
+- Start local server (default: http://localhost:1234)
+
+**2. Configure:**
+```yaml
+llm:
+  provider: lmstudio
+  model: local-model  # Model name from LM Studio
+  base_url: http://localhost:1234/v1
+```
+
+**3. Use:**
+```python
+from mindcore import MindcoreClient
+
+client = MindcoreClient()  # Uses LM Studio
+```
+
+#### Anthropic (Claude)
+
+```yaml
+llm:
+  provider: anthropic
+  api_key: ${ANTHROPIC_API_KEY}
+  model: claude-3-haiku-20240307  # Fast & cheap
+  # or: claude-3-sonnet-20240229, claude-3-opus-20240229
+```
+
+#### Programmatic Provider Selection
+
+```python
+from mindcore.llm_providers import get_llm_provider
+
+# Get provider by name
+provider = get_llm_provider(
+    provider_name="ollama",
+    model="llama2"
+)
+
+# Or use specific provider class
+from mindcore.llm_providers import OllamaProvider
+
+provider = OllamaProvider(
+    model="mistral",
+    base_url="http://localhost:11434"
+)
+```
+
+**All providers:**
+```python
+from mindcore.llm_providers import (
+    OpenAIProvider,
+    OllamaProvider,
+    LMStudioProvider,
+    AnthropicProvider,
+    OpenAICompatibleProvider  # For custom APIs
+)
+```
+
+---
+
+### Importance Algorithms
+
+Mindcore provides **6 importance scoring algorithms** - choose one or create your own!
+
+#### Available Algorithms
+
+| Algorithm | Description | Use Case |
+|-----------|-------------|----------|
+| **llm** | LLM-generated importance (default) | Most accurate, uses AI |
+| **keyword** | Keyword-based scoring | Fast, customizable |
+| **length** | Message length-based | Simple heuristic |
+| **sentiment** | Sentiment intensity | Emotion-driven |
+| **composite** | Weighted combination | Best of all worlds |
+| **custom** | Your own algorithm | Domain-specific needs |
+
+#### Configuration
+
+Edit `mindcore/config.yaml`:
+
+```yaml
+importance:
+  algorithm: llm  # Options: llm, keyword, length, sentiment, composite
+
+  # Keyword configuration (if algorithm: keyword)
+  keywords:
+    high_importance:
+      - urgent
+      - critical
+      - important
+      - asap
+      - deadline
+    low_importance:
+      - maybe
+      - perhaps
+      - casual
+      - fyi
+```
+
+#### LLM-Based (Default)
+
+Uses AI-generated importance during metadata enrichment.
+
+```yaml
+importance:
+  algorithm: llm
+```
+
+**Pros:** Most accurate, contextual
+**Cons:** Requires LLM call (minimal cost with GPT-4o-mini)
+
+#### Keyword-Based
+
+Scores based on keyword presence.
+
+```yaml
+importance:
+  algorithm: keyword
+  keywords:
+    high_importance: [urgent, critical, important, deadline, asap]
+    low_importance: [maybe, casual, fyi, whenever]
+```
+
+**Pros:** Fast, no LLM needed, customizable
+**Cons:** Less contextual than LLM
+
+**Programmatic:**
+```python
+from mindcore.importance import KeywordImportance
+
+scorer = KeywordImportance(
+    high_importance_keywords=['urgent', 'critical', 'deadline'],
+    low_importance_keywords=['maybe', 'fyi']
+)
+
+importance = scorer.calculate("Urgent: Please review ASAP")
+print(importance)  # 0.8
+```
+
+#### Length-Based
+
+Importance based on message length.
+
+```yaml
+importance:
+  algorithm: length
+```
+
+**Logic:**
+- Very short (< 10 chars): 0.2 (greetings)
+- Medium (10-200): 0.2-0.8 (normal)
+- Long (200-400): 0.8 (detailed)
+- Very long (> 400): 0.5-0.8 (might be spam)
+
+#### Sentiment-Based
+
+Higher importance for emotionally charged messages.
+
+```yaml
+importance:
+  algorithm: sentiment
+```
+
+**Logic:**
+- Neutral sentiment: 0.4
+- Strong positive/negative: up to 0.9
+
+#### Composite
+
+Weighted combination of multiple algorithms.
+
+```yaml
+importance:
+  algorithm: composite
+```
+
+**Default weights:**
+- LLM: 50%
+- Keyword: 30%
+- Length: 20%
+
+**Programmatic:**
+```python
+from mindcore.importance import (
+    CompositeImportance,
+    KeywordImportance,
+    LengthBasedImportance
+)
+
+scorer = CompositeImportance(algorithms=[
+    (KeywordImportance(), 0.5),
+    (LengthBasedImportance(), 0.5)
+])
+
+importance = scorer.calculate("Important message", metadata={})
+```
+
+#### Custom Algorithm
+
+Create your own importance algorithm:
+
+```python
+from mindcore.importance import ImportanceAlgorithm
+
+class MyCustomImportance(ImportanceAlgorithm):
+    def calculate(self, text: str, metadata=None, **kwargs) -> float:
+        # Your custom logic here
+        if "urgent" in text.lower():
+            return 1.0
+        return 0.5
+
+# Use it
+scorer = MyCustomImportance()
+importance = scorer.calculate("Urgent request")
+```
+
+See `examples_custom_importance.py` for complete example.
+
+---
+
+### Custom Prompts
+
+Customize the AI agent prompts without modifying code.
+
+#### Centralized Prompts
+
+All prompts are in `mindcore/prompts.py`:
+
+```python
+from mindcore.prompts import (
+    ENRICHMENT_SYSTEM_PROMPT,
+    CONTEXT_ASSEMBLY_SYSTEM_PROMPT,
+    get_enrichment_prompt,
+    get_context_assembly_prompt
+)
+```
+
+#### Method 1: Edit prompts.py
+
+Directly edit `mindcore/prompts.py`:
+
+```python
+ENRICHMENT_SYSTEM_PROMPT = """Your custom enrichment prompt here..."""
+
+CONTEXT_ASSEMBLY_SYSTEM_PROMPT = """Your custom context assembly prompt here..."""
+```
+
+#### Method 2: YAML Configuration
+
+Create `custom_prompts.yaml`:
+
+```yaml
+enrichment_system_prompt: |
+  You are a specialized metadata enrichment agent for technical support.
+  Focus on extracting:
+  - Technical terms and product names
+  - Issue severity
+  - Customer sentiment
+
+  Return JSON with topics, categories, importance, sentiment, etc.
+
+context_assembly_system_prompt: |
+  You are a context assembly agent for customer support.
+  Prioritize:
+  - Previous issues reported
+  - Solutions that worked
+  - Customer preferences
+
+  Return JSON with assembled_context, key_points, relevant_message_ids.
+```
+
+**Configure:**
+```yaml
+# In config.yaml
+prompts:
+  custom_path: /path/to/custom_prompts.yaml
+```
+
+#### Method 3: Programmatic
+
+```python
+from mindcore import MetadataAgent, ContextAgent
+
+custom_enrichment_prompt = """Your custom prompt..."""
+
+agent = MetadataAgent(
+    api_key="your-key",
+    system_prompt=custom_enrichment_prompt
+)
+```
+
+#### Default Prompts
+
+**Enrichment Prompt** focuses on:
+- Topics and categories
+- Sentiment analysis
+- Intent detection
+- Importance scoring (0.0-1.0)
+- Named entities
+- Key phrases
+
+**Context Assembly Prompt** focuses on:
+- Relevant context extraction
+- Key points identification
+- Sentiment trends
+- Topic summarization
+
+See `examples_custom_prompts.py` for complete example.
+
+---
+
+## Framework Integrations
 
 ### LangChain
 
@@ -334,7 +704,7 @@ your_llm_call(f"Context: {context.assembled_context}\n\nUser: {user_message}")
 
 ---
 
-## =� Examples
+## Examples
 
 ### Basic Usage
 
@@ -409,21 +779,26 @@ print(report)
 # Traditional: $2.60 | Mindcore: $0.20 | Saved: $2.40 (92%)
 ```
 
-See `examples.py` and `examples_adapters.py` for more!
+**More Examples:**
+- `examples.py` - Basic usage
+- `examples_adapters.py` - Framework integrations (LangChain, LlamaIndex)
+- `examples_ollama.py` - Using Ollama for 100% local inference
+- `examples_custom_importance.py` - Custom importance algorithms
+- `examples_custom_prompts.py` - Custom AI agent prompts
 
 ---
 
-## = Security
+## Security
 
 Mindcore implements **production-grade security**:
 
 ### Built-in Protections
 
- **SQL Injection Protection** - All queries use parameterized statements
- **Input Validation** - Strict validation of all user inputs
- **Rate Limiting** - Configurable request limits
- **Sanitization** - Text sanitization and length limits
- **Security Headers** - Recommended headers for API
+- **SQL Injection Protection** - All queries use parameterized statements
+- **Input Validation** - Strict validation of all user inputs
+- **Rate Limiting** - Configurable request limits
+- **Sanitization** - Text sanitization and length limits
+- **Security Headers** - Recommended headers for API
 
 ### Usage
 
@@ -446,7 +821,7 @@ See **[SECURITY.md](SECURITY.md)** for comprehensive security documentation.
 
 ---
 
-## =� Cost Efficiency
+## Cost Efficiency
 
 Mindcore **saves 60-90% on token costs** compared to traditional approaches.
 
@@ -463,7 +838,7 @@ Mindcore **saves 60-90% on token costs** compared to traditional approaches.
 |----------|-------------|----------|----------------|
 | Customer Support (1k users/day) | $225k | $45k | **$180k** |
 | AI Assistant (per user) | $61k | $4k | **$57k** |
-| Enterprise Platform (10k users) | $4.5M | $450k | **$4.05M** =� |
+| Enterprise Platform (10k users) | $4.5M | $450k | **$4.05M** |
 
 ### Why It Works
 
@@ -476,46 +851,46 @@ See **[COST_EFFICIENCY.md](COST_EFFICIENCY.md)** for detailed analysis.
 
 ---
 
-## <� Architecture
+## Architecture
 
 ```
 mindcore/
-   __init__.py              # Main client & public API
-   config.yaml              # Configuration
-
-   core/                    # Core functionality
-      config_loader.py     # YAML config management
-      db_manager.py        # PostgreSQL operations
-      cache_manager.py     # In-memory caching
-      schemas.py           # Data models
-
-   agents/                  # AI agents
-      base_agent.py        # Base agent class
-      enrichment_agent.py  # MetadataAgent
-      context_assembler_agent.py  # ContextAgent
-
-   integrations/            # Framework adapters
-      base_adapter.py      # Base integration
-      langchain_adapter.py # LangChain integration
-      llamaindex_adapter.py # LlamaIndex integration
-
-   api/                     # FastAPI server
-      server.py            # API application
-      routes/
-          ingest.py        # POST /ingest
-          context.py       # POST /context
-
-   utils/                   # Utilities
-       security.py          # Security validation
-       cost_analysis.py     # Cost benchmarking
-       logger.py            # Logging
-       tokenizer.py         # Text processing
-       helper.py            # Helper functions
+├── __init__.py              # Main client & public API
+├── config.yaml              # Configuration
+│
+├── core/                    # Core functionality
+│   ├── config_loader.py     # YAML config management
+│   ├── db_manager.py        # PostgreSQL operations
+│   ├── cache_manager.py     # In-memory caching
+│   └── schemas.py           # Data models
+│
+├── agents/                  # AI agents
+│   ├── base_agent.py        # Base agent class
+│   ├── enrichment_agent.py  # MetadataAgent
+│   └── context_assembler_agent.py  # ContextAgent
+│
+├── integrations/            # Framework integrations
+│   ├── base_adapter.py      # Base integration
+│   ├── langchain_adapter.py # LangChain integration
+│   └── llamaindex_adapter.py # LlamaIndex integration
+│
+├── api/                     # FastAPI server
+│   ├── server.py            # API application
+│   └── routes/
+│       ├── ingest.py        # POST /ingest
+│       └── context.py       # POST /context
+│
+└── utils/                   # Utilities
+    ├── security.py          # Security validation
+    ├── cost_analysis.py     # Cost benchmarking
+    ├── logger.py            # Logging
+    ├── tokenizer.py         # Text processing
+    └── helper.py            # Helper functions
 ```
 
 ---
 
-## >� Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -530,7 +905,7 @@ pytest mindcore/tests/test_enrichment.py -v
 
 ---
 
-## < FastAPI Server
+## FastAPI Server
 
 Start the API server for remote access:
 
@@ -545,6 +920,7 @@ python -m mindcore.api.server
 ### API Endpoints
 
 **POST /ingest** - Ingest message
+
 ```bash
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
@@ -558,6 +934,7 @@ curl -X POST http://localhost:8000/ingest \
 ```
 
 **POST /context** - Get context
+
 ```bash
 curl -X POST http://localhost:8000/context \
   -H "Content-Type: application/json" \
@@ -569,6 +946,7 @@ curl -X POST http://localhost:8000/context \
 ```
 
 **GET /health** - Health check
+
 ```bash
 curl http://localhost:8000/health
 ```
@@ -577,7 +955,7 @@ curl http://localhost:8000/health
 
 ---
 
-## > Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -589,13 +967,13 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-## =� License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## =O Acknowledgments
+## Acknowledgments
 
 - Powered by [OpenAI](https://openai.com/) GPT-4o-mini
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
@@ -603,18 +981,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## =� Support
+## Support
 
 - **Documentation:** [README.md](README.md), [SECURITY.md](SECURITY.md), [COST_EFFICIENCY.md](COST_EFFICIENCY.md)
 - **Issues:** [GitHub Issues](https://github.com/M-Alfaris/mindcore/issues)
-- **Examples:** `examples.py`, `examples_adapters.py`
+- **Examples:** `examples.py`, `examples_adapters.py`, `examples_ollama.py`, `examples_custom_importance.py`, `examples_custom_prompts.py`
 
 ---
 
-<div align="center">
+**Built with ❤️ by the Mindcore team**
 
-**Built with d by the Mindcore team**
-
-[ Back to Top](#-mindcore)
-
-</div>
+**[⬆ Back to Top](#mindcore)**

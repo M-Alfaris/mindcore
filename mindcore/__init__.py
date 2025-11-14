@@ -124,10 +124,18 @@ class MindcoreClient:
             >>> client = MindcoreClient()  # Use default config
             >>> client = MindcoreClient("path/to/config.yaml")  # Custom config
         """
-        logger.info(f"Initializing Mindcore v{__version__}")
-
         # Load configuration
         self.config = ConfigLoader(config_path)
+
+        # Configure logging from config
+        from .utils import configure_logging
+        logging_config = self.config.get_logging_config()
+        configure_logging(
+            level=logging_config.get('level', 'INFO'),
+            format_string=logging_config.get('format')
+        )
+
+        logger.info(f"Initializing Mindcore v{__version__}")
 
         # Initialize database
         db_config = self.config.get_database_config()
@@ -138,28 +146,72 @@ class MindcoreClient:
         cache_config = self.config.get_cache_config()
         self.cache = CacheManager(max_size=cache_config.get('max_size', 50))
 
-        # Initialize AI agents
-        openai_config = self.config.get_openai_config()
-        api_key = openai_config.get('api_key')
+        # Initialize LLM provider from config
+        llm_config = self.config.get_llm_config()
 
-        if not api_key:
-            logger.warning(
-                "OpenAI API key not found. Set OPENAI_API_KEY environment variable "
-                "or add to config.yaml"
+        from .llm_providers import get_llm_provider
+
+        try:
+            llm_provider = get_llm_provider(
+                provider_name=llm_config.get('provider', 'openai'),
+                api_key=llm_config.get('api_key'),
+                model=llm_config.get('model', 'gpt-4o-mini'),
+                temperature=llm_config.get('temperature', 0.3),
+                max_tokens=llm_config.get('max_tokens', 1000),
+                base_url=llm_config.get('base_url')
             )
+            logger.info(f"Initialized LLM provider: {llm_config.get('provider', 'openai')} with model {llm_config.get('model')}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize LLM provider: {e}. Using default OpenAI provider.")
+            # Fallback to OpenAI if provider initialization fails
+            from .llm_providers import OpenAIProvider
+            llm_provider = OpenAIProvider(
+                api_key=llm_config.get('api_key'),
+                model=llm_config.get('model', 'gpt-4o-mini'),
+                temperature=llm_config.get('temperature', 0.3),
+                max_tokens=llm_config.get('max_tokens', 1000)
+            )
+
+        # Initialize importance algorithm from config
+        importance_config = self.config.get_importance_config()
+
+        from .importance import get_importance_algorithm, KeywordImportance
+
+        algorithm_name = importance_config.get('algorithm', 'llm')
+        if algorithm_name == 'keyword':
+            # Pass keywords to keyword algorithm
+            keywords_config = importance_config.get('keywords', {})
+            importance_algorithm = KeywordImportance(
+                high_importance_keywords=keywords_config.get('high_importance', []),
+                low_importance_keywords=keywords_config.get('low_importance', [])
+            )
+        else:
+            importance_algorithm = get_importance_algorithm(algorithm_name)
+
+        logger.info(f"Using importance algorithm: {importance_algorithm.__class__.__name__}")
+
+        # Load custom prompts if configured
+        prompts_config = self.config.get_prompts_config()
+        custom_prompts_path = prompts_config.get('custom_path')
+
+        from .prompts import load_custom_prompts
+
+        custom_prompts = load_custom_prompts(custom_prompts_path) if custom_prompts_path else {}
+
+        enrichment_prompt = custom_prompts.get('enrichment_system_prompt')
+        context_prompt = custom_prompts.get('context_assembly_system_prompt')
 
         # Metadata enrichment agent
         self.metadata_agent = MetadataAgent(
-            api_key=api_key,
-            model=openai_config.get('model', 'gpt-4o-mini'),
-            temperature=openai_config.get('temperature', 0.3)
+            llm_provider=llm_provider,
+            system_prompt=enrichment_prompt,
+            importance_algorithm=importance_algorithm
         )
 
         # Context assembly agent
         self.context_agent = ContextAgent(
-            api_key=api_key,
-            model=openai_config.get('model', 'gpt-4o-mini'),
-            temperature=openai_config.get('temperature', 0.3)
+            llm_provider=llm_provider,
+            system_prompt=context_prompt
         )
 
         # Legacy aliases for backward compatibility

@@ -1,15 +1,29 @@
-# Include additional files in package distribution
+# Include documentation files
 include README.md
 include LICENSE
-include requirements.txt
-include requirements-dev.txt
-include schema.sql
-include examples.py
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+include COST_EFFICIENCY.md
+include PYPI_CHECKLIST.md
 
-# Include config file
+# Include configuration templates
+include .env.example
+include schema.sql
+
+# Include example files
+include examples.py
+include examples_adapters.py
+include examples_ollama.py
+include examples_custom_importance.py
+include examples_custom_prompts.py
+
+# Include config files
 recursive-include mindcore *.yaml
 
-# Exclude test files
+# Exclude test files and development files
 recursive-exclude mindcore/tests *
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
+exclude test_integration.py
+exclude TEST_STATUS.md

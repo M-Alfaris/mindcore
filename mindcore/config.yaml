@@ -15,13 +15,68 @@ database:
   # user: ${DB_USER}
   # password: ${DB_PASSWORD}
 
-# OpenAI Configuration
+# LLM Provider Configuration
+# Supports: openai, ollama (local), lmstudio (local), anthropic
+llm:
+  provider: openai  # Options: openai, ollama, lmstudio, anthropic
+
+  # API key (not required for local providers like ollama, lmstudio)
+  api_key: ${OPENAI_API_KEY}
+
+  # Model name
+  # OpenAI: gpt-4o, gpt-4o-mini
+  # Ollama: llama2, mistral, codellama, etc.
+  # LM Studio: your-model-name
+  # Anthropic: claude-3-haiku-20240307, claude-3-sonnet-20240229
+  model: gpt-4o-mini
+
+  # Generation parameters
+  temperature: 0.3
+  max_tokens: 1000
+
+  # Base URL (for custom endpoints)
+  # Ollama default: http://localhost:11434
+  # LM Studio default: http://localhost:1234/v1
+  base_url: null
+
+# Legacy OpenAI config (deprecated, use 'llm' instead)
+# Kept for backward compatibility
 openai:
-  # API key - IMPORTANT: Set this via environment variable OPENAI_API_KEY
   api_key: ${OPENAI_API_KEY}
   model: gpt-4o-mini
   temperature: 0.3
   max_tokens: 1000
+
+# Importance Algorithm Configuration
+# Options: llm, keyword, length, sentiment, composite
+importance:
+  algorithm: llm  # Default: use LLM-generated importance scores
+
+  # Keyword-based importance (if algorithm: keyword)
+  keywords:
+    high_importance:
+      - urgent
+      - critical
+      - important
+      - asap
+      - deadline
+    low_importance:
+      - maybe
+      - perhaps
+      - casual
+      - fyi
+
+# Custom Prompts Configuration
+prompts:
+  # Path to custom prompts file (YAML format)
+  # If null, uses default prompts from mindcore/prompts.py
+  custom_path: null
+
+  # Or override specific prompts here
+  # enrichment_system_prompt: |
+  #   Your custom enrichment prompt here...
+  # context_assembly_system_prompt: |
+  #   Your custom context assembly prompt here...
 
 # Cache Configuration
 cache:

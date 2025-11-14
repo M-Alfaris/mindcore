@@ -4,6 +4,9 @@ Base adapter class for framework integrations.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from ..core.schemas import Message, AssembledContext
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseAdapter(ABC):
@@ -89,7 +92,7 @@ class BaseAdapter(ABC):
 
             except Exception as e:
                 # Log but continue
-                print(f"Failed to ingest message: {e}")
+                logger.error(f"Failed to ingest message: {e}")
                 continue
 
         return enriched_messages

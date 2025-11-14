@@ -3,10 +3,12 @@ Base agent class for Mindcore AI agents.
 """
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-from openai import OpenAI
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from ..utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from ..llm_providers import LLMProvider
 
 logger = get_logger(__name__)
 
@@ -15,25 +17,51 @@ class BaseAgent(ABC):
     """
     Abstract base class for AI agents.
 
-    Provides common functionality for OpenAI API interactions.
+    Provides common functionality for LLM provider interactions.
+    Supports multiple LLM providers (OpenAI, Ollama, Anthropic, etc.)
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.3, max_tokens: int = 1000):
+    def __init__(
+        self,
+        llm_provider: Optional['LLMProvider'] = None,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+        temperature: float = 0.3,
+        max_tokens: int = 1000
+    ):
         """
         Initialize base agent.
 
         Args:
-            api_key: OpenAI API key.
+            llm_provider: Optional LLMProvider instance. If provided, uses this provider.
+                         Otherwise, creates OpenAI provider with api_key and model.
+            api_key: API key (used if llm_provider not provided).
             model: Model name (default: gpt-4o-mini).
             temperature: Temperature for generation.
             max_tokens: Maximum tokens in response.
         """
-        self.api_key = api_key
-        self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.client = OpenAI(api_key=api_key)
-        logger.info(f"Initialized {self.__class__.__name__} with model {model}")
+
+        # Use provided LLM provider or create default OpenAI provider
+        if llm_provider:
+            self.llm_provider = llm_provider
+            self.model = llm_provider.model
+        else:
+            # Lazy import to avoid circular dependency
+            from ..llm_providers import OpenAIProvider
+            self.llm_provider = OpenAIProvider(
+                api_key=api_key,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            self.model = model
+
+        # Legacy attributes for backward compatibility
+        self.api_key = api_key
+
+        logger.info(f"Initialized {self.__class__.__name__} with model {self.model}")
 
     def _call_openai(
         self,
@@ -43,11 +71,14 @@ class BaseAgent(ABC):
         max_tokens: Optional[int] = None
     ) -> str:
         """
-        Call OpenAI API.
+        Call LLM provider (supports OpenAI, Ollama, Anthropic, etc.)
+
+        Note: Method name kept as _call_openai for backward compatibility,
+        but now works with any LLM provider.
 
         Args:
             messages: List of message dictionaries.
-            response_format: Optional response format specification.
+            response_format: Optional response format specification (ignored for some providers).
             temperature: Override temperature.
             max_tokens: Override max_tokens.
 
@@ -55,23 +86,16 @@ class BaseAgent(ABC):
             Response content as string.
         """
         try:
-            kwargs = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature or self.temperature,
-                "max_tokens": max_tokens or self.max_tokens,
-            }
-
-            if response_format:
-                kwargs["response_format"] = response_format
-
-            response = self.client.chat.completions.create(**kwargs)
-            content = response.choices[0].message.content
-            logger.debug(f"OpenAI API call successful: {len(content)} chars")
+            content = self.llm_provider.chat_completion(
+                messages=messages,
+                temperature=temperature or self.temperature,
+                max_tokens=max_tokens or self.max_tokens
+            )
+            logger.debug(f"LLM API call successful: {len(content)} chars")
             return content
 
         except Exception as e:
-            logger.error(f"OpenAI API call failed: {e}")
+            logger.error(f"LLM API call failed: {e}")
             raise
 
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
