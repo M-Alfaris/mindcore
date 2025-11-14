@@ -124,10 +124,18 @@ class MindcoreClient:
             >>> client = MindcoreClient()  # Use default config
             >>> client = MindcoreClient("path/to/config.yaml")  # Custom config
         """
-        logger.info(f"Initializing Mindcore v{__version__}")
-
         # Load configuration
         self.config = ConfigLoader(config_path)
+
+        # Configure logging from config
+        from .utils import configure_logging
+        logging_config = self.config.get_logging_config()
+        configure_logging(
+            level=logging_config.get('level', 'INFO'),
+            format_string=logging_config.get('format')
+        )
+
+        logger.info(f"Initializing Mindcore v{__version__}")
 
         # Initialize database
         db_config = self.config.get_database_config()

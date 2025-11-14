@@ -9,6 +9,9 @@ Provides seamless integration with LangChain:
 from typing import Dict, Any, List, Optional
 from .base_adapter import BaseAdapter
 from ..core.schemas import AssembledContext
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class LangChainAdapter(BaseAdapter):
@@ -176,7 +179,7 @@ class LangChainAdapter(BaseAdapter):
                                     'text': output.text
                                 })
                     except Exception as e:
-                        print(f"Mindcore callback error: {e}")
+                        logger.error(f"Mindcore callback error during LLM end: {e}")
 
                 def on_chat_model_start(self, serialized, messages, **kwargs):
                     """Ingest user messages."""
@@ -191,7 +194,7 @@ class LangChainAdapter(BaseAdapter):
                                 })
                                 self.adapter.mindcore.ingest_message(msg_dict)
                     except Exception as e:
-                        print(f"Mindcore callback error: {e}")
+                        logger.error(f"Mindcore callback error during chat model start: {e}")
 
             return MindcoreCallback(self, user_id, thread_id, session_id)
 

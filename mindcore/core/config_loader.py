@@ -205,6 +205,10 @@ class ConfigLoader:
         """Get API configuration."""
         return self.config.get("api", {})
 
+    def get_logging_config(self) -> Dict[str, Any]:
+        """Get logging configuration."""
+        return self.config.get("logging", {"level": "INFO", "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"})
+
     def reload(self) -> None:
         """Reload configuration from file."""
         self.config = self._load_config()
