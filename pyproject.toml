@@ -72,7 +72,7 @@ Issues = "https://github.com/M-Alfaris/mindcore/issues"
 mindcore-server = "mindcore.api.server:run_server"
 
 [tool.setuptools]
-packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.integrations", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.tests"]
+packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.integrations", "mindcore.api", "mindcore.api.routes", "mindcore.utils"]
 
 [tool.setuptools.package-data]
 mindcore = ["config.yaml"]
