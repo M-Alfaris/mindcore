@@ -9,6 +9,25 @@ Provides seamless integration with LangChain:
 from typing import Dict, Any, List, Optional
 from .base_adapter import BaseAdapter
 from ..core.schemas import AssembledContext
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+# Check for LangChain at import time
+_LANGCHAIN_AVAILABLE = False
+try:
+    import langchain
+    _LANGCHAIN_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def require_langchain():
+    """Check if LangChain is available, raise helpful error if not."""
+    if not _LANGCHAIN_AVAILABLE:
+        raise ImportError(
+            "LangChain is not installed. Install with: pip install langchain"
+        )
 
 
 class LangChainAdapter(BaseAdapter):
@@ -151,6 +170,7 @@ class LangChainAdapter(BaseAdapter):
                 callback = adapter.create_langchain_callback("user123", "thread456", "session789")
                 llm = ChatOpenAI(callbacks=[callback])
         """
+        require_langchain()
         try:
             from langchain.callbacks.base import BaseCallbackHandler
 
@@ -176,7 +196,7 @@ class LangChainAdapter(BaseAdapter):
                                     'text': output.text
                                 })
                     except Exception as e:
-                        print(f"Mindcore callback error: {e}")
+                        logger.error(f"Mindcore callback error in on_llm_end: {e}")
 
                 def on_chat_model_start(self, serialized, messages, **kwargs):
                     """Ingest user messages."""
@@ -191,12 +211,16 @@ class LangChainAdapter(BaseAdapter):
                                 })
                                 self.adapter.mindcore.ingest_message(msg_dict)
                     except Exception as e:
-                        print(f"Mindcore callback error: {e}")
+                        logger.error(f"Mindcore callback error in on_chat_model_start: {e}")
 
             return MindcoreCallback(self, user_id, thread_id, session_id)
 
-        except ImportError:
-            raise ImportError("LangChain is not installed. Install with: pip install langchain")
+        except ImportError as e:
+            logger.error(f"Failed to import LangChain callback components: {e}")
+            raise ImportError(
+                "Failed to import LangChain callback components. "
+                "Ensure langchain is installed: pip install langchain"
+            ) from e
 
     def as_langchain_memory(self, user_id: str, thread_id: str, session_id: str):
         """
@@ -213,6 +237,7 @@ class LangChainAdapter(BaseAdapter):
         Note:
             This provides a read-only memory interface for LangChain.
         """
+        require_langchain()
         try:
             from langchain.schema import BaseChatMessageHistory, HumanMessage, AIMessage
 
@@ -259,5 +284,9 @@ class LangChainAdapter(BaseAdapter):
 
             return MindcoreMemory(self, user_id, thread_id, session_id)
 
-        except ImportError:
-            raise ImportError("LangChain is not installed. Install with: pip install langchain")
+        except ImportError as e:
+            logger.error(f"Failed to import LangChain memory components: {e}")
+            raise ImportError(
+                "Failed to import LangChain memory components. "
+                "Ensure langchain is installed: pip install langchain"
+            ) from e

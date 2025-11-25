@@ -9,6 +9,25 @@ Provides seamless integration with LlamaIndex (formerly GPT Index):
 from typing import Dict, Any, List, Optional
 from .base_adapter import BaseAdapter
 from ..core.schemas import AssembledContext
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+# Check for LlamaIndex at import time
+_LLAMAINDEX_AVAILABLE = False
+try:
+    import llama_index
+    _LLAMAINDEX_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def require_llamaindex():
+    """Check if LlamaIndex is available, raise helpful error if not."""
+    if not _LLAMAINDEX_AVAILABLE:
+        raise ImportError(
+            "LlamaIndex is not installed. Install with: pip install llama-index"
+        )
 
 
 class LlamaIndexAdapter(BaseAdapter):

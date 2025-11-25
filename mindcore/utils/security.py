@@ -8,8 +8,8 @@ This module provides:
 - Security best practices enforcement
 """
 import re
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, Tuple
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import threading
 
@@ -31,16 +31,12 @@ class SecurityValidator:
     # Allowed roles
     ALLOWED_ROLES = {"user", "assistant", "system", "tool"}
 
-    # SQL injection patterns (defense in depth, even though we use parameterized queries)
-    SQL_INJECTION_PATTERNS = [
-        r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b)",
-        r"(--|;|\/\*|\*\/)",
-        r"(\bOR\b.*\b=\b|\bAND\b.*\b=\b)",
-        r"(\bUNION\b.*\bSELECT\b)",
-    ]
+    # ID validation pattern - alphanumeric with allowed special chars
+    # This is the PRIMARY security measure for IDs since we use parameterized queries
+    ID_PATTERN = re.compile(r'^[a-zA-Z0-9_\-:\.@]+$')
 
     @classmethod
-    def validate_message_dict(cls, message_dict: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+    def validate_message_dict(cls, message_dict: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         """
         Validate message dictionary for security and correctness.
 
@@ -58,15 +54,15 @@ class SecurityValidator:
 
         # Validate user_id
         if not cls._validate_id(message_dict["user_id"]):
-            return False, "Invalid user_id: must be alphanumeric with _, -, max 255 chars"
+            return False, "Invalid user_id: must be alphanumeric with _, -, :, ., @ and max 255 chars"
 
         # Validate thread_id
         if not cls._validate_id(message_dict["thread_id"]):
-            return False, "Invalid thread_id: must be alphanumeric with _, -, max 255 chars"
+            return False, "Invalid thread_id: must be alphanumeric with _, -, :, ., @ and max 255 chars"
 
         # Validate session_id
         if not cls._validate_id(message_dict["session_id"]):
-            return False, "Invalid session_id: must be alphanumeric with _, -, max 255 chars"
+            return False, "Invalid session_id: must be alphanumeric with _, -, :, ., @ and max 255 chars"
 
         # Validate role
         if message_dict["role"] not in cls.ALLOWED_ROLES:
@@ -83,12 +79,10 @@ class SecurityValidator:
         if len(text) > cls.MAX_TEXT_LENGTH:
             return False, f"Text exceeds maximum length of {cls.MAX_TEXT_LENGTH} characters"
 
-        # Check for potential SQL injection patterns (defense in depth)
-        if cls._contains_sql_injection_pattern(message_dict["user_id"]):
-            return False, "user_id contains suspicious SQL patterns"
-
-        if cls._contains_sql_injection_pattern(message_dict["thread_id"]):
-            return False, "thread_id contains suspicious SQL patterns"
+        # Note: We rely on parameterized queries for SQL injection protection.
+        # The ID validation pattern above prevents special characters that could
+        # cause issues, but we don't do pattern-based SQL keyword detection
+        # as it causes false positives for legitimate IDs like "user_select_123"
 
         return True, None
 
@@ -96,6 +90,11 @@ class SecurityValidator:
     def _validate_id(cls, id_value: str) -> bool:
         """
         Validate ID field (user_id, thread_id, session_id).
+
+        IDs must be:
+        - Non-empty strings
+        - Max 255 characters
+        - Contain only alphanumeric chars and: _ - : . @
 
         Args:
             id_value: ID string to validate.
@@ -109,36 +108,11 @@ class SecurityValidator:
         if len(id_value) == 0 or len(id_value) > cls.MAX_ID_LENGTH:
             return False
 
-        # Allow alphanumeric, underscore, hyphen, and colon (for namespacing)
-        if not re.match(r'^[a-zA-Z0-9_\-:]+$', id_value):
+        # Allow alphanumeric, underscore, hyphen, colon, dot, and @ (for emails/namespacing)
+        if not cls.ID_PATTERN.match(id_value):
             return False
 
         return True
-
-    @classmethod
-    def _contains_sql_injection_pattern(cls, value: str) -> bool:
-        """
-        Check if value contains potential SQL injection patterns.
-
-        Note: This is defense in depth. We always use parameterized queries.
-
-        Args:
-            value: String to check.
-
-        Returns:
-            True if suspicious patterns found, False otherwise.
-        """
-        if not isinstance(value, str):
-            return False
-
-        value_upper = value.upper()
-
-        for pattern in cls.SQL_INJECTION_PATTERNS:
-            if re.search(pattern, value_upper, re.IGNORECASE):
-                logger.warning(f"Potential SQL injection pattern detected: {pattern}")
-                return True
-
-        return False
 
     @classmethod
     def sanitize_text(cls, text: str) -> str:
@@ -163,7 +137,7 @@ class SecurityValidator:
         return text
 
     @classmethod
-    def validate_query_params(cls, user_id: str, thread_id: str, query: str) -> tuple[bool, Optional[str]]:
+    def validate_query_params(cls, user_id: str, thread_id: str, query: str) -> Tuple[bool, Optional[str]]:
         """
         Validate context query parameters.
 
@@ -221,10 +195,10 @@ class RateLimiter:
             True if allowed, False if rate limited.
         """
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             cutoff = now - timedelta(seconds=self.window_seconds)
 
-            # Remove old requests
+            # Remove old requests and clean up empty identifiers
             self._requests[identifier] = [
                 req_time for req_time in self._requests[identifier]
                 if req_time > cutoff
@@ -250,7 +224,7 @@ class RateLimiter:
             Number of remaining requests.
         """
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             cutoff = now - timedelta(seconds=self.window_seconds)
 
             # Count recent requests
@@ -260,6 +234,34 @@ class RateLimiter:
             )
 
             return max(0, self.max_requests - recent_requests)
+
+    def cleanup_stale_entries(self) -> int:
+        """
+        Remove stale entries from rate limiter to prevent memory leak.
+
+        Returns:
+            Number of entries removed.
+        """
+        with self._lock:
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(seconds=self.window_seconds)
+
+            stale_keys = []
+            for identifier in list(self._requests.keys()):
+                # Remove old timestamps
+                self._requests[identifier] = [
+                    req_time for req_time in self._requests[identifier]
+                    if req_time > cutoff
+                ]
+                # Mark empty entries for removal
+                if not self._requests[identifier]:
+                    stale_keys.append(identifier)
+
+            # Remove empty entries
+            for key in stale_keys:
+                del self._requests[key]
+
+            return len(stale_keys)
 
 
 class SecurityAuditor:

@@ -1,101 +1,146 @@
 <div align="center">
 
-# >� Mindcore
+# 🧠 Mindcore
 
-**Intelligent Memory & Context Management for AI Agents**
+### Intelligent Memory & Context Management for AI Agents
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-**Save 60-90% on token costs** with intelligent memory management powered by lightweight AI agents.
+**Cut your LLM token costs by 60-90%** with intelligent memory management powered by lightweight AI agents.
 
-[Features](#-features) " [Quick Start](#-quick-start) " [Installation](#-installation) " [Documentation](#-documentation) " [Examples](#-examples)
+[Quick Start](#-quick-start) • [Features](#-features) • [How It Works](#-how-it-works) • [Documentation](#-documentation) • [Examples](#-examples)
+
+---
+
+### Why Mindcore?
+
+| Traditional Approach | With Mindcore |
+|---------------------|---------------|
+| Send entire conversation history | Send only relevant context |
+| 50,000+ tokens per request | ~1,500 tokens per request |
+| $2.60 per 20 requests | $0.20 per 20 requests |
+| Hit context limits quickly | Scale to unlimited history |
 
 </div>
 
 ---
 
-## <� What is Mindcore?
+## 🚀 Quick Start
 
-Mindcore is a production-ready Python framework that provides **intelligent memory and context management** for AI agents. It uses two specialized lightweight AI agents (GPT-4o-mini) to automatically enrich conversations with metadata and intelligently retrieve relevant historical context.
+Get up and running in **under 2 minutes**.
 
-### The Problem
+### 1. Install
 
-Traditional approaches send **entire conversation history** with every LLM request:
-- L Wasted tokens on irrelevant messages
-- L Costs scale linearly with conversation length
-- L Slow responses with large histories
-- L Hit context window limits quickly
+```bash
+pip install -e .
+```
 
-### The Mindcore Solution
+### 2. Set Your API Key
 
-**Two lightweight agents** work behind the scenes:
-1. **MetadataAgent** - Enriches each message once with topics, sentiment, intent, importance
-2. **ContextAgent** - Intelligently selects and summarizes only relevant history
+```bash
+export OPENAI_API_KEY="sk-your-api-key"
+```
 
-**Result:** Send 1.5k tokens instead of 50k+ � **60-90% cost savings** =�
+### 3. Start Building
+
+```python
+from mindcore import MindcoreClient
+
+# Initialize (SQLite for local dev - no database setup needed!)
+client = MindcoreClient(use_sqlite=True)
+
+# Ingest a message - automatically enriched with metadata
+message = client.ingest_message({
+    "user_id": "user_123",
+    "thread_id": "thread_456",
+    "session_id": "session_789",
+    "role": "user",
+    "text": "What are best practices for building AI agents?"
+})
+
+# See the auto-generated metadata
+print(message.metadata.topics)      # ['AI', 'agents', 'best practices']
+print(message.metadata.intent)      # 'ask_question'
+print(message.metadata.importance)  # 0.8
+
+# Later: Get intelligent context for any query
+context = client.get_context(
+    user_id="user_123",
+    thread_id="thread_456",
+    query="AI agent architecture"
+)
+
+# Use in your LLM prompt
+print(context.assembled_context)  # Compressed, relevant summary
+print(context.key_points)         # Key insights from history
+```
+
+**That's it!** Two methods: `ingest_message()` and `get_context()`.
 
 ---
 
-## ( Features
+## ✨ Features
 
 <table>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### > **Intelligent AI Agents**
-- **MetadataAgent**: Auto-enriches messages with metadata
-- **ContextAgent**: Assembles relevant context on demand
-- Powered by cost-effective GPT-4o-mini
+### 🤖 Intelligent AI Agents
+Two specialized agents powered by GPT-4o-mini:
+- **MetadataAgent** — Auto-enriches every message with topics, sentiment, intent, and importance
+- **ContextAgent** — Intelligently retrieves and summarizes only relevant history
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### =� **Massive Cost Savings**
+### 💰 Massive Cost Savings
 - **60-90% reduction** in token costs
-- Saves $4M/year for enterprise platforms
+- Enterprise platforms save **$4M+/year**
 - Scales efficiently as conversations grow
+- One-time metadata enrichment (never recomputed)
 
 </td>
 </tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### =� **Dual-Layer Storage**
-- **PostgreSQL** for persistent storage
+### 💾 Flexible Storage
+- **SQLite** for local development (zero setup!)
+- **PostgreSQL** for production deployments
 - **In-memory cache** for blazing-fast retrieval
 - Automatic schema management
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### = **Production-Grade Security**
+### 🔒 Production-Grade Security
 - SQL injection protection (parameterized queries)
 - Input validation & sanitization
-- Rate limiting support
-- Comprehensive security documentation
+- Rate limiting with automatic cleanup
+- Comprehensive error handling
 
 </td>
 </tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### = **Framework Integration**
-- **LangChain** - Callbacks, memory interface
-- **LlamaIndex** - Chat memory integration
-- **Custom AI** - Works with any system
+### 🔌 Framework Integrations
+- **LangChain** — Memory interface, callbacks
+- **LlamaIndex** — Chat memory integration
+- **Any Framework** — Simple, universal API
 - Plug-and-play adapters
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### =� **Developer Experience**
+### 🛠️ Developer Experience
 - Clean, intuitive API
-- 3 lines to get started
-- Comprehensive documentation
-- Type hints & docstrings throughout
+- Full type hints & docstrings
+- Comprehensive logging
+- Detailed error messages
 
 </td>
 </tr>
@@ -103,207 +148,158 @@ Traditional approaches send **entire conversation history** with every LLM reque
 
 ---
 
-## =� Quick Start
+## 🔍 How It Works
 
-### Install
-
-```bash
-pip install -e .
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              YOUR APPLICATION                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┴─────────────────┐
+                    ▼                                   ▼
+           ┌───────────────┐                   ┌───────────────┐
+           │ ingest_message │                   │  get_context  │
+           └───────┬───────┘                   └───────┬───────┘
+                   │                                   │
+                   ▼                                   ▼
+        ┌─────────────────────┐             ┌─────────────────────┐
+        │   MetadataAgent     │             │    ContextAgent     │
+        │   (GPT-4o-mini)     │             │    (GPT-4o-mini)    │
+        │                     │             │                     │
+        │ • Extract topics    │             │ • Analyze query     │
+        │ • Detect intent     │             │ • Find relevant msgs│
+        │ • Score importance  │             │ • Summarize context │
+        │ • Analyze sentiment │             │ • Extract key points│
+        └──────────┬──────────┘             └──────────┬──────────┘
+                   │                                   │
+                   ▼                                   ▼
+        ┌─────────────────────┐             ┌─────────────────────┐
+        │      Storage        │◄───────────►│       Cache         │
+        │ (PostgreSQL/SQLite) │             │    (In-Memory)      │
+        └─────────────────────┘             └─────────────────────┘
 ```
 
-### Set Up Database
+### The Problem with Traditional Approaches
 
-```bash
-createdb mindcore
-psql -d mindcore -f schema.sql
+Every time your AI needs context, you send the **entire conversation history**:
+
+```
+User message 1 → LLM
+User message 1 + 2 → LLM
+User message 1 + 2 + 3 → LLM
+...
+User message 1 + 2 + ... + 200 → LLM  (50,000+ tokens!)
 ```
 
-### Configure
+### The Mindcore Solution
 
-```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export DB_PASSWORD="your-db-password"
-```
+1. **Enrich Once** — When a message arrives, MetadataAgent extracts metadata (topics, intent, sentiment, importance) using cheap GPT-4o-mini
+2. **Retrieve Smart** — When context is needed, ContextAgent uses metadata to find and summarize only relevant messages
+3. **Send Less** — Your main LLM receives a compressed ~1,500 token context instead of 50,000+
 
-### Use
+---
+
+## 📖 Documentation
+
+### MindcoreClient
+
+The main entry point for all operations.
 
 ```python
 from mindcore import MindcoreClient
 
-# Initialize
+# Local development with SQLite (recommended for getting started)
+client = MindcoreClient(use_sqlite=True)
+
+# Production with PostgreSQL
 client = MindcoreClient()
 
-# Ingest a message (auto-enriched with metadata)
+# Custom configuration
+client = MindcoreClient(config_path="path/to/config.yaml")
+
+# In-memory database (great for testing)
+client = MindcoreClient(use_sqlite=True, sqlite_path=":memory:")
+```
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `ingest_message(message_dict)` | Enrich and store a message |
+| `get_context(user_id, thread_id, query, max_messages=50)` | Get assembled context for a query |
+| `get_message(message_id)` | Retrieve a single message by ID |
+| `clear_cache(user_id, thread_id)` | Clear cached messages |
+| `close()` | Cleanup connections |
+
+#### Message Format
+
+```python
 message = client.ingest_message({
-    "user_id": "user123",
-    "thread_id": "conv456",
-    "session_id": "session789",
-    "role": "user",
-    "text": "What are best practices for building AI agents?"
+    "user_id": "user_123",       # Required: User identifier
+    "thread_id": "thread_456",   # Required: Conversation thread
+    "session_id": "session_789", # Required: Session identifier
+    "role": "user",              # Required: user, assistant, system, or tool
+    "text": "Message content"    # Required: The message text
 })
-
-# Message is automatically enriched with:
-print(message.metadata.topics)      # ['AI', 'agents', 'best practices']
-print(message.metadata.intent)      # 'ask_question'
-print(message.metadata.importance)  # 0.8
-
-# Get intelligent context for a new query
-context = client.get_context(
-    user_id="user123",
-    thread_id="conv456",
-    query="AI agent architecture"
-)
-
-# Use context in your LLM prompt
-print(context.assembled_context)  # Compressed, relevant summary
-print(context.key_points)         # ['Use modular design', 'Implement error handling', ...]
 ```
 
-**That's it!** 3 methods: `ingest_message()`, `get_context()`, done. 
+#### Enriched Metadata
 
----
+After ingestion, messages include rich metadata:
 
-## =� Installation
-
-### Prerequisites
-
-- **Python 3.10+**
-- **PostgreSQL** database
-- **OpenAI API key**
-
-### From Source
-
-```bash
-# Clone repository
-git clone https://github.com/M-Alfaris/mindcore.git
-cd mindcore
-
-# Install package
-pip install -e .
-
-# Or with dev dependencies
-pip install -e ".[dev]"
+```python
+message.metadata.topics       # ['AI', 'machine learning']
+message.metadata.categories   # ['technology', 'programming']
+message.metadata.sentiment    # 'positive', 'negative', 'neutral'
+message.metadata.intent       # 'ask_question', 'provide_info', etc.
+message.metadata.importance   # 0.0 to 1.0
+message.metadata.entities     # ['OpenAI', 'GPT-4']
+message.metadata.key_phrases  # ['best practices', 'AI agents']
 ```
 
-### Database Setup
+#### Assembled Context
 
-```bash
-# Create database
-createdb mindcore
+```python
+context = client.get_context(user_id, thread_id, query)
 
-# Run schema
-psql -d mindcore -f schema.sql
-```
-
-### Environment Variables
-
-```bash
-# Required
-export OPENAI_API_KEY="sk-your-openai-api-key"
-
-# Optional (defaults shown)
-export DB_HOST="localhost"
-export DB_PORT="5432"
-export DB_NAME="mindcore"
-export DB_USER="postgres"
-export DB_PASSWORD="postgres"
+context.assembled_context    # Summarized relevant history (string)
+context.key_points           # ['Point 1', 'Point 2', ...]
+context.relevant_message_ids # ['msg_1', 'msg_2', ...]
+context.metadata             # {'topics': [...], 'importance': 0.8}
 ```
 
 ---
 
-## =� Documentation
-
-### Core API
-
-#### **MindcoreClient**
-
-The main client for all operations.
-
-```python
-from mindcore import MindcoreClient, MetadataAgent, ContextAgent
-
-client = MindcoreClient()  # or MindcoreClient("path/to/config.yaml")
-```
-
-**Methods:**
-- `ingest_message(message_dict)` � Enrich and store message
-- `get_context(user_id, thread_id, query, max_messages=50)` � Get assembled context
-- `get_message(message_id)` � Fetch single message
-- `clear_cache(user_id, thread_id)` � Clear cached messages
-- `close()` � Cleanup connections
-
-#### **MetadataAgent**
-
-Automatically enriches messages with intelligent metadata.
-
-```python
-from mindcore import MetadataAgent
-
-agent = MetadataAgent(api_key="your-key", model="gpt-4o-mini")
-enriched_message = agent.process(message_dict)
-```
-
-**Enrichment includes:**
-- Topics, categories, tags
-- Sentiment analysis
-- Intent detection
-- Importance scoring
-- Named entity recognition
-- Key phrase extraction
-
-#### **ContextAgent**
-
-Intelligently assembles relevant historical context.
-
-```python
-from mindcore import ContextAgent
-
-agent = ContextAgent(api_key="your-key", model="gpt-4o-mini")
-context = agent.process(messages_list, query="user query")
-```
-
-**Returns:**
-- `assembled_context` - Summarized relevant history
-- `key_points` - Important takeaways
-- `relevant_message_ids` - IDs of relevant messages
-- `metadata` - Topics, sentiment, importance
-
----
-
-## = Framework Integrations
+## 🔌 Framework Integrations
 
 ### LangChain
 
 ```python
 from mindcore import MindcoreClient
-from mindcore.integrations import LangChainIntegration
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage, AIMessage
+from mindcore.integrations import LangChainAdapter
 
-client = MindcoreClient()
-integration = LangChainIntegration(client)
+client = MindcoreClient(use_sqlite=True)
+adapter = LangChainAdapter(client)
 
 # Option 1: Use as LangChain memory
-memory = integration.as_langchain_memory("user123", "thread456", "session789")
+memory = adapter.as_langchain_memory("user_123", "thread_456", "session_789")
 
-# Option 2: Auto-ingest with callback
-callback = integration.create_langchain_callback("user123", "thread456", "session789")
+# Option 2: Auto-capture with callbacks
+callback = adapter.create_langchain_callback("user_123", "thread_456", "session_789")
 llm = ChatOpenAI(callbacks=[callback])
 
-# Option 3: Manual ingestion
-messages = [HumanMessage(content="Hello!"), AIMessage(content="Hi!")]
-integration.ingest_langchain_conversation(messages, "user123", "thread456", "session789")
+# Option 3: Inject context into prompts
+context = adapter.get_enhanced_context(user_id, thread_id, query)
+enhanced_prompt = adapter.inject_context_into_prompt(context, system_prompt)
 ```
 
 ### LlamaIndex
 
 ```python
-from mindcore.integrations import LlamaIndexIntegration
+from mindcore.integrations import LlamaIndexAdapter
 
-integration = LlamaIndexIntegration(client)
-
-# Create chat memory
-memory = integration.create_chat_memory("user123", "thread456", "session789")
+adapter = LlamaIndexAdapter(client)
+memory = adapter.create_chat_memory("user_123", "thread_456", "session_789")
 
 # Get messages
 messages = memory.get_messages()
@@ -312,309 +308,256 @@ messages = memory.get_messages()
 memory.add_message(role="user", content="Hello!")
 ```
 
-### Custom AI Systems
+### Any Framework
 
-Works with **any** AI framework or custom system:
+Mindcore works with any AI system:
 
 ```python
-# Direct integration
-message = client.ingest_message({
-    "user_id": "user123",
-    "thread_id": "thread456",
-    "session_id": "session789",
-    "role": "user",
-    "text": "Your message here"
-})
+# Your existing code
+response = your_llm.generate(user_message)
 
-context = client.get_context("user123", "thread456", "relevant query")
-
-# Use context in your prompts
-your_llm_call(f"Context: {context.assembled_context}\n\nUser: {user_message}")
+# Add Mindcore
+context = client.get_context(user_id, thread_id, user_message)
+response = your_llm.generate(
+    f"Context: {context.assembled_context}\n\nUser: {user_message}"
+)
 ```
 
 ---
 
-## =� Examples
+## 💵 Cost Analysis
 
-### Basic Usage
+### Benchmark: 200 Messages, 20 Context Requests
 
-```python
-from mindcore import MindcoreClient
-
-client = MindcoreClient()
-
-# Ingest conversation
-for msg in conversation:
-    client.ingest_message({
-        "user_id": "user123",
-        "thread_id": "thread456",
-        "session_id": "session789",
-        "role": msg["role"],
-        "text": msg["content"]
-    })
-
-# Get context for new query
-context = client.get_context(
-    user_id="user123",
-    thread_id="thread456",
-    query="What did we discuss about pricing?"
-)
-
-print("Relevant context:", context.assembled_context)
-print("Key points:", context.key_points)
-```
-
-### With LangChain
-
-```python
-from mindcore import MindcoreClient
-from mindcore.integrations import LangChainIntegration
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import SystemMessage, HumanMessage
-
-client = MindcoreClient()
-integration = LangChainIntegration(client)
-
-# Get context
-context = integration.get_enhanced_context(
-    user_id="user123",
-    thread_id="thread456",
-    query="previous discussion"
-)
-
-# Inject into prompt
-system_prompt = integration.inject_context_into_prompt(
-    context=context,
-    existing_prompt="You are a helpful assistant."
-)
-
-# Use with LangChain
-llm = ChatOpenAI()
-response = llm([
-    SystemMessage(content=system_prompt),
-    HumanMessage(content="Continue our discussion")
-])
-```
-
-### Cost Analysis
-
-```python
-from mindcore.utils.cost_analysis import run_cost_benchmark
-
-# Run benchmark
-report = run_cost_benchmark()
-print(report)
-
-# Sample output:
-# Traditional: $2.60 | Mindcore: $0.20 | Saved: $2.40 (92%)
-```
-
-See `examples.py` and `examples_adapters.py` for more!
-
----
-
-## = Security
-
-Mindcore implements **production-grade security**:
-
-### Built-in Protections
-
- **SQL Injection Protection** - All queries use parameterized statements
- **Input Validation** - Strict validation of all user inputs
- **Rate Limiting** - Configurable request limits
- **Sanitization** - Text sanitization and length limits
- **Security Headers** - Recommended headers for API
-
-### Usage
-
-```python
-from mindcore.utils import SecurityValidator, RateLimiter
-
-# Validation (automatic in MindcoreClient)
-is_valid, error = SecurityValidator.validate_message_dict(message_dict)
-
-# Rate limiting
-from mindcore.utils import get_rate_limiter
-
-limiter = get_rate_limiter()
-if limiter.is_allowed(user_id):
-    # Process request
-    pass
-```
-
-See **[SECURITY.md](SECURITY.md)** for comprehensive security documentation.
-
----
-
-## =� Cost Efficiency
-
-Mindcore **saves 60-90% on token costs** compared to traditional approaches.
-
-### Cost Comparison (200 messages, 20 requests)
-
-| Approach | Tokens | Cost | Savings |
-|----------|--------|------|---------|
-| **Traditional** (full history) | 1,010,000 | $2.60 | - |
+| Approach | Tokens Used | Cost | Savings |
+|----------|-------------|------|---------|
+| **Traditional** (full history) | 1,010,000 | $2.60 | — |
 | **Mindcore** (intelligent) | 190,000 | $0.20 | **92%** |
 
-### Real-World ROI
+### Real-World Annual Savings
 
 | Use Case | Traditional | Mindcore | Annual Savings |
 |----------|-------------|----------|----------------|
-| Customer Support (1k users/day) | $225k | $45k | **$180k** |
-| AI Assistant (per user) | $61k | $4k | **$57k** |
-| Enterprise Platform (10k users) | $4.5M | $450k | **$4.05M** =� |
+| Customer Support (1k users/day) | $225,000 | $45,000 | **$180,000** |
+| AI Assistant (per enterprise user) | $61,000 | $4,000 | **$57,000** |
+| Platform (10k daily users) | $4,500,000 | $450,000 | **$4,050,000** |
 
-### Why It Works
+### Why It's So Efficient
 
-1. **Enrichment uses GPT-4o-mini** ($0.15/1M vs $2.50/1M for GPT-4o)
-2. **Context assembly uses GPT-4o-mini** (cheap summarization)
-3. **Main LLM gets compressed context** (1.5k tokens vs 50k+)
-4. **One-time enrichment** (metadata never recomputed)
-
-See **[COST_EFFICIENCY.md](COST_EFFICIENCY.md)** for detailed analysis.
+1. **GPT-4o-mini** — Enrichment uses the cheapest capable model ($0.15/1M tokens)
+2. **One-time processing** — Metadata is extracted once, never recomputed
+3. **Smart retrieval** — Only relevant messages are summarized
+4. **Compressed output** — ~1,500 tokens instead of 50,000+
 
 ---
 
-## <� Architecture
+## 🖥️ REST API
 
+Start the FastAPI server for HTTP access:
+
+```bash
+# Using the CLI
+mindcore-server
+
+# Or with Python
+python -m mindcore.api.server
+
+# Custom host/port
+python -m mindcore.api.server --host 0.0.0.0 --port 8080
 ```
-mindcore/
-   __init__.py              # Main client & public API
-   config.yaml              # Configuration
-
-   core/                    # Core functionality
-      config_loader.py     # YAML config management
-      db_manager.py        # PostgreSQL operations
-      cache_manager.py     # In-memory caching
-      schemas.py           # Data models
-
-   agents/                  # AI agents
-      base_agent.py        # Base agent class
-      enrichment_agent.py  # MetadataAgent
-      context_assembler_agent.py  # ContextAgent
-
-   integrations/            # Framework adapters
-      base_adapter.py      # Base integration
-      langchain_adapter.py # LangChain integration
-      llamaindex_adapter.py # LlamaIndex integration
-
-   api/                     # FastAPI server
-      server.py            # API application
-      routes/
-          ingest.py        # POST /ingest
-          context.py       # POST /context
-
-   utils/                   # Utilities
-       security.py          # Security validation
-       cost_analysis.py     # Cost benchmarking
-       logger.py            # Logging
-       tokenizer.py         # Text processing
-       helper.py            # Helper functions
+
+### Endpoints
+
+#### POST /ingest
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_123",
+    "thread_id": "thread_456",
+    "session_id": "session_789",
+    "role": "user",
+    "text": "Hello, world!"
+  }'
+```
+
+#### POST /context
+```bash
+curl -X POST http://localhost:8000/context \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_123",
+    "thread_id": "thread_456",
+    "query": "What did we discuss?"
+  }'
+```
+
+#### GET /health
+```bash
+curl http://localhost:8000/health
+```
+
+**Interactive Docs:** http://localhost:8000/docs
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+```bash
+# Required
+export OPENAI_API_KEY="sk-your-api-key"
+
+# Database (only for PostgreSQL mode)
+export DB_HOST="localhost"
+export DB_PORT="5432"
+export DB_NAME="mindcore"
+export DB_USER="postgres"
+export DB_PASSWORD="your-password"
+```
+
+### Config File (config.yaml)
+
+```yaml
+database:
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+  database: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+
+openai:
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini
+  temperature: 0.3
+
+cache:
+  max_size: 50
+  ttl: 3600
+```
+
+### PostgreSQL Setup (Production)
+
+```bash
+# Create database
+createdb mindcore
+
+# Initialize schema
+psql -d mindcore -f schema.sql
 ```
 
 ---
 
-## >� Testing
+## 🧪 Testing
 
 ```bash
 # Run all tests
 pytest
 
-# With coverage
+# With coverage report
 pytest --cov=mindcore --cov-report=html
 
-# Run specific tests
-pytest mindcore/tests/test_enrichment.py -v
+# Run specific test file
+pytest tests/test_client.py -v
 ```
 
 ---
 
-## < FastAPI Server
+## 📁 Project Structure
 
-Start the API server for remote access:
+```
+mindcore/
+├── __init__.py              # Main client & public API
+├── config.yaml              # Default configuration
+│
+├── core/                    # Core functionality
+│   ├── config_loader.py     # Configuration management
+│   ├── db_manager.py        # PostgreSQL operations
+│   ├── sqlite_manager.py    # SQLite operations (local dev)
+│   ├── cache_manager.py     # In-memory caching
+│   └── schemas.py           # Data models (Message, Context, etc.)
+│
+├── agents/                  # AI agents
+│   ├── base_agent.py        # Base class with retry logic
+│   ├── enrichment_agent.py  # MetadataAgent implementation
+│   └── context_assembler_agent.py  # ContextAgent implementation
+│
+├── integrations/            # Framework adapters
+│   ├── base_adapter.py      # Base adapter class
+│   ├── langchain_adapter.py # LangChain integration
+│   └── llamaindex_adapter.py # LlamaIndex integration
+│
+├── api/                     # REST API
+│   ├── server.py            # FastAPI application
+│   └── routes/              # API endpoints
+│
+└── utils/                   # Utilities
+    ├── security.py          # Validation & rate limiting
+    ├── logger.py            # Logging configuration
+    └── helper.py            # Helper functions
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how to get started:
+
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
+3. **Make** your changes with tests
+4. **Commit**: `git commit -m 'Add amazing feature'`
+5. **Push**: `git push origin feature/amazing-feature`
+6. **Open** a Pull Request
+
+### Development Setup
 
 ```bash
-# Start server
-mindcore-server
+# Clone your fork
+git clone https://github.com/YOUR_USERNAME/mindcore.git
+cd mindcore
 
-# Or with Python
-python -m mindcore.api.server
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Format code
+black mindcore/
+isort mindcore/
 ```
-
-### API Endpoints
-
-**POST /ingest** - Ingest message
-```bash
-curl -X POST http://localhost:8000/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user123",
-    "thread_id": "thread456",
-    "session_id": "session789",
-    "role": "user",
-    "text": "Hello!"
-  }'
-```
-
-**POST /context** - Get context
-```bash
-curl -X POST http://localhost:8000/context \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user123",
-    "thread_id": "thread456",
-    "query": "conversation history"
-  }'
-```
-
-**GET /health** - Health check
-```bash
-curl http://localhost:8000/health
-```
-
-**API Docs:** http://localhost:8000/docs
 
 ---
 
-## > Contributing
+## 📄 License
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
 
 ---
 
-## =� License
+## 🙏 Acknowledgments
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## =O Acknowledgments
-
-- Powered by [OpenAI](https://openai.com/) GPT-4o-mini
-- Built with [FastAPI](https://fastapi.tiangolo.com/)
-- Database: [PostgreSQL](https://www.postgresql.org/)
-
----
-
-## =� Support
-
-- **Documentation:** [README.md](README.md), [SECURITY.md](SECURITY.md), [COST_EFFICIENCY.md](COST_EFFICIENCY.md)
-- **Issues:** [GitHub Issues](https://github.com/M-Alfaris/mindcore/issues)
-- **Examples:** `examples.py`, `examples_adapters.py`
+- **OpenAI** — GPT-4o-mini powers our intelligent agents
+- **FastAPI** — High-performance API framework
+- **PostgreSQL** — Robust production database
+- **SQLite** — Zero-config local development
 
 ---
 
 <div align="center">
 
-**Built with d by the Mindcore team**
+### Ready to cut your LLM costs by 90%?
 
-[ Back to Top](#-mindcore)
+```bash
+pip install -e . && python -c "from mindcore import MindcoreClient; print('🧠 Mindcore ready!')"
+```
+
+**[Get Started](#-quick-start)** • **[View Examples](examples.py)** • **[Report Issues](https://github.com/M-Alfaris/mindcore/issues)**
+
+---
+
+Made with ❤️ by the Mindcore team
 
 </div>

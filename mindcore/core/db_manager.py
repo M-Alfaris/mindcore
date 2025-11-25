@@ -5,13 +5,18 @@ import json
 from typing import List, Dict, Any, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
-from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.pool import ThreadedConnectionPool, PoolError
 from contextlib import contextmanager
 
 from .schemas import Message, MessageMetadata, MessageRole
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class DatabaseConnectionError(Exception):
+    """Raised when database connection fails."""
+    pass
 
 
 class DatabaseManager:
@@ -23,6 +28,9 @@ class DatabaseManager:
 
         Args:
             db_config: Database configuration dictionary.
+
+        Raises:
+            DatabaseConnectionError: If connection pool cannot be created.
         """
         self.config = db_config
         self.pool: Optional[ThreadedConnectionPool] = None
@@ -32,8 +40,8 @@ class DatabaseManager:
         """Initialize connection pool."""
         try:
             self.pool = ThreadedConnectionPool(
-                minconn=1,
-                maxconn=10,
+                minconn=self.config.get("min_connections", 1),
+                maxconn=self.config.get("max_connections", 10),
                 host=self.config.get("host", "localhost"),
                 port=self.config.get("port", 5432),
                 database=self.config.get("database", "mindcore"),
@@ -41,9 +49,12 @@ class DatabaseManager:
                 password=self.config.get("password", "postgres"),
             )
             logger.info("Database connection pool initialized")
+        except psycopg2.OperationalError as e:
+            logger.error(f"Failed to connect to database: {e}")
+            raise DatabaseConnectionError(f"Cannot connect to database: {e}") from e
         except Exception as e:
             logger.error(f"Failed to initialize database pool: {e}")
-            raise
+            raise DatabaseConnectionError(f"Database initialization failed: {e}") from e
 
     @contextmanager
     def get_connection(self):
@@ -52,14 +63,48 @@ class DatabaseManager:
 
         Yields:
             Database connection from pool.
+
+        Raises:
+            DatabaseConnectionError: If connection cannot be obtained.
         """
+        if self.pool is None:
+            raise DatabaseConnectionError("Database pool is not initialized")
+
         conn = None
         try:
             conn = self.pool.getconn()
+            if conn is None:
+                raise DatabaseConnectionError("Failed to obtain connection from pool")
+
+            # Test if connection is still valid
+            try:
+                conn.cursor().execute("SELECT 1")
+            except psycopg2.OperationalError:
+                # Connection is stale, try to get a fresh one
+                self.pool.putconn(conn, close=True)
+                conn = self.pool.getconn()
+                if conn is None:
+                    raise DatabaseConnectionError("Failed to obtain fresh connection")
+
             yield conn
+
+        except PoolError as e:
+            logger.error(f"Connection pool error: {e}")
+            raise DatabaseConnectionError(f"Connection pool error: {e}") from e
+        except psycopg2.Error as e:
+            logger.error(f"Database error: {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise DatabaseConnectionError(f"Database error: {e}") from e
         finally:
             if conn:
-                self.pool.putconn(conn)
+                try:
+                    self.pool.putconn(conn)
+                except Exception as e:
+                    logger.warning(f"Error returning connection to pool: {e}")
 
     def initialize_schema(self) -> None:
         """Create database schema if it doesn't exist."""

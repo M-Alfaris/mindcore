@@ -2,7 +2,7 @@
 Helper utilities for Mindcore framework.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 
@@ -43,7 +43,7 @@ def current_timestamp() -> datetime:
     Returns:
         Current datetime in UTC.
     """
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def sanitize_text(text: str, max_length: Optional[int] = None) -> str:

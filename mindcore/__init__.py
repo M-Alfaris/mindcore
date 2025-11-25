@@ -44,7 +44,9 @@ Features:
 - 🔌 LangChain, LlamaIndex, custom AI integrations
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+import threading
+import atexit
 
 # Version
 __version__ = "0.1.0"
@@ -55,6 +57,7 @@ __license__ = "MIT"
 from .core import (
     ConfigLoader,
     DatabaseManager,
+    SQLiteManager,
     CacheManager,
     Message,
     MessageMetadata,
@@ -76,8 +79,9 @@ from .utils import get_logger, generate_message_id, SecurityValidator
 
 logger = get_logger(__name__)
 
-# Global instance
+# Global instance with thread-safe initialization
 _mindcore_instance: Optional['MindcoreClient'] = None
+_instance_lock = threading.Lock()
 
 
 class MindcoreClient:
@@ -87,13 +91,17 @@ class MindcoreClient:
     The MindcoreClient provides:
     - Automatic metadata enrichment with MetadataAgent (GPT-4o-mini)
     - Intelligent context assembly with ContextAgent (GPT-4o-mini)
-    - PostgreSQL persistence with caching
+    - PostgreSQL or SQLite persistence with caching
     - 60-90% cost savings vs traditional memory management
 
     Usage:
         >>> from mindcore import MindcoreClient
         >>>
+        >>> # Standard usage (requires PostgreSQL)
         >>> client = MindcoreClient()
+        >>>
+        >>> # Local development with SQLite (no PostgreSQL needed!)
+        >>> client = MindcoreClient(use_sqlite=True)
         >>>
         >>> # Ingest message
         >>> msg = client.ingest_message({
@@ -112,31 +120,50 @@ class MindcoreClient:
         ... )
     """
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        use_sqlite: bool = False,
+        sqlite_path: str = "mindcore.db"
+    ):
         """
         Initialize Mindcore client.
 
         Args:
             config_path: Optional path to config.yaml file.
                         If not provided, uses default locations or environment variables.
+            use_sqlite: If True, use SQLite instead of PostgreSQL.
+                       Perfect for local development and testing.
+            sqlite_path: Path to SQLite database file (default: "mindcore.db").
+                        Use ":memory:" for in-memory database.
 
         Example:
-            >>> client = MindcoreClient()  # Use default config
+            >>> client = MindcoreClient()  # Use default config (PostgreSQL)
+            >>> client = MindcoreClient(use_sqlite=True)  # Use SQLite for local dev
+            >>> client = MindcoreClient(use_sqlite=True, sqlite_path=":memory:")  # In-memory
             >>> client = MindcoreClient("path/to/config.yaml")  # Custom config
         """
         logger.info(f"Initializing Mindcore v{__version__}")
 
         # Load configuration
         self.config = ConfigLoader(config_path)
+        self._use_sqlite = use_sqlite
 
-        # Initialize database
-        db_config = self.config.get_database_config()
-        self.db = DatabaseManager(db_config)
-        self.db.initialize_schema()
+        # Initialize database (SQLite or PostgreSQL)
+        if use_sqlite:
+            logger.info(f"Using SQLite database: {sqlite_path}")
+            self.db = SQLiteManager(sqlite_path)
+        else:
+            db_config = self.config.get_database_config()
+            self.db = DatabaseManager(db_config)
+            self.db.initialize_schema()
 
         # Initialize cache
         cache_config = self.config.get_cache_config()
-        self.cache = CacheManager(max_size=cache_config.get('max_size', 50))
+        self.cache = CacheManager(
+            max_size=cache_config.get('max_size', 50),
+            ttl_seconds=cache_config.get('ttl')  # None means no TTL
+        )
 
         # Initialize AI agents
         openai_config = self.config.get_openai_config()
@@ -166,7 +193,8 @@ class MindcoreClient:
         self.enrichment_agent = self.metadata_agent
         self.context_assembler = self.context_agent
 
-        logger.info("Mindcore initialized successfully")
+        db_type = "SQLite" if use_sqlite else "PostgreSQL"
+        logger.info(f"Mindcore initialized successfully with {db_type}")
 
     def ingest_message(self, message_dict: Dict[str, Any]) -> Message:
         """
@@ -280,11 +308,20 @@ class MindcoreClient:
         if len(cached_messages) < max_messages:
             db_messages = self.db.fetch_recent_messages(user_id, thread_id, limit=max_messages)
 
-            # Merge (cache is already most recent)
+            # Merge messages from cache and database, avoiding duplicates
             message_ids = {msg.message_id for msg in cached_messages}
+            all_messages = list(cached_messages)
+
             for msg in db_messages:
-                if msg.message_id not in message_ids and len(cached_messages) < max_messages:
-                    cached_messages.append(msg)
+                if msg.message_id not in message_ids:
+                    all_messages.append(msg)
+                    message_ids.add(msg.message_id)
+
+            # Sort by created_at to ensure chronological order (most recent first)
+            all_messages.sort(key=lambda m: m.created_at or m.message_id, reverse=True)
+
+            # Limit to max_messages
+            cached_messages = all_messages[:max_messages]
 
         logger.info(f"Retrieved {len(cached_messages)} messages for context assembly")
 
@@ -350,7 +387,7 @@ Mindcore = MindcoreClient
 
 def initialize(config_path: Optional[str] = None) -> MindcoreClient:
     """
-    Initialize global Mindcore instance (singleton pattern).
+    Initialize global Mindcore instance (thread-safe singleton pattern).
 
     Args:
         config_path: Optional path to config.yaml file.
@@ -365,14 +402,17 @@ def initialize(config_path: Optional[str] = None) -> MindcoreClient:
     global _mindcore_instance
 
     if _mindcore_instance is None:
-        _mindcore_instance = MindcoreClient(config_path)
+        with _instance_lock:
+            # Double-check locking pattern
+            if _mindcore_instance is None:
+                _mindcore_instance = MindcoreClient(config_path)
 
     return _mindcore_instance
 
 
 def get_client() -> MindcoreClient:
     """
-    Get the global Mindcore client instance.
+    Get the global Mindcore client instance (thread-safe).
 
     Returns:
         MindcoreClient instance (auto-initializes if needed).
@@ -384,9 +424,26 @@ def get_client() -> MindcoreClient:
     global _mindcore_instance
 
     if _mindcore_instance is None:
-        _mindcore_instance = MindcoreClient()
+        with _instance_lock:
+            # Double-check locking pattern
+            if _mindcore_instance is None:
+                _mindcore_instance = MindcoreClient()
 
     return _mindcore_instance
+
+
+def _cleanup_on_exit():
+    """Cleanup resources on program exit."""
+    global _mindcore_instance
+    if _mindcore_instance is not None:
+        try:
+            _mindcore_instance.close()
+        except Exception as e:
+            logger.warning(f"Error during cleanup: {e}")
+
+
+# Register cleanup handler
+atexit.register(_cleanup_on_exit)
 
 
 # Legacy function names (backward compatibility)
@@ -421,6 +478,7 @@ __all__ = [
     # Core managers
     "ConfigLoader",
     "DatabaseManager",
+    "SQLiteManager",
     "CacheManager",
 
     # Legacy (backward compatibility)

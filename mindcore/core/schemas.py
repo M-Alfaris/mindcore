@@ -3,7 +3,7 @@ Data schemas and models for Mindcore framework.
 """
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -26,10 +26,22 @@ class MessageMetadata:
     tags: List[str] = field(default_factory=list)
     entities: List[str] = field(default_factory=list)
     key_phrases: List[str] = field(default_factory=list)
+    # Enrichment status tracking
+    enrichment_failed: bool = False
+    enrichment_error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
+
+    @property
+    def is_enriched(self) -> bool:
+        """Check if metadata was successfully enriched."""
+        return not self.enrichment_failed and (
+            bool(self.topics) or bool(self.categories) or
+            bool(self.tags) or bool(self.entities) or
+            self.intent is not None
+        )
 
 
 @dataclass
@@ -47,7 +59,7 @@ class Message:
     def __post_init__(self):
         """Post-initialization processing."""
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
         if isinstance(self.role, str):
             self.role = MessageRole(self.role)
         if isinstance(self.metadata, dict):

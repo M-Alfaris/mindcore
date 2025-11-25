@@ -3,7 +3,6 @@ Context Assembly AI Agent.
 
 Retrieves and assembles relevant historical context.
 """
-import json
 from typing import List, Dict, Any
 
 from .base_agent import BaseAgent
@@ -118,12 +117,17 @@ Analyze the messages and provide relevant context for the current query."""
 
         except Exception as e:
             logger.error(f"Context assembly failed: {e}")
-            # Return empty context on failure
+            # Return empty context on failure - don't leak error details to prompt
+            # The error is logged for debugging, but user gets clean empty context
             return AssembledContext(
-                assembled_context="Context assembly failed due to an error.",
+                assembled_context="",  # Empty string instead of error message
                 key_points=[],
                 relevant_message_ids=[],
-                metadata={"error": str(e)}
+                metadata={
+                    "assembly_failed": True,
+                    # Store error type for debugging (without sensitive details)
+                    "error_type": type(e).__name__
+                }
             )
 
     def _format_messages(self, messages: List[Message]) -> str:

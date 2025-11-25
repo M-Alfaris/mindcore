@@ -3,7 +3,6 @@ Metadata Enrichment AI Agent.
 
 Enriches messages with intelligent metadata.
 """
-import json
 from typing import Dict, Any
 
 from .base_agent import BaseAgent
@@ -76,7 +75,8 @@ Be concise and accurate. Focus on extracting the most relevant information."""
             message_dict: Dictionary containing message fields.
 
         Returns:
-            Enriched Message object.
+            Enriched Message object. Check message.metadata.enrichment_failed
+            to determine if enrichment was successful.
         """
         # Extract message text
         text = message_dict.get('text', '')
@@ -90,6 +90,7 @@ Be concise and accurate. Focus on extracting the most relevant information."""
             {"role": "user", "content": f"Message to analyze:\nRole: {role}\nText: {text}"}
         ]
 
+        metadata = None
         try:
             # Call OpenAI
             response = self._call_openai(messages)
@@ -106,15 +107,22 @@ Be concise and accurate. Focus on extracting the most relevant information."""
                 intent=metadata_dict.get('intent'),
                 tags=metadata_dict.get('tags', []),
                 entities=metadata_dict.get('entities', []),
-                key_phrases=metadata_dict.get('key_phrases', [])
+                key_phrases=metadata_dict.get('key_phrases', []),
+                enrichment_failed=False,
+                enrichment_error=None
             )
 
             logger.info(f"Successfully enriched message with topics: {metadata.topics}")
 
         except Exception as e:
-            logger.warning(f"Enrichment failed, using default metadata: {e}")
-            # Fallback to default metadata
-            metadata = MessageMetadata()
+            error_msg = str(e)
+            logger.warning(f"Enrichment failed: {error_msg}")
+
+            # Create metadata that indicates failure
+            metadata = MessageMetadata(
+                enrichment_failed=True,
+                enrichment_error=error_msg
+            )
 
         # Create Message object
         message = Message(

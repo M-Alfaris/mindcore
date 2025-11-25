@@ -1,11 +1,12 @@
 """
 Ingest route for message ingestion.
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
 from ...utils.logger import get_logger
+from ...utils.security import get_rate_limiter
 
 logger = get_logger(__name__)
 
@@ -29,8 +30,46 @@ class IngestMessageResponse(BaseModel):
     message: str
 
 
+async def check_rate_limit(
+    request: Request,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID")
+) -> str:
+    """
+    Dependency to check rate limit.
+
+    Uses X-User-ID header if provided, otherwise uses client IP.
+
+    Args:
+        request: FastAPI request object.
+        x_user_id: Optional user ID from header.
+
+    Returns:
+        The identifier used for rate limiting.
+
+    Raises:
+        HTTPException: If rate limit exceeded.
+    """
+    rate_limiter = get_rate_limiter()
+
+    # Use user ID from header, or fall back to client IP
+    identifier = x_user_id or request.client.host if request.client else "unknown"
+
+    if not rate_limiter.is_allowed(identifier):
+        remaining = rate_limiter.get_remaining(identifier)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Please wait before making more requests.",
+            headers={"X-RateLimit-Remaining": str(remaining)}
+        )
+
+    return identifier
+
+
 @router.post("", response_model=IngestMessageResponse)
-async def ingest_message(request: IngestMessageRequest):
+async def ingest_message(
+    request: IngestMessageRequest,
+    rate_limit_id: str = Depends(check_rate_limit)
+):
     """
     Ingest a new message for enrichment and storage.
 
@@ -42,6 +81,7 @@ async def ingest_message(request: IngestMessageRequest):
 
     Args:
         request: IngestMessageRequest with message details.
+        rate_limit_id: Rate limit identifier (from dependency).
 
     Returns:
         IngestMessageResponse with success status and message_id.
@@ -52,7 +92,7 @@ async def ingest_message(request: IngestMessageRequest):
         mindcore = get_mindcore_instance()
 
         # Convert request to dict
-        message_dict = request.dict()
+        message_dict = request.model_dump()
 
         # Ingest message
         message = mindcore.ingest_message(message_dict)
@@ -63,18 +103,26 @@ async def ingest_message(request: IngestMessageRequest):
             message=f"Message ingested and enriched successfully"
         )
 
+    except ValueError as e:
+        # Validation errors return 400
+        logger.warning(f"Validation error during ingestion: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to ingest message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/batch", response_model=Dict[str, Any])
-async def ingest_batch(messages: list[IngestMessageRequest]):
+async def ingest_batch(
+    messages: list[IngestMessageRequest],
+    rate_limit_id: str = Depends(check_rate_limit)
+):
     """
     Ingest multiple messages in batch.
 
     Args:
         messages: List of IngestMessageRequest objects.
+        rate_limit_id: Rate limit identifier (from dependency).
 
     Returns:
         Batch ingestion result.
@@ -84,24 +132,28 @@ async def ingest_batch(messages: list[IngestMessageRequest]):
     try:
         mindcore = get_mindcore_instance()
 
-        message_dicts = [msg.dict() for msg in messages]
+        message_dicts = [msg.model_dump() for msg in messages]
         ingested = []
+        failed = []
 
-        for msg_dict in message_dicts:
+        for i, msg_dict in enumerate(message_dicts):
             try:
                 message = mindcore.ingest_message(msg_dict)
                 ingested.append(message.message_id)
             except Exception as e:
-                logger.error(f"Failed to ingest message in batch: {e}")
+                logger.error(f"Failed to ingest message {i} in batch: {e}")
+                failed.append({"index": i, "error": str(e)})
                 continue
 
         return {
-            "success": True,
+            "success": len(failed) == 0,
             "total": len(messages),
             "ingested": len(ingested),
-            "message_ids": ingested
+            "failed": len(failed),
+            "message_ids": ingested,
+            "errors": failed if failed else None
         }
 
     except Exception as e:
         logger.error(f"Batch ingestion failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
