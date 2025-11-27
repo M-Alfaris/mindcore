@@ -1,14 +1,17 @@
 """
 Metadata Enrichment AI Agent.
 
-Enriches messages with intelligent metadata.
+Enriches messages with intelligent metadata using LLM providers.
 """
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
 
 from .base_agent import BaseAgent
 from ..core.schemas import Message, MessageMetadata
 from ..utils.logger import get_logger
 from ..utils.helper import generate_message_id
+
+if TYPE_CHECKING:
+    from ..llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
@@ -26,27 +29,41 @@ class EnrichmentAgent(BaseAgent):
     - Tags
     - Entities
     - Key phrases
+
+    Example:
+        >>> from mindcore.llm import create_provider, ProviderType
+        >>> provider = create_provider(ProviderType.AUTO, ...)
+        >>> agent = EnrichmentAgent(provider)
+        >>> message = agent.process({
+        ...     "user_id": "user1",
+        ...     "thread_id": "thread1",
+        ...     "session_id": "session1",
+        ...     "role": "user",
+        ...     "text": "How do I implement caching?"
+        ... })
+        >>> print(message.metadata.topics)
+        ['caching', 'implementation']
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.3):
+    def __init__(
+        self,
+        llm_provider: "BaseLLMProvider",
+        temperature: float = 0.3,
+        max_tokens: int = 800
+    ):
         """
         Initialize enrichment agent.
 
         Args:
-            api_key: OpenAI API key.
-            model: Model name.
-            temperature: Temperature for generation.
+            llm_provider: LLM provider instance
+            temperature: Temperature for generation
+            max_tokens: Maximum tokens in response
         """
-        super().__init__(api_key, model, temperature, max_tokens=800)
+        super().__init__(llm_provider, temperature, max_tokens)
         self.system_prompt = self._create_system_prompt()
 
     def _create_system_prompt(self) -> str:
-        """
-        Create system prompt for enrichment.
-
-        Returns:
-            System prompt string.
-        """
+        """Create system prompt for enrichment."""
         return """You are a metadata enrichment AI agent. Your task is to analyze messages and extract structured metadata.
 
 For each message, you must return a JSON object with the following fields:
@@ -65,26 +82,31 @@ For each message, you must return a JSON object with the following fields:
   "key_phrases": ["important phrases from the message"]
 }
 
-Be concise and accurate. Focus on extracting the most relevant information."""
+Be concise and accurate. Focus on extracting the most relevant information. Return ONLY valid JSON."""
 
     def process(self, message_dict: Dict[str, Any]) -> Message:
         """
         Enrich a message with metadata.
 
         Args:
-            message_dict: Dictionary containing message fields.
+            message_dict: Dictionary containing message fields:
+                - user_id (str): User identifier
+                - thread_id (str): Thread identifier
+                - session_id (str): Session identifier
+                - role (str): Message role (user, assistant, system, tool)
+                - text (str): Message content
+                - message_id (str, optional): Message ID (auto-generated if not provided)
 
         Returns:
             Enriched Message object. Check message.metadata.enrichment_failed
             to determine if enrichment was successful.
         """
-        # Extract message text
         text = message_dict.get('text', '')
         role = message_dict.get('role', 'user')
 
-        logger.debug(f"Enriching message: {text[:100]}...")
+        logger.debug(f"Enriching message ({self.provider_name}): {text[:100]}...")
 
-        # Prepare messages for OpenAI
+        # Prepare messages for LLM
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": f"Message to analyze:\nRole: {role}\nText: {text}"}
@@ -92,8 +114,8 @@ Be concise and accurate. Focus on extracting the most relevant information."""
 
         metadata = None
         try:
-            # Call OpenAI
-            response = self._call_openai(messages)
+            # Call LLM
+            response = self._call_llm(messages, json_mode=True)
 
             # Parse response
             metadata_dict = self._parse_json_response(response)
@@ -154,7 +176,6 @@ Be concise and accurate. Focus on extracting the most relevant information."""
                 enriched.append(enriched_msg)
             except Exception as e:
                 logger.error(f"Failed to enrich message: {e}")
-                # Skip failed messages or add with default metadata
                 continue
 
         logger.info(f"Enriched {len(enriched)}/{len(messages)} messages")

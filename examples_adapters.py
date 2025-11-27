@@ -3,31 +3,32 @@
 Framework integration examples for Mindcore.
 
 Demonstrates how to use Mindcore with:
-- LangChain
-- LlamaIndex
+- LangChain 0.1+/1.x
+- LlamaIndex 0.10+
 - Custom AI systems
 """
 import os
-from mindcore import Mindcore
-from mindcore.adapters import LangChainAdapter, LlamaIndexAdapter
+from mindcore import MindcoreClient
+from mindcore.integrations import LangChainIntegration, LlamaIndexIntegration
 
 
 def langchain_example():
-    """Example: Integrating Mindcore with LangChain."""
+    """Example: Integrating Mindcore with LangChain 0.1+/1.x."""
     print("\n" + "="*80)
     print("LANGCHAIN INTEGRATION EXAMPLE")
     print("="*80 + "\n")
 
     try:
-        from langchain.schema import HumanMessage, AIMessage, SystemMessage
-        from langchain.chat_models import ChatOpenAI
+        # Modern LangChain imports (0.1+/1.x)
+        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+        from langchain_openai import ChatOpenAI
     except ImportError:
-        print("❌ LangChain not installed. Install with: pip install langchain")
+        print("❌ LangChain not installed. Install with: pip install langchain langchain-core langchain-openai")
         return
 
-    # Initialize Mindcore
-    mindcore = Mindcore()
-    adapter = LangChainAdapter(mindcore)
+    # Initialize Mindcore with SQLite for local testing
+    client = MindcoreClient(use_sqlite=True)
+    adapter = LangChainIntegration(client)
 
     # Example conversation
     user_id = "user_langchain_123"
@@ -100,14 +101,14 @@ def langchain_example():
 
 
 def llamaindex_example():
-    """Example: Integrating Mindcore with LlamaIndex."""
+    """Example: Integrating Mindcore with LlamaIndex 0.10+."""
     print("\n" + "="*80)
     print("LLAMAINDEX INTEGRATION EXAMPLE")
     print("="*80 + "\n")
 
-    # Initialize Mindcore
-    mindcore = Mindcore()
-    adapter = LlamaIndexAdapter(mindcore)
+    # Initialize Mindcore with SQLite for local testing
+    client = MindcoreClient(use_sqlite=True)
+    adapter = LlamaIndexIntegration(client)
 
     # Example conversation
     user_id = "user_llama_123"
@@ -163,11 +164,11 @@ def custom_ai_example():
     print("CUSTOM AI SYSTEM INTEGRATION EXAMPLE")
     print("="*80 + "\n")
 
-    from mindcore import Mindcore
+    from mindcore import MindcoreClient
     from mindcore.utils import generate_session_id
 
-    # Initialize
-    mindcore = Mindcore()
+    # Initialize with SQLite for local testing
+    client = MindcoreClient(use_sqlite=True)
 
     user_id = "user_custom_123"
     thread_id = "thread_custom_456"
@@ -196,7 +197,7 @@ def custom_ai_example():
     # Ingest with automatic enrichment
     for msg in custom_messages:
         try:
-            enriched = mindcore.ingest_message(msg)
+            enriched = client.ingest_message(msg)
             print(f"✓ Enriched: {msg['text'][:50]}...")
             print(f"  Topics: {enriched.metadata.topics}")
             print(f"  Intent: {enriched.metadata.intent}")
@@ -217,7 +218,7 @@ def custom_ai_example():
     }
 
     try:
-        mindcore.ingest_message(malicious_message)
+        client.ingest_message(malicious_message)
         print("✗ Security validation failed!\n")
     except ValueError as e:
         print(f"✓ Security validation working: {e}\n")
@@ -225,7 +226,7 @@ def custom_ai_example():
     print("3. Intelligent context retrieval...\n")
 
     # Get context
-    context = mindcore.get_context(
+    context = client.get_context(
         user_id=user_id,
         thread_id=thread_id,
         query="recommendation engine approach"
@@ -264,9 +265,18 @@ def main():
     """Run all examples."""
     print("\n" + "🧠 MINDCORE FRAMEWORK INTEGRATION EXAMPLES\n")
 
-    if not os.getenv("OPENAI_API_KEY"):
-        print("⚠️  Warning: OPENAI_API_KEY not set!")
-        print("Set it with: export OPENAI_API_KEY='your-key'\n")
+    # Check for LLM configuration
+    llama_path = os.getenv("MINDCORE_LLAMA_MODEL_PATH")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    if not llama_path and not openai_key:
+        print("⚠️  Warning: No LLM provider configured!")
+        print("Set one of:")
+        print("  - MINDCORE_LLAMA_MODEL_PATH for local LLM")
+        print("  - OPENAI_API_KEY for OpenAI API\n")
+        print("To get started with local LLM:")
+        print("  mindcore download-model")
+        print("  export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf\n")
         return
 
     # Run examples

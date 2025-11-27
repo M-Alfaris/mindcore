@@ -7,13 +7,12 @@ This script demonstrates how to use Mindcore for:
 2. Enriching them with metadata
 3. Retrieving assembled context
 
-Before running:
-1. Set up PostgreSQL database
-2. Set OPENAI_API_KEY environment variable
-3. Update config.yaml with your database credentials
+Before running (choose one):
+- Local LLM: Set MINDCORE_LLAMA_MODEL_PATH environment variable
+- OpenAI: Set OPENAI_API_KEY environment variable
 """
 import os
-from mindcore import Mindcore
+from mindcore import MindcoreClient
 from mindcore.utils import generate_session_id
 
 
@@ -21,20 +20,27 @@ def main():
     """Run Mindcore examples."""
     print("🧠 Mindcore Examples\n")
 
-    # Check for API key
-    if not os.getenv("OPENAI_API_KEY"):
-        print("⚠️  Warning: OPENAI_API_KEY environment variable not set!")
-        print("Set it with: export OPENAI_API_KEY='your-api-key'\n")
+    # Check for LLM configuration
+    llama_path = os.getenv("MINDCORE_LLAMA_MODEL_PATH")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    if not llama_path and not openai_key:
+        print("⚠️  Warning: No LLM provider configured!")
+        print("Set one of:")
+        print("  - MINDCORE_LLAMA_MODEL_PATH for local LLM")
+        print("  - OPENAI_API_KEY for OpenAI API\n")
+        print("To get started with local LLM:")
+        print("  mindcore download-model")
+        print("  export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf\n")
         return
 
-    # Initialize Mindcore
+    # Initialize Mindcore with SQLite (for easy local testing)
     print("1. Initializing Mindcore...")
     try:
-        mindcore = Mindcore()
-        print("✓ Mindcore initialized\n")
+        client = MindcoreClient(use_sqlite=True)
+        print(f"✓ Mindcore initialized with {client.provider_name} provider\n")
     except Exception as e:
         print(f"✗ Failed to initialize: {e}\n")
-        print("Make sure PostgreSQL is running and config.yaml is correct.")
         return
 
     # Example conversation
@@ -45,7 +51,7 @@ def main():
     print("2. Ingesting messages...\n")
 
     # Message 1: User asks about AI agents
-    message1 = mindcore.ingest_message({
+    message1 = client.ingest_message({
         "user_id": user_id,
         "thread_id": thread_id,
         "session_id": session_id,
@@ -60,7 +66,7 @@ def main():
     print(f"  Importance: {message1.metadata.importance}\n")
 
     # Message 2: Assistant responds
-    message2 = mindcore.ingest_message({
+    message2 = client.ingest_message({
         "user_id": user_id,
         "thread_id": thread_id,
         "session_id": session_id,
@@ -76,7 +82,7 @@ def main():
     print(f"  Categories: {message2.metadata.categories}\n")
 
     # Message 3: User follows up
-    message3 = mindcore.ingest_message({
+    message3 = client.ingest_message({
         "user_id": user_id,
         "thread_id": thread_id,
         "session_id": session_id,
@@ -91,7 +97,7 @@ def main():
     # Get assembled context
     print("3. Retrieving assembled context...\n")
 
-    context = mindcore.get_context(
+    context = client.get_context(
         user_id=user_id,
         thread_id=thread_id,
         query="metadata enrichment for AI agents"
@@ -115,7 +121,7 @@ def main():
 
     # Get cache stats
     print("4. Cache Statistics:")
-    stats = mindcore.cache.get_stats()
+    stats = client.cache.get_stats()
     print(f"  Total threads cached: {stats['total_threads']}")
     print(f"  Total messages cached: {stats['total_messages']}")
     print(f"  Max size per thread: {stats['max_size_per_thread']}\n")
@@ -127,7 +133,7 @@ def main():
     print("  - Integrate with your AI application")
 
     # Cleanup
-    mindcore.close()
+    client.close()
 
 
 if __name__ == "__main__":

@@ -1,40 +1,120 @@
 # Mindcore Configuration File
-# Version: 0.1.0
+# Version: 0.2.0
 
+# =============================================================================
+# LLM Provider Configuration
+# =============================================================================
+# Mindcore supports multiple LLM backends for metadata enrichment and context
+# retrieval. By default, it uses llama.cpp for CPU-efficient local inference
+# with OpenAI as a fallback.
+
+llm:
+  # Provider mode: "auto", "llama_cpp", or "openai"
+  #   - auto: Use llama.cpp as primary, OpenAI as fallback (recommended)
+  #   - llama_cpp: Local inference only (no API costs, works offline)
+  #   - openai: Cloud inference only (requires API key)
+  provider: auto
+
+  # ---------------------------------------------------------------------------
+  # llama.cpp Configuration (CPU-optimized local inference)
+  # ---------------------------------------------------------------------------
+  llama_cpp:
+    # Path to GGUF model file (required for llama.cpp)
+    # Supports ~ expansion and environment variables
+    # Download models with: mindcore download-model
+    model_path: ${MINDCORE_LLAMA_MODEL_PATH}
+
+    # Context window size (tokens). Larger = more context, more memory
+    # Recommended: 4096 for most use cases
+    n_ctx: 4096
+
+    # Number of CPU threads for inference
+    # null = auto-detect (uses all available cores)
+    n_threads: null
+
+    # GPU layer offloading (for hybrid CPU/GPU inference)
+    #   0 = pure CPU (default, most compatible)
+    #  -1 = offload all layers to GPU (requires GPU support)
+    #   N = offload N layers to GPU
+    n_gpu_layers: 0
+
+    # Chat template format (null = auto-detect from model)
+    # Options: "chatml", "llama-2", "llama-3", "mistral-instruct", etc.
+    chat_format: null
+
+    # Enable verbose llama.cpp logging
+    verbose: false
+
+  # ---------------------------------------------------------------------------
+  # OpenAI Configuration (cloud fallback or self-hosted)
+  # ---------------------------------------------------------------------------
+  # Supports both OpenAI API and any OpenAI-compatible server:
+  #   - vLLM: base_url: "http://localhost:8000/v1"
+  #   - Ollama: base_url: "http://localhost:11434/v1"
+  #   - LocalAI: base_url: "http://localhost:8080/v1"
+  #   - text-generation-webui: base_url: "http://localhost:5000/v1"
+  openai:
+    # API key - Set via environment variable (recommended) or here
+    # For self-hosted servers, use any non-empty string if required
+    api_key: ${OPENAI_API_KEY}
+
+    # Custom base URL for OpenAI-compatible servers (null = use OpenAI API)
+    # Examples:
+    #   base_url: "http://localhost:8000/v1"  # vLLM
+    #   base_url: "http://my-server.cloud:8080/v1"  # Cloud-hosted
+    base_url: ${MINDCORE_OPENAI_BASE_URL:}
+
+    # Model to use (gpt-4o-mini for OpenAI, or your model name for self-hosted)
+    model: ${MINDCORE_OPENAI_MODEL:gpt-4o-mini}
+
+    # Request timeout in seconds
+    timeout: 60
+
+    # Maximum retry attempts for transient errors
+    max_retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Generation defaults (used by both providers)
+  # ---------------------------------------------------------------------------
+  defaults:
+    # Temperature for generation (0.0 = deterministic, 1.0 = creative)
+    # Lower values recommended for metadata extraction
+    temperature: 0.3
+
+    # Maximum tokens for metadata enrichment
+    max_tokens_enrichment: 800
+
+    # Maximum tokens for context assembly
+    max_tokens_context: 1500
+
+# =============================================================================
 # Database Configuration
+# =============================================================================
 database:
-  host: localhost
-  port: 5432
-  database: mindcore
-  user: postgres
-  password: postgres
-  # For production, use environment variables:
-  # host: ${DB_HOST}
-  # port: ${DB_PORT}
-  # database: ${DB_NAME}
-  # user: ${DB_USER}
-  # password: ${DB_PASSWORD}
+  host: ${DB_HOST:localhost}
+  port: ${DB_PORT:5432}
+  database: ${DB_NAME:mindcore}
+  user: ${DB_USER:postgres}
+  password: ${DB_PASSWORD:postgres}
 
-# OpenAI Configuration
-openai:
-  # API key - IMPORTANT: Set this via environment variable OPENAI_API_KEY
-  api_key: ${OPENAI_API_KEY}
-  model: gpt-4o-mini
-  temperature: 0.3
-  max_tokens: 1000
-
+# =============================================================================
 # Cache Configuration
+# =============================================================================
 cache:
-  # Maximum number of messages per user/thread in cache
+  # Maximum messages per user/thread in cache
   max_size: 50
-  # Time-to-live in seconds (not currently enforced, but reserved for future use)
+
+  # Time-to-live in seconds (null = no expiration)
   ttl: 3600
 
+# =============================================================================
 # API Server Configuration
+# =============================================================================
 api:
   host: 0.0.0.0
   port: 8000
   debug: false
+
   # CORS settings
   cors:
     allow_origins:
@@ -45,7 +125,9 @@ api:
     allow_headers:
       - "*"
 
+# =============================================================================
 # Logging Configuration
+# =============================================================================
 logging:
   level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -2,8 +2,8 @@
 Framework integrations for seamless Mindcore integration with popular AI frameworks.
 
 This module provides ready-to-use integrations for:
-- LangChain
-- LlamaIndex
+- LangChain 0.1+/1.x (via langchain-core)
+- LlamaIndex 0.10+
 - Custom AI systems
 
 Usage:
@@ -22,8 +22,3 @@ __all__ = [
     "LangChainIntegration",
     "LlamaIndexIntegration",
 ]
-
-# Legacy aliases for backward compatibility
-LangChainAdapter = LangChainIntegration
-LlamaIndexAdapter = LlamaIndexIntegration
-BaseAdapter = BaseIntegration

@@ -1,13 +1,16 @@
 """
 Base agent class for Mindcore AI agents.
+
+Uses the LLM provider abstraction layer for all inference.
 """
 import json
-import time
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-from openai import OpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from ..utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from ..llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
@@ -18,7 +21,7 @@ class AgentInitializationError(Exception):
 
 
 class APICallError(Exception):
-    """Raised when API call fails after all retries."""
+    """Raised when LLM call fails."""
     pass
 
 
@@ -26,120 +29,115 @@ class BaseAgent(ABC):
     """
     Abstract base class for AI agents.
 
-    Provides common functionality for OpenAI API interactions.
+    Uses the LLM provider abstraction layer for all inference operations.
+    Supports llama.cpp, OpenAI, and automatic fallback between them.
+
+    Example:
+        >>> from mindcore.llm import create_provider, ProviderType
+        >>> provider = create_provider(
+        ...     ProviderType.AUTO,
+        ...     llama_config={"model_path": "~/.mindcore/models/model.gguf"},
+        ...     openai_config={"api_key": "sk-..."}
+        ... )
+        >>> agent = MyAgent(llm_provider=provider)
     """
 
-    # Retry configuration
-    MAX_RETRIES = 3
-    RETRY_DELAY_BASE = 1.0  # Base delay in seconds
-    RETRY_DELAY_MAX = 30.0  # Maximum delay in seconds
-    REQUEST_TIMEOUT = 60  # Timeout in seconds
-
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.3, max_tokens: int = 1000):
+    def __init__(
+        self,
+        llm_provider: "BaseLLMProvider",
+        temperature: float = 0.3,
+        max_tokens: int = 1000
+    ):
         """
         Initialize base agent.
 
         Args:
-            api_key: OpenAI API key.
-            model: Model name (default: gpt-4o-mini).
-            temperature: Temperature for generation.
-            max_tokens: Maximum tokens in response.
+            llm_provider: LLM provider instance from mindcore.llm
+            temperature: Temperature for generation (0.0-1.0)
+            max_tokens: Maximum tokens in response
 
         Raises:
-            AgentInitializationError: If API key is missing or invalid.
+            AgentInitializationError: If provider is None or invalid
         """
-        if not api_key or not isinstance(api_key, str) or len(api_key.strip()) == 0:
+        if llm_provider is None:
             raise AgentInitializationError(
-                "OpenAI API key is required. Set OPENAI_API_KEY environment variable "
-                "or provide api_key in config.yaml"
+                "LLM provider is required. Use create_provider() from mindcore.llm:\n"
+                "  from mindcore.llm import create_provider, ProviderType\n"
+                "  provider = create_provider(ProviderType.AUTO, ...)"
             )
 
-        self.api_key = api_key
-        self.model = model
+        self._llm_provider = llm_provider
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.client = OpenAI(api_key=api_key, timeout=self.REQUEST_TIMEOUT)
-        logger.info(f"Initialized {self.__class__.__name__} with model {model}")
 
-    def _call_openai(
+        logger.info(
+            f"Initialized {self.__class__.__name__} with "
+            f"{llm_provider.name} provider"
+        )
+
+    @property
+    def provider_name(self) -> str:
+        """Get the name of the active LLM provider."""
+        return self._llm_provider.name
+
+    @property
+    def is_available(self) -> bool:
+        """Check if the LLM provider is available."""
+        return self._llm_provider.is_available()
+
+    def _call_llm(
         self,
         messages: list,
-        response_format: Optional[Dict[str, Any]] = None,
+        json_mode: bool = False,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
     ) -> str:
         """
-        Call OpenAI API with automatic retry logic.
+        Call the LLM provider.
 
         Args:
-            messages: List of message dictionaries.
-            response_format: Optional response format specification.
-            temperature: Override temperature.
-            max_tokens: Override max_tokens.
+            messages: List of message dictionaries with 'role' and 'content'.
+            json_mode: If True, request JSON output format.
+            temperature: Override default temperature.
+            max_tokens: Override default max_tokens.
 
         Returns:
             Response content as string.
 
         Raises:
-            APICallError: If all retries fail.
+            APICallError: If the LLM call fails.
         """
-        kwargs = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature or self.temperature,
-            "max_tokens": max_tokens or self.max_tokens,
-        }
+        temp = temperature if temperature is not None else self.temperature
+        tokens = max_tokens if max_tokens is not None else self.max_tokens
 
-        if response_format:
-            kwargs["response_format"] = response_format
-
-        last_exception = None
-        for attempt in range(self.MAX_RETRIES):
-            try:
-                response = self.client.chat.completions.create(**kwargs)
-                content = response.choices[0].message.content
-                logger.debug(f"OpenAI API call successful: {len(content)} chars")
-                return content
-
-            except RateLimitError as e:
-                last_exception = e
-                delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
-                logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{self.MAX_RETRIES})")
-                time.sleep(delay)
-
-            except (APIConnectionError, APITimeoutError) as e:
-                last_exception = e
-                delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
-                logger.warning(f"Connection error, retrying in {delay}s (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
-                time.sleep(delay)
-
-            except APIError as e:
-                # Retry on 5xx server errors
-                if hasattr(e, 'status_code') and e.status_code >= 500:
-                    last_exception = e
-                    delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
-                    logger.warning(f"Server error {e.status_code}, retrying in {delay}s (attempt {attempt + 1}/{self.MAX_RETRIES})")
-                    time.sleep(delay)
-                else:
-                    # Don't retry client errors (4xx)
-                    logger.error(f"OpenAI API client error: {e}")
-                    raise APICallError(f"OpenAI API call failed: {e}") from e
-
-            except Exception as e:
-                # Unknown error, don't retry
-                logger.error(f"OpenAI API call failed with unexpected error: {e}")
-                raise APICallError(f"OpenAI API call failed: {e}") from e
-
-        # All retries exhausted
-        logger.error(f"OpenAI API call failed after {self.MAX_RETRIES} retries: {last_exception}")
-        raise APICallError(f"OpenAI API call failed after {self.MAX_RETRIES} retries") from last_exception
+        try:
+            response = self._llm_provider.generate(
+                messages=messages,
+                temperature=temp,
+                max_tokens=tokens,
+                json_mode=json_mode
+            )
+            latency_str = f"{response.latency_ms:.0f}ms" if response.latency_ms else "N/A"
+            logger.debug(
+                f"LLM call successful ({self._llm_provider.name}): "
+                f"{len(response.content)} chars, {latency_str}"
+            )
+            return response.content
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            raise APICallError(f"LLM call failed: {e}") from e
 
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
         """
-        Parse JSON response from OpenAI.
+        Parse JSON response from LLM.
+
+        Handles various formats including:
+        - Plain JSON
+        - JSON in markdown code blocks
+        - JSON embedded in text
 
         Args:
-            response: Response string.
+            response: Response string from LLM.
 
         Returns:
             Parsed JSON dictionary.
@@ -148,7 +146,7 @@ class BaseAgent(ABC):
             ValueError: If response cannot be parsed as JSON.
         """
         if not response or not isinstance(response, str):
-            raise ValueError("Empty or invalid response from OpenAI")
+            raise ValueError("Empty or invalid response from LLM")
 
         original_response = response
 
@@ -171,7 +169,6 @@ class BaseAgent(ABC):
         except json.JSONDecodeError as e:
             # Try to find JSON object in the response
             try:
-                # Look for JSON object pattern
                 start = response.find('{')
                 end = response.rfind('}')
                 if start != -1 and end > start:

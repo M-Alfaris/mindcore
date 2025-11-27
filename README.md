@@ -6,23 +6,25 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/M-Alfaris/mindcore)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 **Cut your LLM token costs by 60-90%** with intelligent memory management powered by lightweight AI agents.
 
-[Quick Start](#-quick-start) • [Features](#-features) • [How It Works](#-how-it-works) • [Documentation](#-documentation) • [Examples](#-examples)
+**Now with local LLM support via llama.cpp — run completely offline with zero API costs!**
+
+[Quick Start](#-quick-start) • [Features](#-features) • [Local LLM Setup](#-local-llm-setup) • [Documentation](#-documentation) • [CLI](#-cli-commands)
 
 ---
 
 ### Why Mindcore?
 
-| Traditional Approach | With Mindcore |
-|---------------------|---------------|
-| Send entire conversation history | Send only relevant context |
-| 50,000+ tokens per request | ~1,500 tokens per request |
-| $2.60 per 20 requests | $0.20 per 20 requests |
-| Hit context limits quickly | Scale to unlimited history |
+| Traditional Approach | With Mindcore | With Mindcore + Local LLM |
+|---------------------|---------------|---------------------------|
+| Send entire conversation history | Send only relevant context | Same smart context |
+| 50,000+ tokens per request | ~1,500 tokens per request | ~1,500 tokens |
+| $2.60 per 20 requests | $0.20 per 20 requests | **$0.00** |
+| Hit context limits quickly | Scale to unlimited history | Unlimited + offline |
 
 </div>
 
@@ -30,26 +32,47 @@
 
 ## 🚀 Quick Start
 
-Get up and running in **under 2 minutes**.
+Get up and running in **under 2 minutes**. Choose your preferred setup:
 
-### 1. Install
+### Option A: Local LLM (Recommended - Zero API Costs!)
 
 ```bash
-pip install -e .
+# 1. Install with llama.cpp support
+pip install -e ".[llama]"
+
+# 2. Download a model (~2GB)
+mindcore download-model
+
+# 3. Set the model path
+export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+
+# 4. You're ready! No API key needed.
 ```
 
-### 2. Set Your API Key
+### Option B: OpenAI API (Cloud)
 
 ```bash
+# 1. Install
+pip install -e .
+
+# 2. Set your API key
 export OPENAI_API_KEY="sk-your-api-key"
 ```
 
-### 3. Start Building
+### Option C: Auto Mode (Local + Cloud Fallback)
+
+```bash
+# Set both - uses local LLM primarily, falls back to OpenAI if needed
+export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+export OPENAI_API_KEY="sk-your-api-key"  # Optional fallback
+```
+
+### Start Building
 
 ```python
 from mindcore import MindcoreClient
 
-# Initialize (SQLite for local dev - no database setup needed!)
+# Initialize (works with any setup above!)
 client = MindcoreClient(use_sqlite=True)
 
 # Ingest a message - automatically enriched with metadata
@@ -89,22 +112,31 @@ print(context.key_points)         # Key insights from history
 <td width="50%" valign="top">
 
 ### 🤖 Intelligent AI Agents
-Two specialized agents powered by GPT-4o-mini:
+Two specialized agents powered by local or cloud LLMs:
 - **MetadataAgent** — Auto-enriches every message with topics, sentiment, intent, and importance
 - **ContextAgent** — Intelligently retrieves and summarizes only relevant history
 
 </td>
 <td width="50%" valign="top">
 
+### 🦙 Local LLM Support (NEW!)
+- **llama.cpp** — CPU-optimized local inference
+- **Zero API costs** — Run completely offline
+- **Auto-fallback** — Local primary, cloud backup
+- **Self-hosted** — vLLM, Ollama, LocalAI support
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
 ### 💰 Massive Cost Savings
-- **60-90% reduction** in token costs
+- **60-90% reduction** in token costs (or **100% with local LLM**)
 - Enterprise platforms save **$4M+/year**
 - Scales efficiently as conversations grow
 - One-time metadata enrichment (never recomputed)
 
 </td>
-</tr>
-<tr>
 <td width="50%" valign="top">
 
 ### 💾 Flexible Storage
@@ -112,15 +144,6 @@ Two specialized agents powered by GPT-4o-mini:
 - **PostgreSQL** for production deployments
 - **In-memory cache** for blazing-fast retrieval
 - Automatic schema management
-
-</td>
-<td width="50%" valign="top">
-
-### 🔒 Production-Grade Security
-- SQL injection protection (parameterized queries)
-- Input validation & sanitization
-- Rate limiting with automatic cleanup
-- Comprehensive error handling
 
 </td>
 </tr>
@@ -137,10 +160,10 @@ Two specialized agents powered by GPT-4o-mini:
 <td width="50%" valign="top">
 
 ### 🛠️ Developer Experience
+- **CLI tools** — Download models, check status
 - Clean, intuitive API
 - Full type hints & docstrings
 - Comprehensive logging
-- Detailed error messages
 
 </td>
 </tr>
@@ -164,13 +187,21 @@ Two specialized agents powered by GPT-4o-mini:
                    ▼                                   ▼
         ┌─────────────────────┐             ┌─────────────────────┐
         │   MetadataAgent     │             │    ContextAgent     │
-        │   (GPT-4o-mini)     │             │    (GPT-4o-mini)    │
         │                     │             │                     │
         │ • Extract topics    │             │ • Analyze query     │
         │ • Detect intent     │             │ • Find relevant msgs│
         │ • Score importance  │             │ • Summarize context │
         │ • Analyze sentiment │             │ • Extract key points│
         └──────────┬──────────┘             └──────────┬──────────┘
+                   │                                   │
+                   ▼                                   ▼
+        ┌─────────────────────────────────────────────────────────┐
+        │                    LLM Provider Layer                    │
+        │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+        │  │ llama.cpp   │  │   OpenAI    │  │  Self-Hosted    │  │
+        │  │  (Local)    │─►│  (Fallback) │  │ (vLLM/Ollama)   │  │
+        │  └─────────────┘  └─────────────┘  └─────────────────┘  │
+        └─────────────────────────────────────────────────────────┘
                    │                                   │
                    ▼                                   ▼
         ┌─────────────────────┐             ┌─────────────────────┐
@@ -193,9 +224,78 @@ User message 1 + 2 + ... + 200 → LLM  (50,000+ tokens!)
 
 ### The Mindcore Solution
 
-1. **Enrich Once** — When a message arrives, MetadataAgent extracts metadata (topics, intent, sentiment, importance) using cheap GPT-4o-mini
+1. **Enrich Once** — When a message arrives, MetadataAgent extracts metadata (topics, intent, sentiment, importance) using a lightweight LLM
 2. **Retrieve Smart** — When context is needed, ContextAgent uses metadata to find and summarize only relevant messages
 3. **Send Less** — Your main LLM receives a compressed ~1,500 token context instead of 50,000+
+
+---
+
+## 🦙 Local LLM Setup
+
+Run Mindcore completely offline with zero API costs using llama.cpp.
+
+### Quick Setup
+
+```bash
+# Install with llama.cpp support
+pip install -e ".[llama]"
+
+# Download the default model (Llama 3.2 3B, ~2GB)
+mindcore download-model
+
+# Set the model path
+export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+```
+
+### Available Models
+
+| Model | Size | RAM | Best For |
+|-------|------|-----|----------|
+| `llama-3.2-3b` (default) | 2.0 GB | 4+ GB | General use, best quality |
+| `llama-3.2-1b` | 0.8 GB | 2+ GB | Low-resource environments |
+| `qwen2.5-3b` | 2.1 GB | 4+ GB | Multilingual, structured output |
+| `phi-3.5-mini` | 2.2 GB | 4+ GB | Reasoning tasks |
+| `gemma-2-2b` | 1.6 GB | 3+ GB | Good balance |
+| `smollm2-1.7b` | 1.1 GB | 2+ GB | Ultra-lightweight |
+
+```bash
+# Download a specific model
+mindcore download-model -m qwen2.5-3b
+
+# List all available models
+mindcore list-models -v
+```
+
+### Self-Hosted LLM Servers
+
+Use any OpenAI-compatible server (vLLM, Ollama, LocalAI, etc.):
+
+```bash
+# vLLM server
+export MINDCORE_OPENAI_BASE_URL="http://localhost:8000/v1"
+export OPENAI_API_KEY="not-needed"
+export MINDCORE_OPENAI_MODEL="meta-llama/Llama-3.2-3B-Instruct"
+
+# Ollama
+export MINDCORE_OPENAI_BASE_URL="http://localhost:11434/v1"
+export OPENAI_API_KEY="ollama"
+export MINDCORE_OPENAI_MODEL="llama3.2"
+```
+
+### Provider Modes
+
+```python
+from mindcore import MindcoreClient
+
+# Auto mode (default): llama.cpp primary, OpenAI fallback
+client = MindcoreClient(use_sqlite=True)
+
+# Force local LLM only
+client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
+
+# Force OpenAI only
+client = MindcoreClient(use_sqlite=True, llm_provider="openai")
+```
 
 ---
 
@@ -401,13 +501,41 @@ curl http://localhost:8000/health
 
 ---
 
+## 🔧 CLI Commands
+
+Mindcore includes a CLI for model management and status checking.
+
+```bash
+# Download a model
+mindcore download-model                    # Download default model
+mindcore download-model -m qwen2.5-3b     # Download specific model
+mindcore download-model -o ./models       # Custom output directory
+
+# List available models
+mindcore list-models                       # Show model table
+mindcore list-models -v                    # Detailed info
+
+# Check installation status
+mindcore status                            # Show provider status
+
+# Show configuration
+mindcore config --show                     # Display current config
+```
+
+---
+
 ## ⚙️ Configuration
 
 ### Environment Variables
 
 ```bash
-# Required
+# LLM Provider (choose one or both)
+export MINDCORE_LLAMA_MODEL_PATH="~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 export OPENAI_API_KEY="sk-your-api-key"
+
+# Self-hosted LLM (optional)
+export MINDCORE_OPENAI_BASE_URL="http://localhost:8000/v1"
+export MINDCORE_OPENAI_MODEL="your-model-name"
 
 # Database (only for PostgreSQL mode)
 export DB_HOST="localhost"
@@ -420,17 +548,34 @@ export DB_PASSWORD="your-password"
 ### Config File (config.yaml)
 
 ```yaml
-database:
-  host: ${DB_HOST}
-  port: ${DB_PORT}
-  database: ${DB_NAME}
-  user: ${DB_USER}
-  password: ${DB_PASSWORD}
+llm:
+  # Provider mode: "auto", "llama_cpp", or "openai"
+  provider: auto
 
-openai:
-  api_key: ${OPENAI_API_KEY}
-  model: gpt-4o-mini
-  temperature: 0.3
+  # Local LLM (llama.cpp)
+  llama_cpp:
+    model_path: ${MINDCORE_LLAMA_MODEL_PATH}
+    n_ctx: 4096           # Context window
+    n_gpu_layers: 0       # 0 = CPU only, -1 = all GPU
+
+  # Cloud/Self-hosted LLM
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    base_url: ${MINDCORE_OPENAI_BASE_URL:}  # Optional: for self-hosted
+    model: ${MINDCORE_OPENAI_MODEL:gpt-4o-mini}
+
+  # Generation settings
+  defaults:
+    temperature: 0.3
+    max_tokens_enrichment: 800
+    max_tokens_context: 1500
+
+database:
+  host: ${DB_HOST:localhost}
+  port: ${DB_PORT:5432}
+  database: ${DB_NAME:mindcore}
+  user: ${DB_USER:postgres}
+  password: ${DB_PASSWORD:postgres}
 
 cache:
   max_size: 50
@@ -478,13 +623,22 @@ mindcore/
 │   ├── cache_manager.py     # In-memory caching
 │   └── schemas.py           # Data models (Message, Context, etc.)
 │
+├── llm/                     # LLM Provider Layer (NEW!)
+│   ├── base_provider.py     # Abstract base class
+│   ├── llama_cpp_provider.py # Local llama.cpp inference
+│   ├── openai_provider.py   # OpenAI/compatible APIs
+│   └── provider_factory.py  # Factory with fallback support
+│
+├── cli/                     # Command-line Interface (NEW!)
+│   ├── main.py              # CLI commands
+│   └── models.py            # Model registry
+│
 ├── agents/                  # AI agents
-│   ├── base_agent.py        # Base class with retry logic
+│   ├── base_agent.py        # Base class with LLM provider
 │   ├── enrichment_agent.py  # MetadataAgent implementation
 │   └── context_assembler_agent.py  # ContextAgent implementation
 │
 ├── integrations/            # Framework adapters
-│   ├── base_adapter.py      # Base adapter class
 │   ├── langchain_adapter.py # LangChain integration
 │   └── llamaindex_adapter.py # LlamaIndex integration
 │
@@ -494,8 +648,7 @@ mindcore/
 │
 └── utils/                   # Utilities
     ├── security.py          # Validation & rate limiting
-    ├── logger.py            # Logging configuration
-    └── helper.py            # Helper functions
+    └── logger.py            # Logging configuration
 ```
 
 ---
@@ -539,7 +692,8 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 ## 🙏 Acknowledgments
 
-- **OpenAI** — GPT-4o-mini powers our intelligent agents
+- **llama.cpp** — CPU-optimized local LLM inference
+- **OpenAI** — GPT-4o-mini powers cloud agents
 - **FastAPI** — High-performance API framework
 - **PostgreSQL** — Robust production database
 - **SQLite** — Zero-config local development
@@ -548,13 +702,14 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 <div align="center">
 
-### Ready to cut your LLM costs by 90%?
+### Ready to cut your LLM costs by 90% (or 100% with local LLM)?
 
 ```bash
-pip install -e . && python -c "from mindcore import MindcoreClient; print('🧠 Mindcore ready!')"
+# Quick start with local LLM
+pip install -e ".[llama]" && mindcore download-model && mindcore status
 ```
 
-**[Get Started](#-quick-start)** • **[View Examples](examples.py)** • **[Report Issues](https://github.com/M-Alfaris/mindcore/issues)**
+**[Get Started](#-quick-start)** • **[Local LLM Setup](#-local-llm-setup)** • **[CLI Commands](#-cli-commands)**
 
 ---
 

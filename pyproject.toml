@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mindcore"
-version = "0.1.0"
+version = "0.2.0"
 description = "Intelligent memory and context management for AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,9 +19,13 @@ keywords = [
     "context",
     "llm",
     "openai",
+    "llama-cpp",
+    "llama",
+    "gguf",
     "langchain",
     "chatbot",
     "conversation",
+    "local-llm",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -42,9 +46,13 @@ dependencies = [
     "uvicorn[standard]>=0.23.0",
     "pyyaml>=6.0",
     "pydantic>=2.0.0",
+    "click>=8.0.0",
 ]
 
 [project.optional-dependencies]
+llama = [
+    "llama-cpp-python>=0.2.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
@@ -54,6 +62,9 @@ dev = [
     "mypy>=1.0.0",
     "isort>=5.12.0",
 ]
+all = [
+    "mindcore[llama]",
+]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/mindcore"
@@ -62,10 +73,11 @@ Repository = "https://github.com/yourusername/mindcore"
 Issues = "https://github.com/yourusername/mindcore/issues"
 
 [project.scripts]
+mindcore = "mindcore.cli:main"
 mindcore-server = "mindcore.api.server:run_server"
 
 [tool.setuptools]
-packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils"]
+packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.llm", "mindcore.cli"]
 
 [tool.setuptools.package-data]
 mindcore = ["config.yaml"]

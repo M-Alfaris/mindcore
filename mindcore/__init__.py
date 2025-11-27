@@ -3,16 +3,20 @@ Mindcore: Intelligent Memory and Context Management for AI Agents
 ===================================================================
 
 Save 60-90% on token costs with intelligent memory management powered by
-lightweight AI agents.
+lightweight AI agents using local (llama.cpp) or cloud (OpenAI) LLMs.
 
-Quick Start:
------------
+Quick Start (Local LLM - No API Key Required):
+---------------------------------------------
+    # 1. Download a model first:
+    #    mindcore download-model
+
+    # 2. Set the model path:
+    #    export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+
     from mindcore import MindcoreClient
 
-    # Initialize
-    client = MindcoreClient()
+    client = MindcoreClient(use_sqlite=True)
 
-    # Ingest messages with automatic metadata enrichment
     message = client.ingest_message({
         "user_id": "user123",
         "thread_id": "thread456",
@@ -21,35 +25,28 @@ Quick Start:
         "text": "Hello, how do I build AI agents?"
     })
 
-    # Get intelligent context
     context = client.get_context(
         user_id="user123",
         thread_id="thread456",
         query="AI agent development"
     )
 
-Framework Integration:
---------------------
-    from mindcore.integrations import LangChainIntegration
-
-    integration = LangChainIntegration(client)
-    memory = integration.as_langchain_memory("user123", "thread456", "session789")
-
 Features:
 ---------
-- 🤖 Two lightweight AI agents (MetadataAgent, ContextAgent)
-- 💾 PostgreSQL + in-memory caching
-- 🔒 Production-grade security
-- 💰 60-90% cost savings vs traditional approaches
-- 🔌 LangChain, LlamaIndex, custom AI integrations
+- Local LLM inference with llama.cpp (CPU-optimized, no API costs)
+- OpenAI fallback for reliability
+- Automatic metadata enrichment (topics, sentiment, intent, etc.)
+- Intelligent context assembly
+- PostgreSQL or SQLite persistence
+- In-memory caching for speed
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 import threading
 import atexit
 
 # Version
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Mindcore Contributors"
 __license__ = "MIT"
 
@@ -67,14 +64,26 @@ from .core import (
     IngestRequest,
 )
 
-# AI Agents (with clean aliases)
+# AI Agents
 from .agents import (
     BaseAgent,
-    EnrichmentAgent as MetadataAgent,  # Clean name
-    ContextAssemblerAgent as ContextAgent,  # Clean name
+    EnrichmentAgent as MetadataAgent,
+    ContextAssemblerAgent as ContextAgent,
 )
 
-# Main client
+# LLM Providers
+from .llm import (
+    BaseLLMProvider,
+    LLMResponse,
+    LlamaCppProvider,
+    OpenAIProvider,
+    FallbackProvider,
+    ProviderType,
+    create_provider,
+    get_provider_type,
+)
+
+# Utilities
 from .utils import get_logger, generate_message_id, SecurityValidator
 
 logger = get_logger(__name__)
@@ -88,60 +97,49 @@ class MindcoreClient:
     """
     Main Mindcore client for intelligent memory and context management.
 
-    The MindcoreClient provides:
-    - Automatic metadata enrichment with MetadataAgent (GPT-4o-mini)
-    - Intelligent context assembly with ContextAgent (GPT-4o-mini)
+    Uses LLM providers (llama.cpp or OpenAI) for:
+    - Automatic metadata enrichment with MetadataAgent
+    - Intelligent context assembly with ContextAgent
     - PostgreSQL or SQLite persistence with caching
-    - 60-90% cost savings vs traditional memory management
 
     Usage:
         >>> from mindcore import MindcoreClient
         >>>
-        >>> # Standard usage (requires PostgreSQL)
-        >>> client = MindcoreClient()
-        >>>
-        >>> # Local development with SQLite (no PostgreSQL needed!)
+        >>> # Auto mode: uses llama.cpp if available, falls back to OpenAI
         >>> client = MindcoreClient(use_sqlite=True)
         >>>
-        >>> # Ingest message
-        >>> msg = client.ingest_message({
-        ...     "user_id": "user123",
-        ...     "thread_id": "thread456",
-        ...     "session_id": "session789",
-        ...     "role": "user",
-        ...     "text": "Hello!"
-        ... })
+        >>> # Force local LLM only
+        >>> client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
         >>>
-        >>> # Get context
-        >>> context = client.get_context(
-        ...     user_id="user123",
-        ...     thread_id="thread456",
-        ...     query="conversation history"
-        ... )
+        >>> # Force OpenAI only
+        >>> client = MindcoreClient(use_sqlite=True, llm_provider="openai")
     """
 
     def __init__(
         self,
         config_path: Optional[str] = None,
         use_sqlite: bool = False,
-        sqlite_path: str = "mindcore.db"
+        sqlite_path: str = "mindcore.db",
+        llm_provider: Optional[str] = None
     ):
         """
         Initialize Mindcore client.
 
         Args:
             config_path: Optional path to config.yaml file.
-                        If not provided, uses default locations or environment variables.
             use_sqlite: If True, use SQLite instead of PostgreSQL.
-                       Perfect for local development and testing.
-            sqlite_path: Path to SQLite database file (default: "mindcore.db").
-                        Use ":memory:" for in-memory database.
+            sqlite_path: Path to SQLite database file.
+            llm_provider: LLM provider mode:
+                - "auto" (default): llama.cpp primary, OpenAI fallback
+                - "llama_cpp": Local inference only
+                - "openai": Cloud inference only
+
+        Raises:
+            ValueError: If no LLM provider can be initialized
 
         Example:
-            >>> client = MindcoreClient()  # Use default config (PostgreSQL)
-            >>> client = MindcoreClient(use_sqlite=True)  # Use SQLite for local dev
-            >>> client = MindcoreClient(use_sqlite=True, sqlite_path=":memory:")  # In-memory
-            >>> client = MindcoreClient("path/to/config.yaml")  # Custom config
+            >>> client = MindcoreClient(use_sqlite=True)
+            >>> client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
         """
         logger.info(f"Initializing Mindcore v{__version__}")
 
@@ -149,7 +147,7 @@ class MindcoreClient:
         self.config = ConfigLoader(config_path)
         self._use_sqlite = use_sqlite
 
-        # Initialize database (SQLite or PostgreSQL)
+        # Initialize database
         if use_sqlite:
             logger.info(f"Using SQLite database: {sqlite_path}")
             self.db = SQLiteManager(sqlite_path)
@@ -162,39 +160,103 @@ class MindcoreClient:
         cache_config = self.config.get_cache_config()
         self.cache = CacheManager(
             max_size=cache_config.get('max_size', 50),
-            ttl_seconds=cache_config.get('ttl')  # None means no TTL
+            ttl_seconds=cache_config.get('ttl')
         )
 
-        # Initialize AI agents
-        openai_config = self.config.get_openai_config()
-        api_key = openai_config.get('api_key')
+        # Initialize LLM provider
+        self._llm_provider = self._create_llm_provider(llm_provider)
 
-        if not api_key:
-            logger.warning(
-                "OpenAI API key not found. Set OPENAI_API_KEY environment variable "
-                "or add to config.yaml"
-            )
+        # Get generation defaults
+        llm_config = self.config.get_llm_config()
+        defaults = llm_config.get('defaults', {})
 
-        # Metadata enrichment agent
+        # Initialize AI agents with the provider
         self.metadata_agent = MetadataAgent(
-            api_key=api_key,
-            model=openai_config.get('model', 'gpt-4o-mini'),
-            temperature=openai_config.get('temperature', 0.3)
+            llm_provider=self._llm_provider,
+            temperature=defaults.get('temperature', 0.3),
+            max_tokens=defaults.get('max_tokens_enrichment', 800)
         )
 
-        # Context assembly agent
         self.context_agent = ContextAgent(
-            api_key=api_key,
-            model=openai_config.get('model', 'gpt-4o-mini'),
-            temperature=openai_config.get('temperature', 0.3)
+            llm_provider=self._llm_provider,
+            temperature=defaults.get('temperature', 0.3),
+            max_tokens=defaults.get('max_tokens_context', 1500)
         )
-
-        # Legacy aliases for backward compatibility
-        self.enrichment_agent = self.metadata_agent
-        self.context_assembler = self.context_agent
 
         db_type = "SQLite" if use_sqlite else "PostgreSQL"
-        logger.info(f"Mindcore initialized successfully with {db_type}")
+        logger.info(
+            f"Mindcore initialized with {db_type} and "
+            f"{self._llm_provider.name} LLM provider"
+        )
+
+    def _create_llm_provider(self, provider_type_str: Optional[str]) -> BaseLLMProvider:
+        """
+        Create LLM provider based on configuration.
+
+        Args:
+            provider_type_str: Provider type string or None for config default
+
+        Returns:
+            Configured LLM provider
+
+        Raises:
+            ValueError: If no provider can be initialized
+        """
+        llm_config = self.config.get_llm_config()
+
+        # Determine provider type
+        if provider_type_str:
+            provider_type = get_provider_type(provider_type_str)
+        else:
+            provider_type = get_provider_type(llm_config.get('provider', 'auto'))
+
+        # Build provider configs
+        llama_config = {}
+        if llm_config['llama_cpp'].get('model_path'):
+            llama_config = {
+                'model_path': llm_config['llama_cpp']['model_path'],
+                'n_ctx': llm_config['llama_cpp'].get('n_ctx', 4096),
+                'n_threads': llm_config['llama_cpp'].get('n_threads'),
+                'n_gpu_layers': llm_config['llama_cpp'].get('n_gpu_layers', 0),
+                'chat_format': llm_config['llama_cpp'].get('chat_format'),
+                'verbose': llm_config['llama_cpp'].get('verbose', False),
+            }
+
+        openai_config = {}
+        if llm_config['openai'].get('api_key'):
+            openai_config = {
+                'api_key': llm_config['openai']['api_key'],
+                'base_url': llm_config['openai'].get('base_url'),
+                'model': llm_config['openai'].get('model', 'gpt-4o-mini'),
+                'timeout': llm_config['openai'].get('timeout', 60),
+                'max_retries': llm_config['openai'].get('max_retries', 3),
+            }
+
+        # Create provider
+        try:
+            return create_provider(
+                provider_type=provider_type,
+                llama_config=llama_config if llama_config else None,
+                openai_config=openai_config if openai_config else None
+            )
+        except ValueError as e:
+            logger.error(f"Failed to create LLM provider: {e}")
+            raise ValueError(
+                f"No LLM provider available. Configure either:\n"
+                f"  - MINDCORE_LLAMA_MODEL_PATH for local inference, or\n"
+                f"  - OPENAI_API_KEY for cloud inference\n"
+                f"Original error: {e}"
+            ) from e
+
+    @property
+    def llm_provider(self) -> BaseLLMProvider:
+        """Get the active LLM provider."""
+        return self._llm_provider
+
+    @property
+    def provider_name(self) -> str:
+        """Get the name of the active LLM provider."""
+        return self._llm_provider.name
 
     def ingest_message(self, message_dict: Dict[str, Any]) -> Message:
         """
@@ -203,13 +265,13 @@ class MindcoreClient:
         The message will be:
         1. Validated for security
         2. Enriched with metadata (topics, sentiment, intent, etc.)
-        3. Stored in PostgreSQL
+        3. Stored in database
         4. Cached for fast retrieval
 
         Args:
             message_dict: Dictionary containing:
                 - user_id (str): User identifier
-                - thread_id (str): Conversation thread identifier
+                - thread_id (str): Thread identifier
                 - session_id (str): Session identifier
                 - role (str): Message role (user, assistant, system, tool)
                 - text (str): Message content
@@ -219,20 +281,9 @@ class MindcoreClient:
             Message: Enriched message object with metadata.
 
         Raises:
-            ValueError: If validation fails or required fields are missing.
-
-        Example:
-            >>> message = client.ingest_message({
-            ...     "user_id": "user123",
-            ...     "thread_id": "thread456",
-            ...     "session_id": "session789",
-            ...     "role": "user",
-            ...     "text": "What are best practices for AI agents?"
-            ... })
-            >>> print(message.metadata.topics)
-            ['AI', 'best practices', 'agents']
+            ValueError: If validation fails.
         """
-        # Validate message with security checks
+        # Validate message
         is_valid, error_msg = SecurityValidator.validate_message_dict(message_dict)
         if not is_valid:
             logger.error(f"Message validation failed: {error_msg}")
@@ -262,38 +313,17 @@ class MindcoreClient:
         """
         Get intelligently assembled context for a query.
 
-        The ContextAgent will:
-        1. Retrieve recent messages from cache and database
-        2. Analyze relevance to the query using metadata
-        3. Summarize and compress relevant information
-        4. Return structured context ready for LLM injection
-
         Args:
             user_id: User identifier.
             thread_id: Thread identifier.
             query: Query or topic to find relevant context for.
-            max_messages: Maximum messages to consider (default: 50).
+            max_messages: Maximum messages to consider.
 
         Returns:
-            AssembledContext: Object containing:
-                - assembled_context (str): Summarized relevant context
-                - key_points (List[str]): Key points from history
-                - relevant_message_ids (List[str]): IDs of relevant messages
-                - metadata (Dict): Topics, sentiment, importance
+            AssembledContext with summarized context, key points, etc.
 
         Raises:
             ValueError: If validation fails.
-
-        Example:
-            >>> context = client.get_context(
-            ...     user_id="user123",
-            ...     thread_id="thread456",
-            ...     query="AI agent memory management"
-            ... )
-            >>> print(context.assembled_context)
-            'User previously discussed implementing memory systems...'
-            >>> print(context.key_points)
-            ['Use vector databases', 'Implement caching', 'Add metadata']
         """
         # Validate query parameters
         is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
@@ -308,7 +338,7 @@ class MindcoreClient:
         if len(cached_messages) < max_messages:
             db_messages = self.db.fetch_recent_messages(user_id, thread_id, limit=max_messages)
 
-            # Merge messages from cache and database, avoiding duplicates
+            # Merge messages, avoiding duplicates
             message_ids = {msg.message_id for msg in cached_messages}
             all_messages = list(cached_messages)
 
@@ -317,115 +347,75 @@ class MindcoreClient:
                     all_messages.append(msg)
                     message_ids.add(msg.message_id)
 
-            # Sort by created_at to ensure chronological order (most recent first)
+            # Sort by created_at (most recent first)
             all_messages.sort(key=lambda m: m.created_at or m.message_id, reverse=True)
-
-            # Limit to max_messages
             cached_messages = all_messages[:max_messages]
 
         logger.info(f"Retrieved {len(cached_messages)} messages for context assembly")
 
-        # Assemble context using AI agent
+        # Assemble context
         context = self.context_agent.process(cached_messages, query)
-
         return context
 
     def get_message(self, message_id: str) -> Optional[Message]:
-        """
-        Get a single message by ID.
-
-        Args:
-            message_id: Message identifier.
-
-        Returns:
-            Message object or None if not found.
-
-        Example:
-            >>> message = client.get_message("msg_abc123")
-            >>> if message:
-            ...     print(message.raw_text)
-        """
+        """Get a single message by ID."""
         return self.db.get_message_by_id(message_id)
 
     def clear_cache(self, user_id: Optional[str] = None, thread_id: Optional[str] = None) -> None:
-        """
-        Clear message cache.
-
-        Args:
-            user_id: Optional user ID to clear specific thread.
-            thread_id: Optional thread ID to clear specific thread.
-                      If both provided, clears that specific thread.
-                      If neither provided, clears entire cache.
-
-        Example:
-            >>> client.clear_cache("user123", "thread456")  # Clear specific thread
-            >>> client.clear_cache()  # Clear all cache
-        """
+        """Clear message cache."""
         if user_id and thread_id:
             self.cache.clear_thread(user_id, thread_id)
         else:
             self.cache.clear_all()
 
     def close(self) -> None:
-        """
-        Close all connections and cleanup resources.
-
-        Call this when shutting down your application.
-
-        Example:
-            >>> client = MindcoreClient()
-            >>> # ... use client ...
-            >>> client.close()
-        """
+        """Close all connections and cleanup resources."""
+        if hasattr(self, '_llm_provider') and self._llm_provider:
+            self._llm_provider.close()
         self.db.close()
         logger.info("Mindcore client closed")
 
 
-# Convenience alias (backward compatibility)
+# Convenience alias
 Mindcore = MindcoreClient
 
 
-def initialize(config_path: Optional[str] = None) -> MindcoreClient:
+def initialize(
+    config_path: Optional[str] = None,
+    use_sqlite: bool = False,
+    llm_provider: Optional[str] = None
+) -> MindcoreClient:
     """
-    Initialize global Mindcore instance (thread-safe singleton pattern).
+    Initialize global Mindcore instance (thread-safe singleton).
 
     Args:
-        config_path: Optional path to config.yaml file.
+        config_path: Optional path to config.yaml
+        use_sqlite: Use SQLite instead of PostgreSQL
+        llm_provider: LLM provider mode ("auto", "llama_cpp", "openai")
 
     Returns:
-        MindcoreClient instance.
-
-    Example:
-        >>> from mindcore import initialize
-        >>> client = initialize()
+        MindcoreClient instance
     """
     global _mindcore_instance
 
     if _mindcore_instance is None:
         with _instance_lock:
-            # Double-check locking pattern
             if _mindcore_instance is None:
-                _mindcore_instance = MindcoreClient(config_path)
+                _mindcore_instance = MindcoreClient(
+                    config_path=config_path,
+                    use_sqlite=use_sqlite,
+                    llm_provider=llm_provider
+                )
 
     return _mindcore_instance
 
 
 def get_client() -> MindcoreClient:
-    """
-    Get the global Mindcore client instance (thread-safe).
-
-    Returns:
-        MindcoreClient instance (auto-initializes if needed).
-
-    Example:
-        >>> from mindcore import get_client
-        >>> client = get_client()
-    """
+    """Get the global Mindcore client instance."""
     global _mindcore_instance
 
     if _mindcore_instance is None:
         with _instance_lock:
-            # Double-check locking pattern
             if _mindcore_instance is None:
                 _mindcore_instance = MindcoreClient()
 
@@ -442,30 +432,34 @@ def _cleanup_on_exit():
             logger.warning(f"Error during cleanup: {e}")
 
 
-# Register cleanup handler
 atexit.register(_cleanup_on_exit)
 
 
-# Legacy function names (backward compatibility)
-initialize_mindcore = initialize
-get_mindcore_instance = get_client
-
-
-# Public API - what users can import
+# Public API
 __all__ = [
     # Version
     "__version__",
 
     # Main client
     "MindcoreClient",
-    "Mindcore",  # Alias
+    "Mindcore",
     "initialize",
     "get_client",
 
-    # AI Agents (clean names)
+    # AI Agents
     "MetadataAgent",
     "ContextAgent",
     "BaseAgent",
+
+    # LLM Providers
+    "BaseLLMProvider",
+    "LLMResponse",
+    "LlamaCppProvider",
+    "OpenAIProvider",
+    "FallbackProvider",
+    "ProviderType",
+    "create_provider",
+    "get_provider_type",
 
     # Core data structures
     "Message",
@@ -480,8 +474,4 @@ __all__ = [
     "DatabaseManager",
     "SQLiteManager",
     "CacheManager",
-
-    # Legacy (backward compatibility)
-    "initialize_mindcore",
-    "get_mindcore_instance",
 ]

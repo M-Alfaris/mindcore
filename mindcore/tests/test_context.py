@@ -2,9 +2,10 @@
 Tests for Context Assembler Agent.
 """
 import pytest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from mindcore.agents import ContextAssemblerAgent
 from mindcore.core.schemas import Message, MessageMetadata, AssembledContext
+from mindcore.llm import LLMResponse
 
 
 class TestContextAssemblerAgent:
@@ -32,9 +33,17 @@ class TestContextAssemblerAgent:
         }
 
     @pytest.fixture
-    def agent(self):
-        """Create context assembler agent with mock API key."""
-        return ContextAssemblerAgent(api_key="test-api-key")
+    def mock_provider(self):
+        """Create a mock LLM provider."""
+        provider = Mock()
+        provider.name = "mock"
+        provider.is_available.return_value = True
+        return provider
+
+    @pytest.fixture
+    def agent(self, mock_provider):
+        """Create context assembler agent with mock provider."""
+        return ContextAssemblerAgent(llm_provider=mock_provider)
 
     @pytest.fixture
     def sample_messages(self):
@@ -58,15 +67,21 @@ class TestContextAssemblerAgent:
 
     def test_agent_initialization(self, agent):
         """Test agent initializes correctly."""
-        assert agent.model == "gpt-4o-mini"
         assert agent.temperature == 0.3
+        assert agent.max_tokens == 1500
         assert agent.system_prompt is not None
+        assert agent.provider_name == "mock"
 
-    @patch('mindcore.agents.base_agent.BaseAgent._call_openai')
-    def test_process_context(self, mock_call, agent, sample_messages, mock_context_response):
+    def test_process_context(self, agent, mock_provider, sample_messages, mock_context_response):
         """Test context assembly."""
         import json
-        mock_call.return_value = json.dumps(mock_context_response)
+
+        # Mock LLM response
+        mock_provider.generate.return_value = LLMResponse(
+            content=json.dumps(mock_context_response),
+            model="mock",
+            provider="mock"
+        )
 
         query = "What have we discussed about AI?"
         context = agent.process(sample_messages, query)
@@ -78,17 +93,16 @@ class TestContextAssemblerAgent:
         assert len(context.relevant_message_ids) > 0
         assert "topics" in context.metadata
 
-    @patch('mindcore.agents.base_agent.BaseAgent._call_openai')
-    def test_process_handles_api_failure(self, mock_call, agent, sample_messages):
+    def test_process_handles_api_failure(self, agent, mock_provider, sample_messages):
         """Test graceful handling of API failures."""
-        mock_call.side_effect = Exception("API Error")
+        mock_provider.generate.side_effect = Exception("API Error")
 
         query = "Test query"
         context = agent.process(sample_messages, query)
 
-        # Should return empty context with error
+        # Should return empty context with error metadata
         assert isinstance(context, AssembledContext)
-        assert "error" in context.metadata or context.assembled_context != ""
+        assert context.metadata.get("assembly_failed") is True
 
     def test_format_messages(self, agent, sample_messages):
         """Test message formatting."""
@@ -100,11 +114,16 @@ class TestContextAssemblerAgent:
         assert "msg_0" in formatted
         assert "Message content" in formatted
 
-    @patch('mindcore.agents.base_agent.BaseAgent._call_openai')
-    def test_assemble_for_prompt(self, mock_call, agent, sample_messages, mock_context_response):
+    def test_assemble_for_prompt(self, agent, mock_provider, sample_messages, mock_context_response):
         """Test assembling context for prompt injection."""
         import json
-        mock_call.return_value = json.dumps(mock_context_response)
+
+        # Mock LLM response
+        mock_provider.generate.return_value = LLMResponse(
+            content=json.dumps(mock_context_response),
+            model="mock",
+            provider="mock"
+        )
 
         query = "AI development"
         formatted = agent.assemble_for_prompt(sample_messages, query)

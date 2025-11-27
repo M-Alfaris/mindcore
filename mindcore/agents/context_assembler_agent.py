@@ -1,13 +1,16 @@
 """
 Context Assembly AI Agent.
 
-Retrieves and assembles relevant historical context.
+Retrieves and assembles relevant historical context using LLM providers.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, TYPE_CHECKING
 
 from .base_agent import BaseAgent
 from ..core.schemas import Message, AssembledContext
 from ..utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from ..llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
@@ -22,27 +25,34 @@ class ContextAssemblerAgent(BaseAgent):
     - Summarize key information
     - Extract key points
     - Return structured context
+
+    Example:
+        >>> from mindcore.llm import create_provider, ProviderType
+        >>> provider = create_provider(ProviderType.AUTO, ...)
+        >>> agent = ContextAssemblerAgent(provider)
+        >>> context = agent.process(messages, "What did we discuss about caching?")
+        >>> print(context.key_points)
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.3):
+    def __init__(
+        self,
+        llm_provider: "BaseLLMProvider",
+        temperature: float = 0.3,
+        max_tokens: int = 1500
+    ):
         """
         Initialize context assembler agent.
 
         Args:
-            api_key: OpenAI API key.
-            model: Model name.
-            temperature: Temperature for generation.
+            llm_provider: LLM provider instance
+            temperature: Temperature for generation
+            max_tokens: Maximum tokens in response
         """
-        super().__init__(api_key, model, temperature, max_tokens=1500)
+        super().__init__(llm_provider, temperature, max_tokens)
         self.system_prompt = self._create_system_prompt()
 
     def _create_system_prompt(self) -> str:
-        """
-        Create system prompt for context assembly.
-
-        Returns:
-            System prompt string.
-        """
+        """Create system prompt for context assembly."""
         return """You are a context assembly AI agent. Your task is to analyze a conversation history and current query to extract and summarize the most relevant context.
 
 You will receive:
@@ -65,25 +75,32 @@ Your task is to return a JSON object with:
   }
 }
 
-Be selective and concise. Only include truly relevant information."""
+Be selective and concise. Only include truly relevant information. Return ONLY valid JSON."""
 
     def process(self, messages: List[Message], query: str) -> AssembledContext:
         """
         Assemble context from messages based on query.
 
         Args:
-            messages: List of Message objects.
-            query: Current query or topic.
+            messages: List of Message objects with metadata.
+            query: Current query or topic to find relevant context for.
 
         Returns:
-            AssembledContext object.
+            AssembledContext object containing:
+            - assembled_context: Summarized relevant context
+            - key_points: List of key points
+            - relevant_message_ids: IDs of relevant messages
+            - metadata: Topics, sentiment, importance
         """
-        logger.debug(f"Assembling context from {len(messages)} messages for query: {query[:100]}...")
+        logger.debug(
+            f"Assembling context from {len(messages)} messages "
+            f"({self.provider_name}) for query: {query[:100]}..."
+        )
 
         # Format messages for the prompt
         formatted_messages = self._format_messages(messages)
 
-        # Prepare messages for OpenAI
+        # Prepare messages for LLM
         prompt = f"""Historical Messages:
 {formatted_messages}
 
@@ -98,8 +115,8 @@ Analyze the messages and provide relevant context for the current query."""
         ]
 
         try:
-            # Call OpenAI
-            response = self._call_openai(api_messages)
+            # Call LLM
+            response = self._call_llm(api_messages, json_mode=True)
 
             # Parse response
             context_dict = self._parse_json_response(response)
@@ -117,15 +134,13 @@ Analyze the messages and provide relevant context for the current query."""
 
         except Exception as e:
             logger.error(f"Context assembly failed: {e}")
-            # Return empty context on failure - don't leak error details to prompt
-            # The error is logged for debugging, but user gets clean empty context
+            # Return empty context on failure
             return AssembledContext(
-                assembled_context="",  # Empty string instead of error message
+                assembled_context="",
                 key_points=[],
                 relevant_message_ids=[],
                 metadata={
                     "assembly_failed": True,
-                    # Store error type for debugging (without sensitive details)
                     "error_type": type(e).__name__
                 }
             )
@@ -138,7 +153,7 @@ Analyze the messages and provide relevant context for the current query."""
             messages: List of Message objects.
 
         Returns:
-            Formatted string.
+            Formatted string with message content and metadata.
         """
         formatted = []
 

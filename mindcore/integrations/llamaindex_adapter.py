@@ -1,10 +1,14 @@
 """
 LlamaIndex integration adapter for Mindcore.
 
-Provides seamless integration with LlamaIndex (formerly GPT Index):
+Provides seamless integration with LlamaIndex 0.10+:
 - Chat history integration
 - Context injection
 - Custom memory backend
+
+Compatible with:
+- llama-index >= 0.10.0
+- llama-index-core >= 0.10.0
 """
 from typing import Dict, Any, List, Optional
 from .base_adapter import BaseAdapter
@@ -15,11 +19,18 @@ logger = get_logger(__name__)
 
 # Check for LlamaIndex at import time
 _LLAMAINDEX_AVAILABLE = False
+_LLAMAINDEX_CORE_AVAILABLE = False
+
 try:
-    import llama_index
+    import llama_index.core
+    _LLAMAINDEX_CORE_AVAILABLE = True
     _LLAMAINDEX_AVAILABLE = True
 except ImportError:
-    pass
+    try:
+        import llama_index
+        _LLAMAINDEX_AVAILABLE = True
+    except ImportError:
+        pass
 
 
 def require_llamaindex():
@@ -32,14 +43,14 @@ def require_llamaindex():
 
 class LlamaIndexAdapter(BaseAdapter):
     """
-    Adapter for integrating Mindcore with LlamaIndex.
+    Adapter for integrating Mindcore with LlamaIndex 0.10+.
 
     Usage:
-        from llama_index import ChatEngine
-        from mindcore import Mindcore
-        from mindcore.adapters import LlamaIndexAdapter
+        from llama_index.core.chat_engine import SimpleChatEngine
+        from mindcore import MindcoreClient
+        from mindcore.integrations import LlamaIndexAdapter
 
-        mindcore = Mindcore()
+        mindcore = MindcoreClient()
         adapter = LlamaIndexAdapter(mindcore)
 
         # Ingest chat messages
