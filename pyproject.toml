@@ -40,13 +40,25 @@ classifiers = [
 ]
 
 dependencies = [
+    # LLM Providers
     "openai>=1.0.0",
+    # Database
     "psycopg2-binary>=2.9.0",
+    # API Framework
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
+    # Configuration & Validation
     "pyyaml>=6.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    # CLI
     "click>=8.0.0",
+    "huggingface-hub>=0.20.0",
+    # Caching & Rate Limiting (battle-tested)
+    "cachetools>=5.0.0",
+    "limits>=3.0.0",
+    # Logging
+    "structlog>=24.0.0",
 ]
 
 [project.optional-dependencies]

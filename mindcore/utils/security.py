@@ -4,14 +4,13 @@ Security and validation utilities for Mindcore framework.
 This module provides:
 - Input validation and sanitization
 - SQL injection protection verification
-- Rate limiting utilities
+- Rate limiting utilities (using limits library - Redis-ready)
 - Security best practices enforcement
 """
 import re
 from typing import Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta, timezone
-from collections import defaultdict
-import threading
+
+from limits import parse, storage, strategies
 
 from .logger import get_logger
 
@@ -166,23 +165,52 @@ class SecurityValidator:
 
 class RateLimiter:
     """
-    Simple in-memory rate limiter for API endpoints.
+    Rate limiter for API endpoints using the limits library.
 
-    Uses token bucket algorithm.
+    Supports in-memory storage (default) and Redis for distributed deployments.
+    Uses moving window strategy for accurate rate limiting.
+
+    Example:
+        >>> limiter = RateLimiter(max_requests=100, window_seconds=60)
+        >>> limiter.is_allowed("user123")  # True
+        >>> limiter.get_remaining("user123")  # 99
     """
 
-    def __init__(self, max_requests: int = 100, window_seconds: int = 60):
+    def __init__(
+        self,
+        max_requests: int = 100,
+        window_seconds: int = 60,
+        storage_uri: Optional[str] = None
+    ):
         """
         Initialize rate limiter.
 
         Args:
             max_requests: Maximum requests per window.
             window_seconds: Time window in seconds.
+            storage_uri: Optional storage URI for distributed rate limiting.
+                        Examples:
+                        - None: In-memory (default)
+                        - "memory://": Explicit in-memory
+                        - "redis://localhost:6379": Redis backend
+                        - "redis+sentinel://localhost:26379": Redis Sentinel
         """
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._requests: Dict[str, list] = defaultdict(list)
-        self._lock = threading.RLock()
+
+        # Create rate limit string (e.g., "100 per 60 seconds")
+        self._rate_limit = parse(f"{max_requests} per {window_seconds} seconds")
+
+        # Initialize storage backend
+        if storage_uri and storage_uri.startswith("redis"):
+            self._storage = storage.RedisStorage(storage_uri)
+            logger.info(f"Rate limiter initialized with Redis storage: {storage_uri}")
+        else:
+            self._storage = storage.MemoryStorage()
+            logger.info("Rate limiter initialized with in-memory storage")
+
+        # Use moving window strategy for accurate limiting
+        self._strategy = strategies.MovingWindowRateLimiter(self._storage)
 
     def is_allowed(self, identifier: str) -> bool:
         """
@@ -194,24 +222,12 @@ class RateLimiter:
         Returns:
             True if allowed, False if rate limited.
         """
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            cutoff = now - timedelta(seconds=self.window_seconds)
+        allowed = self._strategy.hit(self._rate_limit, identifier)
 
-            # Remove old requests and clean up empty identifiers
-            self._requests[identifier] = [
-                req_time for req_time in self._requests[identifier]
-                if req_time > cutoff
-            ]
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for {identifier}")
 
-            # Check if under limit
-            if len(self._requests[identifier]) >= self.max_requests:
-                logger.warning(f"Rate limit exceeded for {identifier}")
-                return False
-
-            # Add current request
-            self._requests[identifier].append(now)
-            return True
+        return allowed
 
     def get_remaining(self, identifier: str) -> int:
         """
@@ -221,47 +237,40 @@ class RateLimiter:
             identifier: Unique identifier.
 
         Returns:
-            Number of remaining requests.
+            Number of remaining requests in current window.
         """
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            cutoff = now - timedelta(seconds=self.window_seconds)
+        window_stats = self._strategy.get_window_stats(self._rate_limit, identifier)
+        # window_stats returns (reset_time, remaining_count)
+        return window_stats[1]
 
-            # Count recent requests
-            recent_requests = sum(
-                1 for req_time in self._requests[identifier]
-                if req_time > cutoff
-            )
-
-            return max(0, self.max_requests - recent_requests)
-
-    def cleanup_stale_entries(self) -> int:
+    def reset(self, identifier: str) -> None:
         """
-        Remove stale entries from rate limiter to prevent memory leak.
+        Reset rate limit for a specific identifier.
+
+        Args:
+            identifier: Unique identifier to reset.
+        """
+        self._storage.reset()
+        logger.info(f"Rate limit reset for {identifier}")
+
+    def get_stats(self, identifier: str) -> Dict[str, Any]:
+        """
+        Get detailed rate limit stats for an identifier.
+
+        Args:
+            identifier: Unique identifier.
 
         Returns:
-            Number of entries removed.
+            Dictionary with rate limit statistics.
         """
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            cutoff = now - timedelta(seconds=self.window_seconds)
-
-            stale_keys = []
-            for identifier in list(self._requests.keys()):
-                # Remove old timestamps
-                self._requests[identifier] = [
-                    req_time for req_time in self._requests[identifier]
-                    if req_time > cutoff
-                ]
-                # Mark empty entries for removal
-                if not self._requests[identifier]:
-                    stale_keys.append(identifier)
-
-            # Remove empty entries
-            for key in stale_keys:
-                del self._requests[key]
-
-            return len(stale_keys)
+        window_stats = self._strategy.get_window_stats(self._rate_limit, identifier)
+        return {
+            "identifier": identifier,
+            "limit": self.max_requests,
+            "window_seconds": self.window_seconds,
+            "remaining": window_stats[1],
+            "reset_at": window_stats[0],
+        }
 
 
 class SecurityAuditor:
@@ -319,14 +328,34 @@ class SecurityAuditor:
 _rate_limiter: Optional[RateLimiter] = None
 
 
-def get_rate_limiter() -> RateLimiter:
+def get_rate_limiter(
+    max_requests: int = 100,
+    window_seconds: int = 60,
+    storage_uri: Optional[str] = None
+) -> RateLimiter:
     """
     Get global rate limiter instance.
 
+    Args:
+        max_requests: Maximum requests per window.
+        window_seconds: Time window in seconds.
+        storage_uri: Optional Redis URI for distributed rate limiting.
+
     Returns:
         RateLimiter instance.
+
+    Example:
+        >>> # In-memory (default)
+        >>> limiter = get_rate_limiter()
+        >>>
+        >>> # With Redis (for cloud/distributed)
+        >>> limiter = get_rate_limiter(storage_uri="redis://localhost:6379")
     """
     global _rate_limiter
     if _rate_limiter is None:
-        _rate_limiter = RateLimiter(max_requests=100, window_seconds=60)
+        _rate_limiter = RateLimiter(
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            storage_uri=storage_uri
+        )
     return _rate_limiter

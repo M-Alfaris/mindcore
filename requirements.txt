@@ -1,15 +1,46 @@
 # Mindcore Framework Dependencies
-# Version: 0.1.0
+# Version: 0.2.0
 
-# Core dependencies
-openai>=1.0.0
-psycopg2-binary>=2.9.0
-fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
-pyyaml>=6.0
-pydantic>=2.0.0
+# =============================================================================
+# Core Dependencies
+# =============================================================================
 
-# Development dependencies (install with: pip install -r requirements-dev.txt)
+# LLM Providers
+openai>=1.0.0                    # OpenAI API client (also supports compatible APIs)
+
+# Database
+psycopg2-binary>=2.9.0           # PostgreSQL adapter
+
+# API Framework
+fastapi>=0.100.0                 # Modern async web framework
+uvicorn[standard]>=0.23.0        # ASGI server
+
+# Configuration & Validation
+pyyaml>=6.0                      # YAML config parsing
+pydantic>=2.0.0                  # Data validation
+pydantic-settings>=2.0.0         # Settings management with env vars
+
+# CLI
+click>=8.0.0                     # CLI framework
+huggingface-hub>=0.20.0          # Model downloads
+
+# Caching & Rate Limiting (battle-tested replacements)
+cachetools>=5.0.0                # TTL cache, LRU cache, etc.
+limits>=3.0.0                    # Rate limiting (Redis-ready for cloud)
+
+# Logging
+structlog>=24.0.0                # Structured logging (cloud-ready)
+
+# =============================================================================
+# Optional: Local LLM Support
+# =============================================================================
+# Install with: pip install mindcore[llama]
+# llama-cpp-python>=0.2.0        # CPU/GPU optimized local inference
+
+# =============================================================================
+# Development Dependencies
+# =============================================================================
+# Install with: pip install mindcore[dev]
 # pytest>=7.0.0
 # pytest-asyncio>=0.21.0
 # pytest-cov>=4.0.0

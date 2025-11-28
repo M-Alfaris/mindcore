@@ -1,10 +1,13 @@
 """
 In-memory cache manager for recent messages.
+
+Uses cachetools for battle-tested caching with TTL and LRU support.
 """
-from typing import List, Dict, Tuple, Optional
-from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Tuple, Optional, Any
+from datetime import datetime, timezone
 import threading
-import bisect
+
+from cachetools import TTLCache, LRUCache
 
 from .schemas import Message
 from ..utils.logger import get_logger
@@ -16,8 +19,8 @@ class CacheManager:
     """
     Thread-safe in-memory cache for recent messages.
 
-    Messages are stored in chronological order by created_at timestamp.
-    Eviction removes oldest messages when cache is full or TTL expires.
+    Uses cachetools TTLCache for automatic expiration and LRU eviction.
+    Messages are stored per user/thread combination.
     """
 
     def __init__(self, max_size: int = 50, ttl_seconds: Optional[int] = None):
@@ -27,30 +30,21 @@ class CacheManager:
         Args:
             max_size: Maximum number of messages per user/thread.
             ttl_seconds: Optional time-to-live in seconds for cached messages.
-                        If None, messages don't expire based on time.
+                        If None, uses LRU cache without TTL.
         """
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
-        # Cache stores messages in a dict keyed by message_id
-        self._cache: Dict[Tuple[str, str], Dict[str, Message]] = {}
-        # Sorted list of (created_at, message_id) for chronological ordering
-        self._order: Dict[Tuple[str, str], List[Tuple[datetime, str]]] = {}
-        # Track when each message was added to cache (for TTL)
-        self._added_at: Dict[Tuple[str, str], Dict[str, datetime]] = {}
         self._lock = threading.RLock()
+
+        # Thread caches: (user_id, thread_id) -> TTLCache/LRUCache of messages
+        self._thread_caches: Dict[Tuple[str, str], Any] = {}
+        # Track message order per thread for chronological retrieval
+        self._order: Dict[Tuple[str, str], List[Tuple[datetime, str]]] = {}
+
         logger.info(f"Cache manager initialized with max_size={max_size}, ttl_seconds={ttl_seconds}")
 
     def _get_key(self, user_id: str, thread_id: str) -> Tuple[str, str]:
-        """
-        Generate cache key.
-
-        Args:
-            user_id: User identifier.
-            thread_id: Thread identifier.
-
-        Returns:
-            Cache key tuple.
-        """
+        """Generate cache key."""
         return (user_id, thread_id)
 
     def _get_timestamp(self, message: Message) -> datetime:
@@ -59,9 +53,15 @@ class CacheManager:
             return message.created_at
         return datetime.now(timezone.utc)
 
+    def _create_thread_cache(self) -> Any:
+        """Create a new cache for a thread."""
+        if self.ttl_seconds:
+            return TTLCache(maxsize=self.max_size, ttl=self.ttl_seconds)
+        return LRUCache(maxsize=self.max_size)
+
     def add_message(self, message: Message) -> None:
         """
-        Add a message to cache, maintaining chronological order.
+        Add a message to cache.
 
         Args:
             message: Message object to add.
@@ -69,95 +69,40 @@ class CacheManager:
         with self._lock:
             key = self._get_key(message.user_id, message.thread_id)
 
-            if key not in self._cache:
-                self._cache[key] = {}
+            # Initialize thread cache if needed
+            if key not in self._thread_caches:
+                self._thread_caches[key] = self._create_thread_cache()
                 self._order[key] = []
-                self._added_at[key] = {}
 
-            cache = self._cache[key]
-            order = self._order[key]
-            added_at = self._added_at[key]
+            cache = self._thread_caches[key]
 
-            # If message already exists, remove old entry from order list
-            if message.message_id in cache:
-                old_msg = cache[message.message_id]
-                old_ts = self._get_timestamp(old_msg)
-                try:
-                    order.remove((old_ts, message.message_id))
-                except ValueError:
-                    pass
-
-            # Add message to cache
+            # Add message to cache (cachetools handles eviction automatically)
             cache[message.message_id] = message
-            added_at[message.message_id] = datetime.now(timezone.utc)
 
-            # Insert into sorted order list (by timestamp)
+            # Track order for chronological retrieval
             timestamp = self._get_timestamp(message)
-            bisect.insort(order, (timestamp, message.message_id))
+            order = self._order[key]
 
-            # Evict oldest if over limit
-            while len(cache) > self.max_size:
-                if order:
-                    # Remove oldest (first in sorted list)
-                    oldest_ts, oldest_id = order.pop(0)
-                    if oldest_id in cache:
-                        del cache[oldest_id]
-                    if oldest_id in added_at:
-                        del added_at[oldest_id]
-                    logger.debug(f"Evicted message {oldest_id} from cache (size limit)")
-                else:
-                    break
+            # Remove old entry if message already exists
+            order = [(ts, mid) for ts, mid in order if mid != message.message_id]
+
+            # Add new entry and sort
+            order.append((timestamp, message.message_id))
+            order.sort(key=lambda x: x[0])
+
+            # Trim order list to max_size (in case of edge cases)
+            if len(order) > self.max_size * 2:
+                order = order[-self.max_size:]
+
+            self._order[key] = order
 
             logger.debug(f"Added message {message.message_id} to cache")
-
-    def _is_expired(self, key: Tuple[str, str], msg_id: str) -> bool:
-        """Check if a message has expired based on TTL."""
-        if self.ttl_seconds is None:
-            return False
-
-        added_at = self._added_at.get(key, {}).get(msg_id)
-        if added_at is None:
-            return False
-
-        expiry_time = added_at + timedelta(seconds=self.ttl_seconds)
-        return datetime.now(timezone.utc) > expiry_time
-
-    def _cleanup_expired(self, key: Tuple[str, str]) -> int:
-        """Remove expired messages from a specific thread cache. Returns count removed."""
-        if self.ttl_seconds is None:
-            return 0
-
-        if key not in self._cache:
-            return 0
-
-        cache = self._cache[key]
-        order = self._order.get(key, [])
-        added_at = self._added_at.get(key, {})
-
-        expired_ids = [msg_id for msg_id in cache if self._is_expired(key, msg_id)]
-
-        for msg_id in expired_ids:
-            if msg_id in cache:
-                msg = cache[msg_id]
-                ts = self._get_timestamp(msg)
-                try:
-                    order.remove((ts, msg_id))
-                except ValueError:
-                    pass
-                del cache[msg_id]
-            if msg_id in added_at:
-                del added_at[msg_id]
-
-        if expired_ids:
-            logger.debug(f"Cleaned up {len(expired_ids)} expired messages from cache")
-
-        return len(expired_ids)
 
     def get_recent_messages(
         self,
         user_id: str,
         thread_id: str,
-        limit: int = None
+        limit: Optional[int] = None
     ) -> List[Message]:
         """
         Get recent messages from cache in chronological order.
@@ -173,20 +118,22 @@ class CacheManager:
         with self._lock:
             key = self._get_key(user_id, thread_id)
 
-            if key not in self._cache:
+            if key not in self._thread_caches:
                 return []
 
-            # Cleanup expired messages first
-            self._cleanup_expired(key)
-
-            cache = self._cache[key]
+            cache = self._thread_caches[key]
             order = self._order.get(key, [])
 
-            # Get messages in chronological order (newest first = reversed)
+            # Get messages in reverse chronological order (newest first)
             messages = []
             for timestamp, msg_id in reversed(order):
-                if msg_id in cache:
-                    messages.append(cache[msg_id])
+                try:
+                    # cachetools handles TTL expiration automatically on access
+                    if msg_id in cache:
+                        messages.append(cache[msg_id])
+                except KeyError:
+                    # Message was evicted or expired
+                    pass
 
             if limit:
                 messages = messages[:limit]
@@ -204,36 +151,20 @@ class CacheManager:
         """
         with self._lock:
             key = self._get_key(user_id, thread_id)
-            if key in self._cache:
-                del self._cache[key]
+            if key in self._thread_caches:
+                del self._thread_caches[key]
             if key in self._order:
                 del self._order[key]
-            if key in self._added_at:
-                del self._added_at[key]
             logger.info(f"Cleared cache for {user_id}/{thread_id}")
 
     def clear_all(self) -> None:
         """Clear entire cache."""
         with self._lock:
-            self._cache.clear()
+            self._thread_caches.clear()
             self._order.clear()
-            self._added_at.clear()
             logger.info("Cleared entire cache")
 
-    def cleanup_all_expired(self) -> int:
-        """
-        Cleanup expired messages from all thread caches.
-
-        Returns:
-            Total number of expired messages removed.
-        """
-        with self._lock:
-            total_removed = 0
-            for key in list(self._cache.keys()):
-                total_removed += self._cleanup_expired(key)
-            return total_removed
-
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics.
 
@@ -241,10 +172,17 @@ class CacheManager:
             Dictionary with cache stats.
         """
         with self._lock:
-            total_messages = sum(len(cache) for cache in self._cache.values())
+            total_messages = 0
+            for cache in self._thread_caches.values():
+                try:
+                    total_messages += len(cache)
+                except Exception:
+                    pass
+
             return {
-                "total_threads": len(self._cache),
+                "total_threads": len(self._thread_caches),
                 "total_messages": total_messages,
                 "max_size_per_thread": self.max_size,
-                "ttl_seconds": self.ttl_seconds
+                "ttl_seconds": self.ttl_seconds,
+                "cache_type": "TTLCache" if self.ttl_seconds else "LRUCache"
             }
