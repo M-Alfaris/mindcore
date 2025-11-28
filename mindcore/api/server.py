@@ -175,10 +175,6 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
             except Exception as e:
                 logger.error(f"Error closing Mindcore client: {e}")
 
-        # Cleanup rate limiter
-        rate_limiter = get_rate_limiter()
-        rate_limiter.cleanup_stale_entries()
-
     # Exception handler
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
@@ -210,6 +206,10 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, debug: bool = False):
         port=port,
         log_level="debug" if debug else "info"
     )
+
+
+# Default app instance for ASGI servers (e.g., uvicorn mindcore.api.server:app)
+app = create_app()
 
 
 if __name__ == "__main__":

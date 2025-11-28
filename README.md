@@ -142,12 +142,21 @@ Two specialized agents powered by local or cloud LLMs:
 ### 💾 Flexible Storage
 - **SQLite** for local development (zero setup!)
 - **PostgreSQL** for production deployments
-- **In-memory cache** for blazing-fast retrieval
+- **In-memory cache** (cachetools) for blazing-fast retrieval
 - Automatic schema management
 
 </td>
 </tr>
 <tr>
+<td width="50%" valign="top">
+
+### 🔒 Production Ready
+- **Rate limiting** (limits) — Redis-ready for cloud
+- **Structured logging** (structlog) — JSON for cloud aggregation
+- **Battle-tested libs** — cachetools, limits, structlog
+- **Security** — Input validation, parameterized queries
+
+</td>
 <td width="50%" valign="top">
 
 ### 🔌 Framework Integrations
@@ -543,6 +552,13 @@ export DB_PORT="5432"
 export DB_NAME="mindcore"
 export DB_USER="postgres"
 export DB_PASSWORD="your-password"
+
+# Logging (optional)
+export MINDCORE_LOG_LEVEL="INFO"          # DEBUG, INFO, WARNING, ERROR
+export MINDCORE_JSON_LOGS="true"          # JSON output for cloud logging
+
+# Rate Limiting (optional, for cloud deployments)
+export MINDCORE_REDIS_URL="redis://localhost:6379"  # Enable distributed rate limiting
 ```
 
 ### Config File (config.yaml)
@@ -647,8 +663,8 @@ mindcore/
 │   └── routes/              # API endpoints
 │
 └── utils/                   # Utilities
-    ├── security.py          # Validation & rate limiting
-    └── logger.py            # Logging configuration
+    ├── security.py          # Validation & rate limiting (limits library)
+    └── logger.py            # Structured logging (structlog)
 ```
 
 ---
@@ -697,6 +713,9 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 - **FastAPI** — High-performance API framework
 - **PostgreSQL** — Robust production database
 - **SQLite** — Zero-config local development
+- **cachetools** — Battle-tested caching with TTL/LRU
+- **limits** — Redis-ready rate limiting
+- **structlog** — Structured logging for cloud deployments
 
 ---
 
