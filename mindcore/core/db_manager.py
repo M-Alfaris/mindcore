@@ -2,6 +2,7 @@
 Database manager for PostgreSQL persistence.
 """
 import json
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
@@ -17,6 +18,41 @@ logger = get_logger(__name__)
 class DatabaseConnectionError(Exception):
     """Raised when database connection fails."""
     pass
+
+
+def _normalize_datetime(dt: Any) -> Optional[datetime]:
+    """
+    Normalize datetime to be timezone-aware (UTC).
+
+    PostgreSQL returns naive datetimes, but Mindcore creates messages with
+    timezone-aware datetimes. This function ensures consistency by converting
+    all datetimes to UTC-aware.
+
+    Args:
+        dt: A datetime object (naive or aware), string, or None.
+
+    Returns:
+        Timezone-aware datetime in UTC, or None if input is None/invalid.
+    """
+    if dt is None:
+        return None
+
+    # Handle string datetimes
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            return None
+
+    if not isinstance(dt, datetime):
+        return None
+
+    # If naive, assume UTC
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+
+    # Already timezone-aware, convert to UTC
+    return dt.astimezone(timezone.utc)
 
 
 class DatabaseManager:
@@ -129,6 +165,18 @@ class DatabaseManager:
         CREATE INDEX IF NOT EXISTS idx_metadata_topics
             ON messages USING GIN ((metadata->'topics'));
 
+        CREATE INDEX IF NOT EXISTS idx_metadata_categories
+            ON messages USING GIN ((metadata->'categories'));
+
+        CREATE INDEX IF NOT EXISTS idx_metadata_importance
+            ON messages (((metadata->>'importance')::float));
+
+        CREATE INDEX IF NOT EXISTS idx_metadata_intent
+            ON messages ((metadata->>'intent'));
+
+        CREATE INDEX IF NOT EXISTS idx_session
+            ON messages(session_id);
+
         CREATE INDEX IF NOT EXISTS idx_created_at
             ON messages(created_at DESC);
         """
@@ -219,7 +267,7 @@ class DatabaseManager:
                             role=MessageRole(row['role']),
                             raw_text=row['raw_text'],
                             metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=row['created_at']
+                            created_at=_normalize_datetime(row['created_at'])
                         )
                         messages.append(message)
 
@@ -273,13 +321,147 @@ class DatabaseManager:
                             role=MessageRole(row['role']),
                             raw_text=row['raw_text'],
                             metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=row['created_at']
+                            created_at=_normalize_datetime(row['created_at'])
                         )
                         messages.append(message)
 
                     return messages
         except Exception as e:
             logger.error(f"Failed to search messages by topic: {e}")
+            return []
+
+    def search_by_relevance(
+        self,
+        user_id: str,
+        topics: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        intent: Optional[str] = None,
+        min_importance: float = 0.0,
+        thread_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Message]:
+        """
+        Search messages by relevance using metadata matching and scoring.
+
+        Uses GIN indexes for fast topic/category matching. Scores results by:
+        - Topic overlap (3x weight)
+        - Category match (2x weight)
+        - Intent match (1.5x weight)
+        - Importance score (1x weight)
+        - Recency (0.5x weight)
+
+        Args:
+            user_id: User identifier.
+            topics: List of topics to match (uses GIN index).
+            categories: List of categories to match (uses GIN index).
+            intent: Intent to match (exact match).
+            min_importance: Minimum importance score (0.0-1.0).
+            thread_id: Optional thread filter.
+            session_id: Optional session filter.
+            limit: Maximum number of messages.
+
+        Returns:
+            List of Message objects sorted by relevance score.
+        """
+        # Build dynamic query with relevance scoring
+        conditions = ["user_id = %s"]
+        params: List[Any] = [user_id]
+
+        # Optional filters
+        if thread_id:
+            conditions.append("thread_id = %s")
+            params.append(thread_id)
+
+        if session_id:
+            conditions.append("session_id = %s")
+            params.append(session_id)
+
+        # Importance filter
+        if min_importance > 0:
+            conditions.append("COALESCE((metadata->>'importance')::float, 0.5) >= %s")
+            params.append(min_importance)
+
+        # Build relevance score calculation
+        score_parts = []
+
+        # Topic matching score (3x weight)
+        if topics:
+            conditions.append("metadata->'topics' ?| %s")
+            params.append(topics)
+            # Count matching topics
+            score_parts.append(f"""
+                (SELECT COUNT(*) FROM jsonb_array_elements_text(COALESCE(metadata->'topics', '[]'::jsonb)) t
+                 WHERE t = ANY(%s)) * 3.0
+            """)
+            params.append(topics)
+
+        # Category matching score (2x weight)
+        if categories:
+            conditions.append("metadata->'categories' ?| %s")
+            params.append(categories)
+            score_parts.append(f"""
+                (SELECT COUNT(*) FROM jsonb_array_elements_text(COALESCE(metadata->'categories', '[]'::jsonb)) c
+                 WHERE c = ANY(%s)) * 2.0
+            """)
+            params.append(categories)
+
+        # Intent matching score (1.5x weight)
+        if intent:
+            score_parts.append(f"""
+                CASE WHEN metadata->>'intent' = %s THEN 1.5 ELSE 0 END
+            """)
+            params.append(intent)
+
+        # Importance score (1x weight)
+        score_parts.append("COALESCE((metadata->>'importance')::float, 0.5)")
+
+        # Recency score (0.5x weight, normalized to 0-1 based on last 7 days)
+        score_parts.append("""
+            LEAST(1.0, EXTRACT(EPOCH FROM (NOW() - created_at)) / 604800) * -0.5 + 0.5
+        """)
+
+        # Combine scores
+        if score_parts:
+            relevance_score = " + ".join(score_parts)
+        else:
+            relevance_score = "1.0"
+
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
+
+        search_sql = f"""
+        SELECT *, ({relevance_score}) as relevance_score
+        FROM messages
+        WHERE {where_clause}
+        ORDER BY relevance_score DESC, created_at DESC
+        LIMIT %s;
+        """
+
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute(search_sql, params)
+                    rows = cursor.fetchall()
+
+                    messages = []
+                    for row in rows:
+                        message = Message(
+                            message_id=row['message_id'],
+                            user_id=row['user_id'],
+                            thread_id=row['thread_id'],
+                            session_id=row['session_id'],
+                            role=MessageRole(row['role']),
+                            raw_text=row['raw_text'],
+                            metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
+                            created_at=_normalize_datetime(row['created_at'])
+                        )
+                        messages.append(message)
+
+                    logger.debug(f"Found {len(messages)} relevant messages for user {user_id}")
+                    return messages
+        except Exception as e:
+            logger.error(f"Failed to search by relevance: {e}")
             return []
 
     def get_message_by_id(self, message_id: str) -> Optional[Message]:
@@ -309,7 +491,7 @@ class DatabaseManager:
                             role=MessageRole(row['role']),
                             raw_text=row['raw_text'],
                             metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=row['created_at']
+                            created_at=_normalize_datetime(row['created_at'])
                         )
                     return None
         except Exception as e:

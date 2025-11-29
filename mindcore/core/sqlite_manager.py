@@ -9,6 +9,7 @@ Provides a lightweight alternative to PostgreSQL for:
 import json
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,6 +18,46 @@ from .schemas import Message, MessageMetadata, MessageRole
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _normalize_datetime(dt: Any) -> Optional[datetime]:
+    """
+    Normalize datetime to be timezone-aware (UTC).
+
+    SQLite stores timestamps as text (ISO format strings), so this function
+    handles both string parsing and timezone normalization.
+
+    Args:
+        dt: A datetime object (naive or aware), ISO string, or None.
+
+    Returns:
+        Timezone-aware datetime in UTC, or None if input is None/invalid.
+    """
+    if dt is None:
+        return None
+
+    # Handle string datetimes (SQLite stores as text)
+    if isinstance(dt, str):
+        try:
+            # Handle various ISO formats
+            dt_str = dt.replace('Z', '+00:00')
+            # Handle SQLite's default format (no timezone)
+            if '+' not in dt_str and 'T' in dt_str:
+                dt = datetime.fromisoformat(dt_str)
+            else:
+                dt = datetime.fromisoformat(dt_str)
+        except (ValueError, AttributeError):
+            return None
+
+    if not isinstance(dt, datetime):
+        return None
+
+    # If naive, assume UTC
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+
+    # Already timezone-aware, convert to UTC
+    return dt.astimezone(timezone.utc)
 
 
 class SQLiteManager:
@@ -195,7 +236,7 @@ class SQLiteManager:
                         role=MessageRole(row['role']),
                         raw_text=row['raw_text'],
                         metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=row['created_at']
+                        created_at=_normalize_datetime(row['created_at'])
                     )
                     messages.append(message)
 
@@ -256,13 +297,140 @@ class SQLiteManager:
                         role=MessageRole(row['role']),
                         raw_text=row['raw_text'],
                         metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=row['created_at']
+                        created_at=_normalize_datetime(row['created_at'])
                     )
                     messages.append(message)
 
                 return messages
         except Exception as e:
             logger.error(f"Failed to search messages by topic: {e}")
+            return []
+
+    def search_by_relevance(
+        self,
+        user_id: str,
+        topics: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        intent: Optional[str] = None,
+        min_importance: float = 0.0,
+        thread_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Message]:
+        """
+        Search messages by relevance using metadata matching and scoring.
+
+        SQLite version uses JSON functions for matching. Scores results by:
+        - Topic overlap (3x weight)
+        - Category match (2x weight)
+        - Intent match (1.5x weight)
+        - Importance score (1x weight)
+        - Recency (0.5x weight)
+
+        Args:
+            user_id: User identifier.
+            topics: List of topics to match.
+            categories: List of categories to match.
+            intent: Intent to match (exact match).
+            min_importance: Minimum importance score (0.0-1.0).
+            thread_id: Optional thread filter.
+            session_id: Optional session filter.
+            limit: Maximum number of messages.
+
+        Returns:
+            List of Message objects sorted by relevance score.
+        """
+        # Fetch all matching messages and score in Python (SQLite JSON support is limited)
+        conditions = ["user_id = ?"]
+        params: List[Any] = [user_id]
+
+        if thread_id:
+            conditions.append("thread_id = ?")
+            params.append(thread_id)
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        where_clause = " AND ".join(conditions)
+
+        # Fetch more than limit to allow for scoring/filtering
+        fetch_limit = limit * 5
+        params.append(fetch_limit)
+
+        search_sql = f"""
+        SELECT * FROM messages
+        WHERE {where_clause}
+        ORDER BY created_at DESC
+        LIMIT ?
+        """
+
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute(search_sql, params)
+                rows = cursor.fetchall()
+
+                scored_messages = []
+                now = datetime.now(timezone.utc)
+
+                for row in rows:
+                    metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+
+                    # Calculate relevance score
+                    score = 0.0
+
+                    # Topic matching (3x weight)
+                    if topics:
+                        msg_topics = metadata_dict.get('topics', [])
+                        topic_matches = len(set(topics) & set(msg_topics))
+                        if topic_matches == 0:
+                            continue  # Skip if no topic match when topics are specified
+                        score += topic_matches * 3.0
+
+                    # Category matching (2x weight)
+                    if categories:
+                        msg_categories = metadata_dict.get('categories', [])
+                        category_matches = len(set(categories) & set(msg_categories))
+                        score += category_matches * 2.0
+
+                    # Intent matching (1.5x weight)
+                    if intent and metadata_dict.get('intent') == intent:
+                        score += 1.5
+
+                    # Importance score (1x weight)
+                    importance = metadata_dict.get('importance', 0.5)
+                    if importance < min_importance:
+                        continue  # Skip if below importance threshold
+                    score += importance
+
+                    # Recency score (0.5x weight)
+                    created_at = _normalize_datetime(row['created_at'])
+                    if created_at:
+                        age_seconds = (now - created_at).total_seconds()
+                        recency = max(0, 1 - (age_seconds / 604800))  # 7 days
+                        score += recency * 0.5
+
+                    message = Message(
+                        message_id=row['message_id'],
+                        user_id=row['user_id'],
+                        thread_id=row['thread_id'],
+                        session_id=row['session_id'],
+                        role=MessageRole(row['role']),
+                        raw_text=row['raw_text'],
+                        metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
+                        created_at=created_at
+                    )
+                    scored_messages.append((score, message))
+
+                # Sort by score descending and return top results
+                scored_messages.sort(key=lambda x: x[0], reverse=True)
+                messages = [msg for _, msg in scored_messages[:limit]]
+
+                logger.debug(f"Found {len(messages)} relevant messages for user {user_id}")
+                return messages
+
+        except Exception as e:
+            logger.error(f"Failed to search by relevance: {e}")
             return []
 
     def get_message_by_id(self, message_id: str) -> Optional[Message]:
@@ -292,7 +460,7 @@ class SQLiteManager:
                         role=MessageRole(row['role']),
                         raw_text=row['raw_text'],
                         metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=row['created_at']
+                        created_at=_normalize_datetime(row['created_at'])
                     )
                 return None
         except Exception as e:

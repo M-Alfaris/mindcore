@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from .routes import ingest_router, context_router
+from .routes import ingest_router, context_router, dashboard_router
 from ..utils.logger import get_logger
 from ..utils.security import get_rate_limiter, RateLimiter
 
@@ -81,6 +81,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
     # Include routers
     app.include_router(ingest_router)
     app.include_router(context_router)
+    app.include_router(dashboard_router)
 
     # Root endpoint
     @app.get("/")
@@ -94,7 +95,8 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
                 "docs": "/docs",
                 "ingest": "/ingest",
                 "context": "/context",
-                "health": "/health"
+                "health": "/health",
+                "dashboard": "/api/dashboard"
             }
         }
 

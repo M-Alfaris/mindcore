@@ -48,10 +48,29 @@ class CacheManager:
         return (user_id, thread_id)
 
     def _get_timestamp(self, message: Message) -> datetime:
-        """Get timestamp for message, using current time if not set."""
-        if message.created_at:
-            return message.created_at
-        return datetime.now(timezone.utc)
+        """
+        Get normalized timestamp for message, using current time if not set.
+
+        Ensures all timestamps are timezone-aware (UTC) to avoid comparison errors
+        between offset-naive and offset-aware datetimes.
+        """
+        if message.created_at is None:
+            return datetime.now(timezone.utc)
+
+        dt = message.created_at
+
+        # Handle string datetimes
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                return datetime.now(timezone.utc)
+
+        # Ensure timezone-aware (assume UTC if naive)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+
+        return dt
 
     def _create_thread_cache(self) -> Any:
         """Create a new cache for a thread."""
@@ -86,9 +105,9 @@ class CacheManager:
             # Remove old entry if message already exists
             order = [(ts, mid) for ts, mid in order if mid != message.message_id]
 
-            # Add new entry and sort
+            # Add new entry and sort (use timestamp() for safe comparison)
             order.append((timestamp, message.message_id))
-            order.sort(key=lambda x: x[0])
+            order.sort(key=lambda x: x[0].timestamp() if hasattr(x[0], 'timestamp') else 0)
 
             # Trim order list to max_size (in case of edge cases)
             if len(order) > self.max_size * 2:
@@ -163,6 +182,67 @@ class CacheManager:
             self._thread_caches.clear()
             self._order.clear()
             logger.info("Cleared entire cache")
+
+    def get_session_metadata(
+        self,
+        user_id: str,
+        thread_id: str
+    ) -> Dict[str, Any]:
+        """
+        Aggregate metadata from all cached messages in the current session.
+
+        Returns unique topics, categories, and intents from the session,
+        which can be used to query for similar historical messages.
+
+        Args:
+            user_id: User identifier.
+            thread_id: Thread identifier.
+
+        Returns:
+            Dict with aggregated metadata:
+            - topics: List of unique topics from session
+            - categories: List of unique categories from session
+            - intents: List of unique intents from session
+            - message_count: Number of messages in cache
+        """
+        with self._lock:
+            key = self._get_key(user_id, thread_id)
+
+            if key not in self._thread_caches:
+                return {
+                    'topics': [],
+                    'categories': [],
+                    'intents': [],
+                    'message_count': 0
+                }
+
+            cache = self._thread_caches[key]
+
+            topics = set()
+            categories = set()
+            intents = set()
+
+            for msg_id in cache:
+                try:
+                    message = cache[msg_id]
+                    if hasattr(message, 'metadata') and message.metadata:
+                        meta = message.metadata
+                        if hasattr(meta, 'topics') and meta.topics:
+                            topics.update(meta.topics)
+                        if hasattr(meta, 'categories') and meta.categories:
+                            categories.update(meta.categories)
+                        if hasattr(meta, 'intent') and meta.intent:
+                            intents.add(meta.intent)
+                except KeyError:
+                    # Message was evicted
+                    pass
+
+            return {
+                'topics': list(topics),
+                'categories': list(categories),
+                'intents': list(intents),
+                'message_count': len(cache)
+            }
 
     def get_stats(self) -> Dict[str, Any]:
         """

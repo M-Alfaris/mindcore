@@ -13,7 +13,7 @@
 
 **Now with local LLM support via llama.cpp — run completely offline with zero API costs!**
 
-[Quick Start](#-quick-start) • [Features](#-features) • [Local LLM Setup](#-local-llm-setup) • [Documentation](#-documentation) • [CLI](#-cli-commands)
+[Quick Start](#-quick-start) • [Features](#-features) • [Dashboard](#-web-dashboard) • [Async Support](#-async-support) • [Local LLM Setup](#-local-llm-setup) • [CLI](#-cli-commands)
 
 ---
 
@@ -176,6 +176,17 @@ Two specialized agents powered by local or cloud LLMs:
 
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+
+### ⚡ Async Support (NEW!)
+- **AsyncMindcoreClient** — Non-blocking operations
+- **aiosqlite** — Async SQLite for high concurrency
+- **asyncpg** — Async PostgreSQL with connection pooling
+- Perfect for FastAPI and async applications
+
+</td>
+</tr>
 </table>
 
 ---
@@ -236,6 +247,113 @@ User message 1 + 2 + ... + 200 → LLM  (50,000+ tokens!)
 1. **Enrich Once** — When a message arrives, MetadataAgent extracts metadata (topics, intent, sentiment, importance) using a lightweight LLM
 2. **Retrieve Smart** — When context is needed, ContextAgent uses metadata to find and summarize only relevant messages
 3. **Send Less** — Your main LLM receives a compressed ~1,500 token context instead of 50,000+
+
+---
+
+## ⚡ Async Support
+
+For high-performance applications using asyncio, FastAPI, or other async frameworks.
+
+### Installation
+
+```bash
+pip install mindcore[async]
+# Or for everything:
+pip install mindcore[all]
+```
+
+### Basic Usage
+
+```python
+import asyncio
+from mindcore import get_async_client
+
+async def main():
+    # Get the async client class
+    AsyncMindcoreClient = get_async_client()
+
+    # Use as context manager (recommended)
+    async with AsyncMindcoreClient(use_sqlite=True) as client:
+        # Ingest message (async)
+        message = await client.ingest_message({
+            "user_id": "user_123",
+            "thread_id": "thread_456",
+            "session_id": "session_789",
+            "role": "user",
+            "text": "What are best practices for async Python?"
+        })
+
+        print(f"Ingested: {message.message_id}")
+        print(f"Topics: {message.metadata.topics}")
+
+        # Get context (async)
+        context = await client.get_context(
+            user_id="user_123",
+            thread_id="thread_456",
+            query="async programming"
+        )
+
+        print(f"Context: {context.assembled_context}")
+
+asyncio.run(main())
+```
+
+### FastAPI Integration
+
+```python
+from fastapi import FastAPI, Depends
+from contextlib import asynccontextmanager
+from mindcore import get_async_client
+
+# Global client instance
+mindcore_client = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: initialize client
+    global mindcore_client
+    AsyncMindcoreClient = get_async_client()
+    mindcore_client = AsyncMindcoreClient(use_sqlite=True)
+    await mindcore_client.connect()
+    yield
+    # Shutdown: cleanup
+    await mindcore_client.close()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/chat")
+async def chat(user_id: str, thread_id: str, message: str):
+    # Ingest the user message
+    msg = await mindcore_client.ingest_message({
+        "user_id": user_id,
+        "thread_id": thread_id,
+        "session_id": "web",
+        "role": "user",
+        "text": message
+    })
+
+    # Get context for generating response
+    context = await mindcore_client.get_context(
+        user_id=user_id,
+        thread_id=thread_id,
+        query=message
+    )
+
+    return {
+        "message_id": msg.message_id,
+        "context": context.assembled_context,
+        "key_points": context.key_points
+    }
+```
+
+### Async vs Sync Comparison
+
+| Feature | MindcoreClient | AsyncMindcoreClient |
+|---------|----------------|---------------------|
+| Database | psycopg2 / sqlite3 | asyncpg / aiosqlite |
+| Concurrency | Thread-based | Event loop |
+| Best for | Scripts, CLI apps | Web servers, high concurrency |
+| FastAPI | Works (blocking) | Native async |
 
 ---
 
@@ -510,6 +628,46 @@ curl http://localhost:8000/health
 
 ---
 
+## 🎨 Web Dashboard
+
+Mindcore includes a modern web dashboard for monitoring and configuration.
+
+### Quick Start
+
+```bash
+# Start the API server
+python -m mindcore.api.server
+
+# In another terminal, start the dashboard
+cd dashboard
+npm install
+npm run dev
+```
+
+Open http://localhost:3000 to access the dashboard.
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Overview** | Stats cards, message trends, role distribution charts |
+| **Messages** | Browse, search, filter, and delete messages |
+| **Threads** | View conversation threads and their messages |
+| **Logs** | Real-time system logs with level filtering |
+| **Configuration** | Configure LLM models, memory settings, cache |
+| **Models** | Visual model selector for cloud and local models |
+
+### Screenshots
+
+The dashboard features a modern light blue-purple theme with:
+- Card-based UI with subtle shadows
+- Chart.js visualizations
+- Ant Design Vue 4.1.2 components
+- Real-time log updates
+- Responsive design
+
+---
+
 ## 🔧 CLI Commands
 
 Mindcore includes a CLI for model management and status checking.
@@ -630,22 +788,24 @@ pytest tests/test_client.py -v
 ```
 mindcore/
 ├── __init__.py              # Main client & public API
+├── async_client.py          # AsyncMindcoreClient for async/await
 ├── config.yaml              # Default configuration
 │
 ├── core/                    # Core functionality
 │   ├── config_loader.py     # Configuration management
 │   ├── db_manager.py        # PostgreSQL operations
 │   ├── sqlite_manager.py    # SQLite operations (local dev)
+│   ├── async_db.py          # Async database managers (aiosqlite, asyncpg)
 │   ├── cache_manager.py     # In-memory caching
 │   └── schemas.py           # Data models (Message, Context, etc.)
 │
-├── llm/                     # LLM Provider Layer (NEW!)
+├── llm/                     # LLM Provider Layer
 │   ├── base_provider.py     # Abstract base class
 │   ├── llama_cpp_provider.py # Local llama.cpp inference
 │   ├── openai_provider.py   # OpenAI/compatible APIs
 │   └── provider_factory.py  # Factory with fallback support
 │
-├── cli/                     # Command-line Interface (NEW!)
+├── cli/                     # Command-line Interface
 │   ├── main.py              # CLI commands
 │   └── models.py            # Model registry
 │
@@ -660,11 +820,20 @@ mindcore/
 │
 ├── api/                     # REST API
 │   ├── server.py            # FastAPI application
-│   └── routes/              # API endpoints
+│   └── routes/              # API endpoints (including dashboard)
 │
 └── utils/                   # Utilities
     ├── security.py          # Validation & rate limiting (limits library)
     └── logger.py            # Structured logging (structlog)
+
+dashboard/                   # Web Dashboard (Vue 3 + Ant Design)
+├── src/
+│   ├── views/               # Page components (Overview, Messages, etc.)
+│   ├── components/          # Reusable UI components
+│   ├── stores/              # Pinia state management
+│   └── api/                 # API client
+├── package.json             # npm dependencies
+└── vite.config.js           # Vite configuration
 ```
 
 ---
@@ -716,6 +885,8 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 - **cachetools** — Battle-tested caching with TTL/LRU
 - **limits** — Redis-ready rate limiting
 - **structlog** — Structured logging for cloud deployments
+- **aiosqlite** — Async SQLite for high concurrency
+- **asyncpg** — High-performance async PostgreSQL
 
 ---
 

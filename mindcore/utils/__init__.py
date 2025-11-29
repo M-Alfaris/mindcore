@@ -7,6 +7,7 @@ from .tokenizer import (
     estimate_tokens,
     truncate_text,
     extract_keywords,
+    extract_query_hints,
 )
 from .helper import (
     generate_message_id,
@@ -24,6 +25,16 @@ from .security import (
     SecurityAuditor,
     get_rate_limiter,
 )
+from .metrics import (
+    PerformanceTimer,
+    timed,
+    measure_time,
+    record_llm_call,
+    record_tool_call,
+    record_enrichment,
+    record_retrieval,
+    set_metrics_callback,
+)
 
 __all__ = [
     "get_logger",
@@ -32,6 +43,7 @@ __all__ = [
     "estimate_tokens",
     "truncate_text",
     "extract_keywords",
+    "extract_query_hints",
     "generate_message_id",
     "generate_session_id",
     "generate_thread_id",
@@ -44,4 +56,13 @@ __all__ = [
     "RateLimiter",
     "SecurityAuditor",
     "get_rate_limiter",
+    # Metrics
+    "PerformanceTimer",
+    "timed",
+    "measure_time",
+    "record_llm_call",
+    "record_tool_call",
+    "record_enrichment",
+    "record_retrieval",
+    "set_metrics_callback",
 ]

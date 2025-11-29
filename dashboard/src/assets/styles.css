@@ -1,0 +1,530 @@
+/* Mindcore Dashboard - Light Blue-Purple Theme */
+:root {
+  --primary-color: #7C6EE4;
+  --primary-light: #9D91ED;
+  --primary-dark: #5B4FCF;
+  --primary-bg: #F0EEFF;
+  --secondary-color: #6B8DD6;
+  --success-color: #52c41a;
+  --warning-color: #faad14;
+  --error-color: #ff4d4f;
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b7280;
+  --bg-color: #f8f9fc;
+  --card-bg: #ffffff;
+  --border-color: #e8e8f0;
+  --shadow: 0 2px 8px rgba(124, 110, 228, 0.08);
+  --shadow-hover: 0 4px 16px rgba(124, 110, 228, 0.15);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* Layout */
+.app-layout {
+  min-height: 100vh;
+}
+
+.app-sider {
+  background: linear-gradient(180deg, var(--primary-color) 0%, var(--primary-dark) 100%) !important;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+}
+
+.app-sider .ant-menu {
+  background: transparent !important;
+  border: none;
+}
+
+.app-sider .ant-menu-item {
+  color: rgba(255, 255, 255, 0.85) !important;
+  margin: 4px 8px !important;
+  border-radius: 8px !important;
+}
+
+.app-sider .ant-menu-item:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+}
+
+.app-sider .ant-menu-item-selected {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.app-sider .ant-menu-item .anticon {
+  font-size: 18px;
+}
+
+.logo-container {
+  padding: 20px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 8px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  background: #fff;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.app-header {
+  background: var(--card-bg) !important;
+  padding: 0 24px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow);
+  height: 64px !important;
+  line-height: 64px !important;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-content {
+  margin: 24px;
+  min-height: calc(100vh - 112px);
+}
+
+/* Cards */
+.dashboard-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s ease;
+}
+
+.dashboard-card:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.dashboard-card .ant-card-head {
+  border-bottom: 1px solid var(--border-color);
+  padding: 16px 20px;
+}
+
+.dashboard-card .ant-card-head-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dashboard-card .ant-card-body {
+  padding: 20px;
+}
+
+/* Stat Cards */
+.stat-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--primary-color);
+  border-radius: 4px 0 0 4px;
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.stat-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+.stat-card-icon.primary {
+  background: var(--primary-bg);
+  color: var(--primary-color);
+}
+
+.stat-card-icon.success {
+  background: #f6ffed;
+  color: var(--success-color);
+}
+
+.stat-card-icon.warning {
+  background: #fffbe6;
+  color: var(--warning-color);
+}
+
+.stat-card-icon.info {
+  background: #e6f7ff;
+  color: var(--secondary-color);
+}
+
+.stat-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.stat-card-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* Tables */
+.ant-table {
+  background: var(--card-bg);
+  border-radius: 12px;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--primary-bg) !important;
+  color: var(--primary-dark) !important;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: var(--primary-bg) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Tags */
+.role-tag {
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 2px 10px;
+}
+
+.role-tag.user {
+  background: #e6f7ff;
+  color: #1890ff;
+  border-color: #91d5ff;
+}
+
+.role-tag.assistant {
+  background: var(--primary-bg);
+  color: var(--primary-color);
+  border-color: var(--primary-light);
+}
+
+.role-tag.system {
+  background: #fff7e6;
+  color: #fa8c16;
+  border-color: #ffd591;
+}
+
+.role-tag.tool {
+  background: #f6ffed;
+  color: #52c41a;
+  border-color: #b7eb8f;
+}
+
+/* Log levels */
+.log-level {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.log-level.info {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.log-level.warning {
+  background: #fffbe6;
+  color: #faad14;
+}
+
+.log-level.error {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+.log-level.debug {
+  background: #f9f0ff;
+  color: #722ed1;
+}
+
+/* Forms */
+.ant-input,
+.ant-select-selector,
+.ant-picker {
+  border-radius: 8px !important;
+  border-color: var(--border-color) !important;
+}
+
+.ant-input:focus,
+.ant-input:hover,
+.ant-select-selector:hover,
+.ant-select-focused .ant-select-selector {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(124, 110, 228, 0.1) !important;
+}
+
+/* Buttons */
+.ant-btn-primary {
+  background: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(124, 110, 228, 0.3);
+  color: #fff !important;
+}
+
+.ant-btn-primary:hover,
+.ant-btn-primary:focus {
+  background: var(--primary-dark) !important;
+  border-color: var(--primary-dark) !important;
+  color: #fff !important;
+}
+
+.ant-btn-primary.ant-btn-dangerous {
+  background: var(--error-color) !important;
+  border-color: var(--error-color) !important;
+  color: #fff !important;
+}
+
+.ant-btn-primary.ant-btn-dangerous:hover,
+.ant-btn-primary.ant-btn-dangerous:focus {
+  background: #ff7875 !important;
+  border-color: #ff7875 !important;
+  color: #fff !important;
+}
+
+.ant-btn-default {
+  border-radius: 8px;
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.ant-btn-default:hover,
+.ant-btn-default:focus {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.ant-btn-dashed {
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+
+.ant-btn-dashed:hover,
+.ant-btn-dashed:focus {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* Slider */
+.ant-slider-track {
+  background: var(--primary-color) !important;
+}
+
+.ant-slider-handle {
+  border-color: var(--primary-color) !important;
+}
+
+.ant-slider-handle:hover,
+.ant-slider-handle:focus {
+  border-color: var(--primary-dark) !important;
+  box-shadow: 0 0 0 5px rgba(124, 110, 228, 0.2);
+}
+
+/* Switch */
+.ant-switch-checked {
+  background: var(--primary-color) !important;
+}
+
+/* Model Cards */
+.model-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.model-card:hover {
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-hover);
+}
+
+.model-card.selected {
+  border-color: var(--primary-color);
+  background: var(--primary-bg);
+}
+
+.model-card-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+
+.model-card-icon.cloud {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.model-card-icon.local {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: #fff;
+}
+
+.model-card-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.model-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Charts */
+.chart-container {
+  position: relative;
+  height: 300px;
+}
+
+/* Pagination */
+.ant-pagination-item-active {
+  border-color: var(--primary-color) !important;
+}
+
+.ant-pagination-item-active a {
+  color: var(--primary-color) !important;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-state-icon {
+  font-size: 64px;
+  color: var(--primary-light);
+  margin-bottom: 16px;
+}
+
+.empty-state-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.empty-state-desc {
+  color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app-content {
+    margin: 16px;
+  }
+
+  .stat-card-value {
+    font-size: 24px;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+}
