@@ -467,6 +467,47 @@ class SQLiteManager:
             logger.error(f"Failed to get message by ID: {e}")
             return None
 
+    def update_message_metadata(
+        self,
+        message_id: str,
+        metadata: MessageMetadata
+    ) -> bool:
+        """
+        Update the metadata of an existing message.
+
+        Used by background enrichment to update messages that were
+        initially stored with empty metadata.
+
+        Args:
+            message_id: Message identifier.
+            metadata: New metadata to store.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        update_sql = """
+        UPDATE messages SET metadata = ? WHERE message_id = ?
+        """
+
+        try:
+            with self.get_connection() as conn:
+                metadata_json = json.dumps(
+                    metadata.to_dict() if isinstance(metadata, MessageMetadata)
+                    else metadata
+                )
+                cursor = conn.execute(update_sql, (metadata_json, message_id))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    logger.debug(f"Updated metadata for message {message_id}")
+                    return True
+                else:
+                    logger.warning(f"Message {message_id} not found for metadata update")
+                    return False
+        except Exception as e:
+            logger.error(f"Failed to update message metadata: {e}")
+            return False
+
     def close(self) -> None:
         """Close database connection."""
         if hasattr(self._local, 'connection') and self._local.connection:

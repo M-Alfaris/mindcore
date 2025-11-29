@@ -7,7 +7,6 @@ from .tokenizer import (
     estimate_tokens,
     truncate_text,
     extract_keywords,
-    extract_query_hints,
 )
 from .helper import (
     generate_message_id,
@@ -43,7 +42,6 @@ __all__ = [
     "estimate_tokens",
     "truncate_text",
     "extract_keywords",
-    "extract_query_hints",
     "generate_message_id",
     "generate_session_id",
     "generate_thread_id",

@@ -117,6 +117,35 @@ class CacheManager:
 
             logger.debug(f"Added message {message.message_id} to cache")
 
+    def update_message(self, message: Message) -> bool:
+        """
+        Update an existing message in cache.
+
+        Used by background enrichment to update messages with new metadata
+        after enrichment completes.
+
+        Args:
+            message: Message object with updated data.
+
+        Returns:
+            True if message was in cache and updated, False otherwise.
+        """
+        with self._lock:
+            key = self._get_key(message.user_id, message.thread_id)
+
+            if key not in self._thread_caches:
+                return False
+
+            cache = self._thread_caches[key]
+
+            if message.message_id not in cache:
+                return False
+
+            # Update message in cache (preserves order)
+            cache[message.message_id] = message
+            logger.debug(f"Updated message {message.message_id} in cache")
+            return True
+
     def get_recent_messages(
         self,
         user_id: str,

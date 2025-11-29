@@ -25,14 +25,18 @@ Usage:
     asyncio.run(main())
 """
 from typing import Optional, Dict, Any, List
+import asyncio
 
 from .core import (
     ConfigLoader,
     CacheManager,
+    DiskCacheManager,
     Message,
     MessageMetadata,
     AssembledContext,
+    MessageRole,
 )
+from .utils import generate_message_id
 from .core.async_db import AsyncSQLiteManager, AsyncDatabaseManager
 from .agents import (
     EnrichmentAgent as MetadataAgent,
@@ -70,7 +74,9 @@ class AsyncMindcoreClient:
         config_path: Optional[str] = None,
         use_sqlite: bool = False,
         sqlite_path: str = "mindcore.db",
-        llm_provider: Optional[str] = None
+        llm_provider: Optional[str] = None,
+        persistent_cache: bool = True,
+        cache_dir: Optional[str] = None
     ):
         """
         Initialize async Mindcore client.
@@ -83,11 +89,16 @@ class AsyncMindcoreClient:
             use_sqlite: If True, use SQLite instead of PostgreSQL.
             sqlite_path: Path to SQLite database file.
             llm_provider: LLM provider mode ("auto", "llama_cpp", "openai").
+            persistent_cache: If True (default), use disk-backed cache that
+                survives restarts. If False, use in-memory cache.
+            cache_dir: Optional directory for persistent cache files.
         """
         self.config = ConfigLoader(config_path)
         self._use_sqlite = use_sqlite
         self._sqlite_path = sqlite_path
         self._llm_provider_type = llm_provider
+        self._persistent_cache = persistent_cache
+        self._cache_dir = cache_dir
         self._connected = False
 
         # Will be initialized on connect
@@ -127,12 +138,21 @@ class AsyncMindcoreClient:
             self.db = AsyncDatabaseManager(db_config)
             await self.db.connect()
 
-        # Initialize cache (sync - uses thread-safe in-memory cache)
+        # Initialize cache (persistent or in-memory)
         cache_config = self.config.get_cache_config()
-        self.cache = CacheManager(
-            max_size=cache_config.get('max_size', 50),
-            ttl_seconds=cache_config.get('ttl')
-        )
+        if self._persistent_cache:
+            self.cache = DiskCacheManager(
+                max_size=cache_config.get('max_size', 50),
+                ttl_seconds=cache_config.get('ttl'),
+                cache_dir=self._cache_dir
+            )
+            logger.info("Using persistent disk-backed cache (diskcache)")
+        else:
+            self.cache = CacheManager(
+                max_size=cache_config.get('max_size', 50),
+                ttl_seconds=cache_config.get('ttl')
+            )
+            logger.info("Using in-memory cache (cachetools)")
 
         # Initialize LLM provider
         self._llm_provider = self._create_llm_provider(self._llm_provider_type)
@@ -153,6 +173,10 @@ class AsyncMindcoreClient:
             temperature=defaults.get('temperature', 0.3),
             max_tokens=defaults.get('max_tokens_context', 1500)
         )
+
+        # Background enrichment queue
+        self._enrichment_queue: asyncio.Queue = asyncio.Queue()
+        self._enrichment_task: Optional[asyncio.Task] = None
 
         self._connected = True
         db_type = "SQLite" if self._use_sqlite else "PostgreSQL"
@@ -252,6 +276,152 @@ class AsyncMindcoreClient:
         logger.info(f"Message {message.message_id} ingested successfully (async)")
         return message
 
+    async def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
+        """
+        Ingest a message immediately without blocking on enrichment.
+
+        The message is stored immediately with empty metadata, cached for the
+        current session, and queued for background enrichment. This is ideal
+        for real-time applications where response latency is critical.
+
+        Enrichment happens asynchronously:
+        1. Message stored with empty metadata (~0ms delay)
+        2. Message added to cache (available for current session context)
+        3. Background task enriches and updates database
+
+        Args:
+            message_dict: Dictionary containing:
+                - user_id (str): User identifier
+                - thread_id (str): Thread identifier
+                - session_id (str): Session identifier
+                - role (str): Message role (user, assistant, system, tool)
+                - text (str): Message content
+                - message_id (str, optional): Auto-generated if not provided
+
+        Returns:
+            Message: Message object with empty metadata (will be enriched in background).
+
+        Raises:
+            ValueError: If validation fails.
+            RuntimeError: If client not connected.
+        """
+        if not self._connected:
+            raise RuntimeError("Client not connected. Use 'async with' or call connect() first.")
+
+        # Validate message
+        is_valid, error_msg = SecurityValidator.validate_message_dict(message_dict)
+        if not is_valid:
+            logger.error(f"Message validation failed: {error_msg}")
+            raise ValueError(f"Invalid message: {error_msg}")
+
+        # Create message with empty metadata (no LLM call)
+        message = Message(
+            message_id=message_dict.get('message_id') or generate_message_id(),
+            user_id=message_dict['user_id'],
+            thread_id=message_dict['thread_id'],
+            session_id=message_dict['session_id'],
+            role=MessageRole(message_dict['role']),
+            raw_text=message_dict['text'],
+            metadata=MessageMetadata(),  # Empty metadata
+        )
+
+        # Store in database immediately (async)
+        success = await self.db.insert_message(message)
+        if not success:
+            logger.warning(f"Failed to store message {message.message_id} in database")
+
+        # Add to cache for immediate session context (sync - thread-safe)
+        self.cache.add_message(message)
+
+        # Queue for background enrichment with ALL IDs preserved
+        enrichment_task = {
+            'message_id': message.message_id,
+            'user_id': message.user_id,
+            'thread_id': message.thread_id,
+            'session_id': message.session_id,
+            'role': message.role.value,
+            'text': message.raw_text,
+        }
+        await self._enrichment_queue.put(enrichment_task)
+
+        # Start enrichment worker if not running
+        if self._enrichment_task is None or self._enrichment_task.done():
+            self._enrichment_task = asyncio.create_task(self._enrichment_worker())
+
+        logger.info(f"Message {message.message_id} ingested fast (enrichment queued, async)")
+        return message
+
+    async def _enrichment_worker(self) -> None:
+        """Background async task that enriches messages from the queue."""
+        logger.info("Async background enrichment worker started")
+
+        while self._connected:
+            try:
+                # Wait for task with timeout (allows graceful shutdown)
+                try:
+                    task = await asyncio.wait_for(
+                        self._enrichment_queue.get(),
+                        timeout=1.0
+                    )
+                except asyncio.TimeoutError:
+                    # Check if queue is empty and we can exit
+                    if self._enrichment_queue.empty():
+                        break
+                    continue
+
+                if task is None:
+                    continue
+
+                message_id = task.get('message_id')
+                if not message_id:
+                    logger.warning("Enrichment worker: task missing message_id")
+                    continue
+
+                # Check if already enriched in database
+                existing = await self.db.get_message_by_id(message_id)
+                if existing and existing.metadata.is_enriched:
+                    logger.debug(f"Message {message_id} already enriched, skipping")
+                    continue
+
+                # Enrich message using task data (all IDs preserved from queue)
+                try:
+                    enriched_message = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda t=task: self.metadata_agent.process({
+                            'message_id': t['message_id'],
+                            'user_id': t['user_id'],
+                            'thread_id': t['thread_id'],
+                            'session_id': t['session_id'],
+                            'role': t['role'],
+                            'text': t['text'],
+                        })
+                    )
+
+                    # Update database with enriched metadata
+                    await self.db.update_message_metadata(
+                        message_id=message_id,
+                        metadata=enriched_message.metadata
+                    )
+
+                    # Update cache with enriched message (preserves all IDs)
+                    self.cache.update_message(enriched_message)
+
+                    logger.debug(f"Background enrichment completed for {message_id} (async)")
+
+                except Exception as e:
+                    logger.error(f"Background enrichment failed for {message_id}: {e}")
+                    # Mark as failed in database
+                    failed_metadata = MessageMetadata(
+                        enrichment_failed=True,
+                        enrichment_error=str(e)
+                    )
+                    await self.db.update_message_metadata(message_id, failed_metadata)
+
+            except Exception as e:
+                logger.error(f"Async enrichment worker error: {e}")
+
+        logger.info("Async background enrichment worker stopped")
+
     async def get_context(
         self,
         user_id: str,
@@ -325,11 +495,24 @@ class AsyncMindcoreClient:
 
     async def close(self) -> None:
         """Close all connections and cleanup resources."""
+        # Stop background enrichment task
+        self._connected = False
+        if hasattr(self, '_enrichment_task') and self._enrichment_task and not self._enrichment_task.done():
+            self._enrichment_task.cancel()
+            try:
+                await self._enrichment_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Background enrichment task cancelled")
+
+        # Close cache (DiskCacheManager needs explicit close)
+        if hasattr(self, 'cache') and self.cache and hasattr(self.cache, 'close'):
+            self.cache.close()
+
         if self._llm_provider:
             self._llm_provider.close()
         if self.db:
             await self.db.close()
-        self._connected = False
         logger.info("Async Mindcore client closed")
 
 

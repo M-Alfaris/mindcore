@@ -226,6 +226,46 @@ class AsyncSQLiteManager:
             logger.error(f"Failed to get message by ID (async): {e}")
             return None
 
+    async def update_message_metadata(
+        self,
+        message_id: str,
+        metadata: MessageMetadata
+    ) -> bool:
+        """
+        Update the metadata of an existing message.
+
+        Used by background enrichment to update messages that were
+        initially stored with empty metadata.
+
+        Args:
+            message_id: Message identifier.
+            metadata: New metadata to store.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        update_sql = """
+        UPDATE messages SET metadata = ? WHERE message_id = ?
+        """
+
+        try:
+            metadata_json = json.dumps(
+                metadata.to_dict() if isinstance(metadata, MessageMetadata)
+                else metadata
+            )
+            cursor = await self._connection.execute(update_sql, (metadata_json, message_id))
+            await self._connection.commit()
+
+            if cursor.rowcount > 0:
+                logger.debug(f"Updated metadata for message {message_id} (async)")
+                return True
+            else:
+                logger.warning(f"Message {message_id} not found for metadata update (async)")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to update message metadata (async): {e}")
+            return False
+
     async def close(self) -> None:
         """Close database connection."""
         if self._connection:
@@ -445,6 +485,47 @@ class AsyncDatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get message by ID (async): {e}")
             return None
+
+    async def update_message_metadata(
+        self,
+        message_id: str,
+        metadata: MessageMetadata
+    ) -> bool:
+        """
+        Update the metadata of an existing message.
+
+        Used by background enrichment to update messages that were
+        initially stored with empty metadata.
+
+        Args:
+            message_id: Message identifier.
+            metadata: New metadata to store.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        update_sql = """
+        UPDATE messages SET metadata = $1 WHERE message_id = $2
+        """
+
+        try:
+            metadata_json = json.dumps(
+                metadata.to_dict() if isinstance(metadata, MessageMetadata)
+                else metadata
+            )
+            async with self._pool.acquire() as conn:
+                result = await conn.execute(update_sql, metadata_json, message_id)
+
+            # asyncpg returns string like "UPDATE 1" or "UPDATE 0"
+            if result and result.endswith("1"):
+                logger.debug(f"Updated metadata for message {message_id} (async)")
+                return True
+            else:
+                logger.warning(f"Message {message_id} not found for metadata update (async)")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to update message metadata (async): {e}")
+            return False
 
     async def close(self) -> None:
         """Close connection pool."""

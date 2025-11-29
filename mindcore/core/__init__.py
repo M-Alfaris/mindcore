@@ -5,6 +5,7 @@ from .config_loader import ConfigLoader
 from .db_manager import DatabaseManager, DatabaseConnectionError
 from .sqlite_manager import SQLiteManager
 from .cache_manager import CacheManager
+from .disk_cache_manager import DiskCacheManager
 from .metrics_manager import MetricsManager
 from .schemas import (
     Message,
@@ -34,6 +35,7 @@ __all__ = [
     "DatabaseConnectionError",
     "SQLiteManager",
     "CacheManager",
+    "DiskCacheManager",
     "MetricsManager",
     "Message",
     "MessageMetadata",

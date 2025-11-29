@@ -45,6 +45,13 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import threading
 import atexit
+import os
+import tempfile
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+
+# Persistent queue (survives crashes/restarts)
+import persistqueue
 
 # Version
 __version__ = "0.2.0"
@@ -57,6 +64,7 @@ from .core import (
     DatabaseManager,
     SQLiteManager,
     CacheManager,
+    DiskCacheManager,
     Message,
     MessageMetadata,
     MessageRole,
@@ -85,7 +93,13 @@ from .llm import (
 )
 
 # Utilities
-from .utils import get_logger, generate_message_id, SecurityValidator, extract_query_hints
+from .utils import get_logger, generate_message_id, SecurityValidator
+
+# Schemas
+from .core.schemas import MessageMetadata
+
+# Retrieval Query Agent (LLM-powered query analysis)
+from .agents import RetrievalQueryAgent, QueryIntent
 
 logger = get_logger(__name__)
 
@@ -154,7 +168,9 @@ class MindcoreClient:
         config_path: Optional[str] = None,
         use_sqlite: bool = False,
         sqlite_path: str = "mindcore.db",
-        llm_provider: Optional[str] = None
+        llm_provider: Optional[str] = None,
+        persistent_cache: bool = True,
+        cache_dir: Optional[str] = None
     ):
         """
         Initialize Mindcore client.
@@ -167,6 +183,9 @@ class MindcoreClient:
                 - "auto" (default): llama.cpp primary, OpenAI fallback
                 - "llama_cpp": Local inference only
                 - "openai": Cloud inference only
+            persistent_cache: If True (default), use disk-backed cache that
+                survives restarts. If False, use in-memory cache.
+            cache_dir: Optional directory for persistent cache files.
 
         Raises:
             ValueError: If no LLM provider can be initialized
@@ -174,6 +193,7 @@ class MindcoreClient:
         Example:
             >>> client = MindcoreClient(use_sqlite=True)
             >>> client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
+            >>> client = MindcoreClient(use_sqlite=True, persistent_cache=True)
         """
         logger.info(f"Initializing Mindcore v{__version__}")
 
@@ -190,12 +210,21 @@ class MindcoreClient:
             self.db = DatabaseManager(db_config)
             self.db.initialize_schema()
 
-        # Initialize cache
+        # Initialize cache (persistent or in-memory)
         cache_config = self.config.get_cache_config()
-        self.cache = CacheManager(
-            max_size=cache_config.get('max_size', 50),
-            ttl_seconds=cache_config.get('ttl')
-        )
+        if persistent_cache:
+            self.cache = DiskCacheManager(
+                max_size=cache_config.get('max_size', 50),
+                ttl_seconds=cache_config.get('ttl'),
+                cache_dir=cache_dir
+            )
+            logger.info("Using persistent disk-backed cache (diskcache)")
+        else:
+            self.cache = CacheManager(
+                max_size=cache_config.get('max_size', 50),
+                ttl_seconds=cache_config.get('ttl')
+            )
+            logger.info("Using in-memory cache (cachetools)")
 
         # Initialize LLM provider
         self._llm_provider = self._create_llm_provider(llm_provider)
@@ -216,6 +245,26 @@ class MindcoreClient:
             temperature=defaults.get('temperature', 0.3),
             max_tokens=defaults.get('max_tokens_context', 1500)
         )
+
+        # Retrieval query agent (LLM-powered, no keyword matching)
+        self.retrieval_query_agent = RetrievalQueryAgent(
+            llm_provider=self._llm_provider,
+            temperature=0.2,  # Lower for consistency
+            max_tokens=500
+        )
+
+        # Background enrichment queue (persistent - survives crashes/restarts)
+        # Uses SQLite-backed queue from persistqueue library
+        self._queue_path = Path(tempfile.gettempdir()) / "mindcore_enrichment_queue"
+        self._queue_path.mkdir(parents=True, exist_ok=True)
+        self._enrichment_queue = persistqueue.SQLiteQueue(
+            str(self._queue_path),
+            auto_commit=True,
+            multithreading=True
+        )
+        self._enrichment_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mindcore_enrichment")
+        self._enrichment_running = True
+        self._enrichment_future = self._enrichment_executor.submit(self._enrichment_worker)
 
         db_type = "SQLite" if use_sqlite else "PostgreSQL"
         logger.info(
@@ -337,6 +386,143 @@ class MindcoreClient:
         logger.info(f"Message {message.message_id} ingested successfully")
         return message
 
+    def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
+        """
+        Ingest a message immediately without blocking on enrichment.
+
+        The message is stored immediately with empty metadata, cached for the
+        current session, and queued for background enrichment. This is ideal
+        for real-time applications where response latency is critical.
+
+        Enrichment happens asynchronously:
+        1. Message stored with empty metadata (~0ms delay)
+        2. Message added to cache (available for current session context)
+        3. Background worker enriches and updates database
+
+        Args:
+            message_dict: Dictionary containing:
+                - user_id (str): User identifier
+                - thread_id (str): Thread identifier
+                - session_id (str): Session identifier
+                - role (str): Message role (user, assistant, system, tool)
+                - text (str): Message content
+                - message_id (str, optional): Auto-generated if not provided
+
+        Returns:
+            Message: Message object with empty metadata (will be enriched in background).
+
+        Raises:
+            ValueError: If validation fails.
+        """
+        # Validate message
+        is_valid, error_msg = SecurityValidator.validate_message_dict(message_dict)
+        if not is_valid:
+            logger.error(f"Message validation failed: {error_msg}")
+            raise ValueError(f"Invalid message: {error_msg}")
+
+        # Create message with empty metadata (no LLM call)
+        from .core.schemas import MessageRole
+        message = Message(
+            message_id=message_dict.get('message_id') or generate_message_id(),
+            user_id=message_dict['user_id'],
+            thread_id=message_dict['thread_id'],
+            session_id=message_dict['session_id'],
+            role=MessageRole(message_dict['role']),
+            raw_text=message_dict['text'],
+            metadata=MessageMetadata(),  # Empty metadata
+        )
+
+        # Store in database immediately
+        success = self.db.insert_message(message)
+        if not success:
+            logger.warning(f"Failed to store message {message.message_id} in database")
+
+        # Add to cache for immediate session context
+        self.cache.add_message(message)
+
+        # Queue for background enrichment with ALL IDs preserved
+        # Using persistent queue - survives crashes/restarts
+        enrichment_task = {
+            'message_id': message.message_id,
+            'user_id': message.user_id,
+            'thread_id': message.thread_id,
+            'session_id': message.session_id,
+            'role': message.role.value,
+            'text': message.raw_text,
+        }
+        self._enrichment_queue.put(enrichment_task)
+
+        logger.info(f"Message {message.message_id} ingested fast (enrichment queued)")
+        return message
+
+    def _enrichment_worker(self) -> None:
+        """Background worker that enriches messages from the persistent queue."""
+        logger.info("Background enrichment worker started (persistent queue)")
+
+        while self._enrichment_running:
+            try:
+                # Wait for task with timeout (allows graceful shutdown)
+                # persistqueue uses get() with block=True by default
+                try:
+                    task = self._enrichment_queue.get(block=True, timeout=1.0)
+                except Exception:
+                    # persistqueue raises Empty on timeout
+                    continue
+
+                if task is None:
+                    continue
+
+                message_id = task.get('message_id')
+                if not message_id:
+                    logger.warning("Enrichment worker: task missing message_id")
+                    self._enrichment_queue.task_done()
+                    continue
+
+                # Check if already enriched in database
+                existing = self.db.get_message_by_id(message_id)
+                if existing and existing.metadata.is_enriched:
+                    logger.debug(f"Message {message_id} already enriched, skipping")
+                    self._enrichment_queue.task_done()
+                    continue
+
+                # Enrich message using task data (all IDs preserved from queue)
+                try:
+                    enriched_message = self.metadata_agent.process({
+                        'message_id': task['message_id'],
+                        'user_id': task['user_id'],
+                        'thread_id': task['thread_id'],
+                        'session_id': task['session_id'],
+                        'role': task['role'],
+                        'text': task['text'],
+                    })
+
+                    # Update database with enriched metadata
+                    self.db.update_message_metadata(
+                        message_id=message_id,
+                        metadata=enriched_message.metadata
+                    )
+
+                    # Update cache with enriched message (preserves all IDs)
+                    self.cache.update_message(enriched_message)
+
+                    logger.debug(f"Background enrichment completed for {message_id}")
+
+                except Exception as e:
+                    logger.error(f"Background enrichment failed for {message_id}: {e}")
+                    # Mark as failed in database
+                    failed_metadata = MessageMetadata(
+                        enrichment_failed=True,
+                        enrichment_error=str(e)
+                    )
+                    self.db.update_message_metadata(message_id, failed_metadata)
+
+                self._enrichment_queue.task_done()
+
+            except Exception as e:
+                logger.error(f"Enrichment worker error: {e}")
+
+        logger.info("Background enrichment worker stopped")
+
     def get_context(
         self,
         user_id: str,
@@ -400,16 +586,15 @@ class MindcoreClient:
         max_messages: int = 20,
         min_importance: float = 0.3,
         include_current_thread: bool = True,
-        use_session_metadata: bool = True
+        use_session_metadata: bool = True,
+        use_llm_query_analysis: bool = True
     ) -> AssembledContext:
         """
         Get context using relevance-based search on enriched metadata.
 
-        This method uses fast SQL-based relevance scoring instead of fetching
-        all messages. It uses the current session's topics/categories to find
-        similar historical messages.
-
-        Optimized for speed: ~50-100ms for relevance search vs ~4s for full LLM scan.
+        Uses LLM-powered query analysis to understand semantic INTENT, not keywords.
+        This correctly handles cases like "I don't need a refund" by NOT searching
+        for refund-related messages.
 
         Args:
             user_id: User identifier.
@@ -422,6 +607,8 @@ class MindcoreClient:
                                    recent messages from current thread.
             use_session_metadata: If True and thread_id is set, use session's
                                  aggregated topics/categories for search.
+            use_llm_query_analysis: If True, use LLM to analyze query intent.
+                                   If False, only use session metadata.
 
         Returns:
             AssembledContext with summarized context, key points, etc.
@@ -437,41 +624,57 @@ class MindcoreClient:
             logger.error(f"Query validation failed: {error_msg}")
             raise ValueError(f"Invalid query parameters: {error_msg}")
 
-        # Get search criteria from session metadata or query hints
+        # Initialize search criteria
         topics_to_search = []
         categories_to_search = []
         intent_to_search = None
 
-        # If we have a current thread, use its aggregated metadata
+        # Get recent context for LLM query analysis
+        recent_context = None
+        if thread_id:
+            cached_messages = self.cache.get_recent_messages(user_id, thread_id, limit=5)
+            if cached_messages:
+                recent_context = "\n".join([
+                    f"[{msg.role}]: {msg.raw_text[:200]}"
+                    for msg in cached_messages[:5]
+                ])
+
+        # Use LLM to analyze query intent (no keyword matching!)
+        if use_llm_query_analysis:
+            query_intent = self.retrieval_query_agent.analyze_query(
+                query=query,
+                recent_context=recent_context
+            )
+            topics_to_search = query_intent.topics
+            categories_to_search = query_intent.categories
+            intent_to_search = query_intent.intent
+
+            logger.debug(
+                f"LLM query analysis: topics={topics_to_search}, "
+                f"categories={categories_to_search}, intent={intent_to_search}"
+            )
+
+        # Merge with session metadata if available
         if use_session_metadata and thread_id:
             session_meta = self.cache.get_session_metadata(user_id, thread_id)
-            topics_to_search = session_meta.get('topics', [])
-            categories_to_search = session_meta.get('categories', [])
-            intents = session_meta.get('intents', [])
-            if intents:
-                intent_to_search = intents[0]  # Use most common intent
+            session_topics = session_meta.get('topics', [])
+            session_categories = session_meta.get('categories', [])
+            session_intents = session_meta.get('intents', [])
 
-            logger.debug(f"Session metadata: topics={topics_to_search}, categories={categories_to_search}")
+            # Merge (LLM analysis takes priority, session adds context)
+            topics_to_search = list(set(topics_to_search + session_topics))
+            categories_to_search = list(set(categories_to_search + session_categories))
+            if not intent_to_search and session_intents:
+                intent_to_search = session_intents[0]
 
-        # Also extract hints from the query itself
-        hints = extract_query_hints(query)
-        query_keywords = hints.get('keywords', [])
-        query_intent = hints.get('intent_hint')
-        query_categories = hints.get('category_hints', [])
-
-        # Merge session metadata with query hints (query hints take priority for intent)
-        all_topics = list(set(topics_to_search + query_keywords))
-        all_categories = list(set(categories_to_search + query_categories))
-        final_intent = query_intent or intent_to_search
-
-        logger.debug(f"Search criteria: topics={all_topics[:5]}, categories={all_categories}, intent={final_intent}")
+            logger.debug(f"After session merge: topics={topics_to_search[:5]}, categories={categories_to_search}")
 
         # Search by relevance using enriched metadata
         relevant_messages = self.db.search_by_relevance(
             user_id=user_id,
-            topics=all_topics if all_topics else None,
-            categories=all_categories if all_categories else None,
-            intent=final_intent,
+            topics=topics_to_search if topics_to_search else None,
+            categories=categories_to_search if categories_to_search else None,
+            intent=intent_to_search,
             min_importance=min_importance,
             thread_id=None,  # Search across all threads for historical context
             session_id=session_id,
@@ -513,6 +716,26 @@ class MindcoreClient:
 
     def close(self) -> None:
         """Close all connections and cleanup resources."""
+        # Stop background enrichment worker
+        if hasattr(self, '_enrichment_running'):
+            self._enrichment_running = False
+            if hasattr(self, '_enrichment_future'):
+                try:
+                    self._enrichment_future.result(timeout=5.0)  # Wait for worker to stop
+                except Exception:
+                    pass
+            if hasattr(self, '_enrichment_executor'):
+                self._enrichment_executor.shutdown(wait=True)
+            logger.info("Background enrichment worker stopped")
+
+        # Close persistent queue if exists
+        if hasattr(self, '_enrichment_queue') and hasattr(self._enrichment_queue, 'close'):
+            self._enrichment_queue.close()
+
+        # Close cache (DiskCacheManager needs explicit close)
+        if hasattr(self, 'cache') and hasattr(self.cache, 'close'):
+            self.cache.close()
+
         if hasattr(self, '_llm_provider') and self._llm_provider:
             self._llm_provider.close()
         self.db.close()
@@ -612,6 +835,8 @@ __all__ = [
     # AI Agents
     "MetadataAgent",
     "ContextAgent",
+    "RetrievalQueryAgent",
+    "QueryIntent",
     "BaseAgent",
 
     # LLM Providers
