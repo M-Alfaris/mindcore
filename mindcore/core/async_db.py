@@ -14,7 +14,6 @@ Usage:
 """
 import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 from .schemas import Message, MessageMetadata, MessageRole
 from ..utils.logger import get_logger
@@ -75,6 +74,13 @@ class AsyncSQLiteManager:
 
         logger.info(f"Async SQLite connected to: {self.db_path}")
 
+    def _ensure_connected(self) -> None:
+        """Ensure database connection is established."""
+        if self._connection is None:
+            raise RuntimeError(
+                "Database not connected. Call connect() or use 'async with' context manager."
+            )
+
     async def initialize_schema(self) -> None:
         """Create database schema if it doesn't exist."""
         schema_sql = """
@@ -115,6 +121,7 @@ class AsyncSQLiteManager:
         Returns:
             True if successful, False otherwise.
         """
+        self._ensure_connected()
         insert_sql = """
         INSERT OR REPLACE INTO messages (
             message_id, user_id, thread_id, session_id,
@@ -161,6 +168,7 @@ class AsyncSQLiteManager:
         Returns:
             List of Message objects.
         """
+        self._ensure_connected()
         select_sql = """
         SELECT * FROM messages
         WHERE user_id = ? AND thread_id = ?
@@ -203,6 +211,7 @@ class AsyncSQLiteManager:
         Returns:
             Message object or None.
         """
+        self._ensure_connected()
         select_sql = "SELECT * FROM messages WHERE message_id = ?"
 
         try:
@@ -244,6 +253,7 @@ class AsyncSQLiteManager:
         Returns:
             True if successful, False otherwise.
         """
+        self._ensure_connected()
         update_sql = """
         UPDATE messages SET metadata = ? WHERE message_id = ?
         """
@@ -265,6 +275,106 @@ class AsyncSQLiteManager:
         except Exception as e:
             logger.error(f"Failed to update message metadata (async): {e}")
             return False
+
+    async def search_by_relevance(
+        self,
+        user_id: str,
+        topics: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        intent: Optional[str] = None,
+        min_importance: float = 0.0,
+        thread_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Message]:
+        """
+        Search messages by relevance using metadata filters.
+
+        Args:
+            user_id: User identifier.
+            topics: Optional list of topics to search for.
+            categories: Optional list of categories to filter by.
+            intent: Optional intent type to filter by.
+            min_importance: Minimum importance score (0.0-1.0).
+            thread_id: Optional thread filter (None = all threads).
+            session_id: Optional session filter.
+            limit: Maximum number of messages to return.
+
+        Returns:
+            List of Message objects matching criteria.
+        """
+        self._ensure_connected()
+        # Build dynamic query
+        conditions: List[str] = ["user_id = ?"]
+        params: List[Any] = [user_id]
+
+        if thread_id:
+            conditions.append("thread_id = ?")
+            params.append(thread_id)
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        where_clause = " AND ".join(conditions)
+
+        select_sql = f"""
+        SELECT * FROM messages
+        WHERE {where_clause}
+        ORDER BY created_at DESC
+        LIMIT ?
+        """
+        params.append(limit * 5)  # Fetch more to filter in Python
+
+        try:
+            cursor = await self._connection.execute(select_sql, params)
+            rows = await cursor.fetchall()
+
+            messages = []
+            for row in rows:
+                metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                metadata = MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+
+                # Filter by topics (any match)
+                if topics:
+                    msg_topics = metadata.topics or []
+                    if not any(t in msg_topics for t in topics):
+                        continue
+
+                # Filter by categories (any match)
+                if categories:
+                    msg_categories = metadata.categories or []
+                    if not any(c in msg_categories for c in categories):
+                        continue
+
+                # Filter by intent
+                if intent and metadata.intent != intent:
+                    continue
+
+                # Filter by importance
+                if metadata.importance is not None and metadata.importance < min_importance:
+                    continue
+
+                message = Message(
+                    message_id=row['message_id'],
+                    user_id=row['user_id'],
+                    thread_id=row['thread_id'],
+                    session_id=row['session_id'],
+                    role=MessageRole(row['role']),
+                    raw_text=row['raw_text'],
+                    metadata=metadata,
+                    created_at=row['created_at']
+                )
+                messages.append(message)
+
+                if len(messages) >= limit:
+                    break
+
+            logger.debug(f"Search found {len(messages)} relevant messages (async SQLite)")
+            return messages
+        except Exception as e:
+            logger.error(f"Failed to search by relevance (async): {e}")
+            return []
 
     async def close(self) -> None:
         """Close database connection."""
@@ -328,8 +438,16 @@ class AsyncDatabaseManager:
         await self.initialize_schema()
         logger.info("Async PostgreSQL pool initialized")
 
+    def _ensure_pool(self) -> None:
+        """Ensure connection pool is established."""
+        if self._pool is None:
+            raise RuntimeError(
+                "Database pool not initialized. Call connect() or use 'async with' context manager."
+            )
+
     async def initialize_schema(self) -> None:
         """Create database schema if it doesn't exist."""
+        self._ensure_pool()
         schema_sql = """
         CREATE TABLE IF NOT EXISTS messages (
             message_id VARCHAR(255) PRIMARY KEY,
@@ -369,6 +487,7 @@ class AsyncDatabaseManager:
         Returns:
             True if successful, False otherwise.
         """
+        self._ensure_pool()
         insert_sql = """
         INSERT INTO messages (
             message_id, user_id, thread_id, session_id,
@@ -419,6 +538,7 @@ class AsyncDatabaseManager:
         Returns:
             List of Message objects.
         """
+        self._ensure_pool()
         select_sql = """
         SELECT * FROM messages
         WHERE user_id = $1 AND thread_id = $2
@@ -462,6 +582,7 @@ class AsyncDatabaseManager:
         Returns:
             Message object or None.
         """
+        self._ensure_pool()
         select_sql = "SELECT * FROM messages WHERE message_id = $1"
 
         try:
@@ -504,6 +625,7 @@ class AsyncDatabaseManager:
         Returns:
             True if successful, False otherwise.
         """
+        self._ensure_pool()
         update_sql = """
         UPDATE messages SET metadata = $1 WHERE message_id = $2
         """
@@ -526,6 +648,109 @@ class AsyncDatabaseManager:
         except Exception as e:
             logger.error(f"Failed to update message metadata (async): {e}")
             return False
+
+    async def search_by_relevance(
+        self,
+        user_id: str,
+        topics: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        intent: Optional[str] = None,
+        min_importance: float = 0.0,
+        thread_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Message]:
+        """
+        Search messages by relevance using metadata filters.
+
+        Uses PostgreSQL JSONB operators for efficient filtering.
+
+        Args:
+            user_id: User identifier.
+            topics: Optional list of topics to search for.
+            categories: Optional list of categories to filter by.
+            intent: Optional intent type to filter by.
+            min_importance: Minimum importance score (0.0-1.0).
+            thread_id: Optional thread filter (None = all threads).
+            session_id: Optional session filter.
+            limit: Maximum number of messages to return.
+
+        Returns:
+            List of Message objects matching criteria.
+        """
+        self._ensure_pool()
+        # Build dynamic query with JSONB operators
+        conditions: List[str] = ["user_id = $1"]
+        params: List[Any] = [user_id]
+        param_idx = 2
+
+        if thread_id:
+            conditions.append(f"thread_id = ${param_idx}")
+            params.append(thread_id)
+            param_idx += 1
+
+        if session_id:
+            conditions.append(f"session_id = ${param_idx}")
+            params.append(session_id)
+            param_idx += 1
+
+        if topics:
+            # Use JSONB overlap operator for topics
+            conditions.append(f"metadata->'topics' ?| ${param_idx}")
+            params.append(topics)
+            param_idx += 1
+
+        if categories:
+            # Use JSONB overlap operator for categories
+            conditions.append(f"metadata->'categories' ?| ${param_idx}")
+            params.append(categories)
+            param_idx += 1
+
+        if intent:
+            conditions.append(f"metadata->>'intent' = ${param_idx}")
+            params.append(intent)
+            param_idx += 1
+
+        if min_importance > 0:
+            conditions.append(f"(metadata->>'importance')::float >= ${param_idx}")
+            params.append(min_importance)
+            param_idx += 1
+
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
+
+        select_sql = f"""
+        SELECT * FROM messages
+        WHERE {where_clause}
+        ORDER BY created_at DESC
+        LIMIT ${param_idx}
+        """
+
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch(select_sql, *params)
+
+            messages = []
+            for row in rows:
+                metadata_raw = row['metadata']
+                metadata_dict = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                message = Message(
+                    message_id=row['message_id'],
+                    user_id=row['user_id'],
+                    thread_id=row['thread_id'],
+                    session_id=row['session_id'],
+                    role=MessageRole(row['role']),
+                    raw_text=row['raw_text'],
+                    metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
+                    created_at=row['created_at']
+                )
+                messages.append(message)
+
+            logger.debug(f"Search found {len(messages)} relevant messages (async PostgreSQL)")
+            return messages
+        except Exception as e:
+            logger.error(f"Failed to search by relevance (async): {e}")
+            return []
 
     async def close(self) -> None:
         """Close connection pool."""

@@ -45,7 +45,6 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import threading
 import atexit
-import os
 import tempfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -95,11 +94,11 @@ from .llm import (
 # Utilities
 from .utils import get_logger, generate_message_id, SecurityValidator
 
-# Schemas
-from .core.schemas import MessageMetadata
-
 # Retrieval Query Agent (LLM-powered query analysis)
 from .agents import RetrievalQueryAgent, QueryIntent
+
+# Smart Context Agent (single LLM call with tool calling)
+from .agents import SmartContextAgent, ContextTools
 
 logger = get_logger(__name__)
 
@@ -252,6 +251,10 @@ class MindcoreClient:
             temperature=0.2,  # Lower for consistency
             max_tokens=500
         )
+
+        # Smart context agent (single LLM call with tool calling)
+        # Replaces RetrievalQueryAgent + ContextAssemblerAgent for lower latency
+        self._smart_context_agent = None  # Lazy initialized
 
         # Background enrichment queue (persistent - survives crashes/restarts)
         # Uses SQLite-backed queue from persistqueue library
@@ -703,6 +706,133 @@ class MindcoreClient:
         context = self.context_agent.process(relevant_messages, query)
         return context
 
+    def _get_smart_context_agent(self) -> SmartContextAgent:
+        """
+        Get or create the SmartContextAgent (lazy initialization).
+
+        Creates ContextTools callbacks that connect the agent to
+        cache and database for fetching context data.
+        """
+        if self._smart_context_agent is not None:
+            return self._smart_context_agent
+
+        # Create callbacks for the agent's tools with exception handling
+        def get_recent_messages(user_id: str, thread_id: str, limit: int) -> list:
+            try:
+                return self.cache.get_recent_messages(user_id, thread_id, limit)
+            except Exception as e:
+                logger.error(f"Error fetching recent messages: {e}")
+                return []
+
+        def search_history(
+            user_id: str,
+            thread_id: Optional[str],
+            topics: list,
+            categories: list,
+            intent: Optional[str],
+            limit: int
+        ) -> list:
+            try:
+                return self.db.search_by_relevance(
+                    user_id=user_id,
+                    topics=topics if topics else None,
+                    categories=categories if categories else None,
+                    intent=intent,
+                    thread_id=thread_id,
+                    limit=limit
+                )
+            except Exception as e:
+                logger.error(f"Error searching history: {e}")
+                return []
+
+        def get_session_metadata(user_id: str, thread_id: str) -> dict:
+            try:
+                return self.cache.get_session_metadata(user_id, thread_id)
+            except Exception as e:
+                logger.error(f"Error fetching session metadata: {e}")
+                return {"topics": [], "categories": [], "intents": [], "message_count": 0}
+
+        tools = ContextTools(
+            get_recent_messages=get_recent_messages,
+            search_history=search_history,
+            get_session_metadata=get_session_metadata
+        )
+
+        llm_config = self.config.get_llm_config()
+        defaults = llm_config.get('defaults', {})
+
+        self._smart_context_agent = SmartContextAgent(
+            llm_provider=self._llm_provider,
+            context_tools=tools,
+            temperature=0.2,  # Low for consistency
+            max_tokens=defaults.get('max_tokens_context', 1500),
+            max_tool_rounds=3
+        )
+
+        logger.info("SmartContextAgent initialized with database/cache tools")
+        return self._smart_context_agent
+
+    def get_context_smart(
+        self,
+        user_id: str,
+        thread_id: str,
+        query: str,
+        additional_context: Optional[str] = None
+    ) -> AssembledContext:
+        """
+        Get context using single LLM call with tool calling (optimized latency).
+
+        This method uses SmartContextAgent which combines query analysis and
+        context assembly into a single LLM call with tools. The agent
+        intelligently decides what context to fetch using:
+        - get_recent_messages: Recent conversation context
+        - search_history: Historical messages by topics/categories/intent
+        - get_session_metadata: Session aggregated metadata
+
+        This reduces latency from 2 LLM calls to 1 while maintaining
+        intelligent context selection.
+
+        Args:
+            user_id: User identifier.
+            thread_id: Thread identifier.
+            query: Query to find relevant context for.
+            additional_context: Optional context to provide to the agent.
+
+        Returns:
+            AssembledContext with summarized context, key points, etc.
+
+        Raises:
+            ValueError: If validation fails.
+
+        Example:
+            >>> context = client.get_context_smart(
+            ...     user_id="user123",
+            ...     thread_id="thread456",
+            ...     query="What did we discuss about billing last time?"
+            ... )
+            >>> print(context.summary)
+        """
+        # Validate query parameters
+        is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
+        if not is_valid:
+            logger.error(f"Query validation failed: {error_msg}")
+            raise ValueError(f"Invalid query parameters: {error_msg}")
+
+        agent = self._get_smart_context_agent()
+        context = agent.process(
+            query=query,
+            user_id=user_id,
+            thread_id=thread_id,
+            additional_context=additional_context
+        )
+
+        logger.info(
+            f"SmartContextAgent assembled context: "
+            f"source={context.metadata.get('context_source', 'unknown')}, "
+            f"confidence={context.metadata.get('confidence', 'unknown')}"
+        )
+        return context
+
     def get_message(self, message_id: str) -> Optional[Message]:
         """Get a single message by ID."""
         return self.db.get_message_by_id(message_id)
@@ -837,6 +967,8 @@ __all__ = [
     "ContextAgent",
     "RetrievalQueryAgent",
     "QueryIntent",
+    "SmartContextAgent",
+    "ContextTools",
     "BaseAgent",
 
     # LLM Providers

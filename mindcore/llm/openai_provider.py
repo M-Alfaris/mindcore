@@ -281,6 +281,117 @@ class OpenAIProvider(BaseLLMProvider):
             f"OpenAI API call failed after {self.max_retries} retries"
         ) from last_exception
 
+    def generate_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.3,
+        max_tokens: int = 1000,
+        tool_choice: str = "auto"
+    ) -> Dict[str, Any]:
+        """
+        Generate a response with tool calling support.
+
+        Args:
+            messages: List of message dicts (can include tool calls and results)
+            tools: List of tool definitions in OpenAI format
+            temperature: Sampling temperature (0.0-2.0)
+            max_tokens: Maximum tokens to generate
+            tool_choice: "auto", "none", or {"type": "function", "function": {"name": "..."}}
+
+        Returns:
+            Dict with 'content' and optionally 'tool_calls'
+
+        Raises:
+            GenerationError: If generation fails after all retries
+        """
+        if not self.is_available():
+            raise GenerationError(
+                "OpenAI provider not available. "
+                "Provide API key or set OPENAI_API_KEY environment variable."
+            )
+
+        from openai import (
+            APIError,
+            RateLimitError,
+            APIConnectionError,
+            APITimeoutError,
+        )
+
+        start_time = time.time()
+
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "tools": tools,
+            "tool_choice": tool_choice,
+        }
+
+        last_exception = None
+
+        for attempt in range(self.max_retries):
+            try:
+                response = self._client.chat.completions.create(**kwargs)
+
+                message = response.choices[0].message
+                latency_ms = (time.time() - start_time) * 1000
+
+                result = {
+                    "content": message.content,
+                    "tool_calls": None
+                }
+
+                # Extract tool calls if present
+                if message.tool_calls:
+                    result["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        }
+                        for tc in message.tool_calls
+                    ]
+
+                logger.debug(
+                    f"OpenAI tool call complete: {latency_ms:.0f}ms, "
+                    f"tool_calls={len(result['tool_calls'] or [])}"
+                )
+
+                return result
+
+            except RateLimitError as e:
+                last_exception = e
+                delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
+                logger.warning(f"Rate limit hit, retrying in {delay:.1f}s")
+                time.sleep(delay)
+
+            except (APIConnectionError, APITimeoutError) as e:
+                last_exception = e
+                delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
+                logger.warning(f"Connection error, retrying in {delay:.1f}s: {e}")
+                time.sleep(delay)
+
+            except APIError as e:
+                if hasattr(e, 'status_code') and e.status_code >= 500:
+                    last_exception = e
+                    delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
+                    logger.warning(f"Server error, retrying in {delay:.1f}s")
+                    time.sleep(delay)
+                else:
+                    raise GenerationError(f"OpenAI API error: {e}") from e
+
+            except Exception as e:
+                raise GenerationError(f"OpenAI tool call failed: {e}") from e
+
+        raise GenerationError(
+            f"OpenAI tool call failed after {self.max_retries} retries"
+        ) from last_exception
+
     def is_available(self) -> bool:
         """Check if the OpenAI client is initialized."""
         return self._client is not None

@@ -24,7 +24,7 @@ Usage:
 
     asyncio.run(main())
 """
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 import asyncio
 
 from .core import (
@@ -41,10 +41,11 @@ from .core.async_db import AsyncSQLiteManager, AsyncDatabaseManager
 from .agents import (
     EnrichmentAgent as MetadataAgent,
     ContextAssemblerAgent as ContextAgent,
+    SmartContextAgent,
+    ContextTools,
 )
 from .llm import (
     BaseLLMProvider,
-    ProviderType,
     create_provider,
     get_provider_type,
 )
@@ -107,6 +108,7 @@ class AsyncMindcoreClient:
         self._llm_provider = None
         self.metadata_agent = None
         self.context_agent = None
+        self._smart_context_agent = None  # Lazy initialized
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -478,6 +480,159 @@ class AsyncMindcoreClient:
 
         # Assemble context (sync operation - LLM call)
         context = self.context_agent.process(cached_messages, query)
+        return context
+
+    def _get_smart_context_agent(self) -> SmartContextAgent:
+        """
+        Get or create the SmartContextAgent (lazy initialization).
+
+        Creates ContextTools callbacks that connect the agent to
+        cache and database for fetching context data.
+        """
+        if self._smart_context_agent is not None:
+            return self._smart_context_agent
+
+        # Create callbacks for the agent's tools with exception handling
+        # Note: These are sync callbacks - SmartContextAgent handles sync operations
+        # The async database calls are wrapped with asyncio.run
+        def get_recent_messages(user_id: str, thread_id: str, limit: int) -> list:
+            try:
+                return self.cache.get_recent_messages(user_id, thread_id, limit)
+            except Exception as e:
+                logger.error(f"Error fetching recent messages: {e}")
+                return []
+
+        def search_history(
+            user_id: str,
+            thread_id: Optional[str],
+            topics: list,
+            categories: list,
+            intent: Optional[str],
+            limit: int
+        ) -> list:
+            # This runs in a thread pool executor (from get_context_smart),
+            # so we can safely create a new event loop for the async DB call
+            try:
+                coro = self.db.search_by_relevance(
+                    user_id=user_id,
+                    topics=topics if topics else None,
+                    categories=categories if categories else None,
+                    intent=intent,
+                    thread_id=thread_id,
+                    limit=limit
+                )
+                # Create new event loop for this thread (executor thread)
+                try:
+                    asyncio.get_running_loop()
+                    # If we're in an async context, we need to handle differently
+                    # This shouldn't happen since we run agent in executor
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, coro)
+                        return future.result(timeout=30)  # 30 second timeout
+                except RuntimeError:
+                    # No running loop - we're in the executor thread, safe to use asyncio.run
+                    return asyncio.run(coro)
+            except Exception as e:
+                logger.error(f"Error searching history: {e}")
+                return []
+
+        def get_session_metadata(user_id: str, thread_id: str) -> dict:
+            try:
+                return self.cache.get_session_metadata(user_id, thread_id)
+            except Exception as e:
+                logger.error(f"Error fetching session metadata: {e}")
+                return {"topics": [], "categories": [], "intents": [], "message_count": 0}
+
+        tools = ContextTools(
+            get_recent_messages=get_recent_messages,
+            search_history=search_history,
+            get_session_metadata=get_session_metadata
+        )
+
+        llm_config = self.config.get_llm_config()
+        defaults = llm_config.get('defaults', {})
+
+        self._smart_context_agent = SmartContextAgent(
+            llm_provider=self._llm_provider,
+            context_tools=tools,
+            temperature=0.2,  # Low for consistency
+            max_tokens=defaults.get('max_tokens_context', 1500),
+            max_tool_rounds=3
+        )
+
+        logger.info("SmartContextAgent initialized with database/cache tools (async client)")
+        return self._smart_context_agent
+
+    async def get_context_smart(
+        self,
+        user_id: str,
+        thread_id: str,
+        query: str,
+        additional_context: Optional[str] = None
+    ) -> AssembledContext:
+        """
+        Get context using single LLM call with tool calling (optimized latency).
+
+        This method uses SmartContextAgent which combines query analysis and
+        context assembly into a single LLM call with tools. The agent
+        intelligently decides what context to fetch using:
+        - get_recent_messages: Recent conversation context
+        - search_history: Historical messages by topics/categories/intent
+        - get_session_metadata: Session aggregated metadata
+
+        This reduces latency from 2 LLM calls to 1 while maintaining
+        intelligent context selection.
+
+        Args:
+            user_id: User identifier.
+            thread_id: Thread identifier.
+            query: Query to find relevant context for.
+            additional_context: Optional context to provide to the agent.
+
+        Returns:
+            AssembledContext with summarized context, key points, etc.
+
+        Raises:
+            ValueError: If validation fails.
+            RuntimeError: If client not connected.
+
+        Example:
+            >>> context = await client.get_context_smart(
+            ...     user_id="user123",
+            ...     thread_id="thread456",
+            ...     query="What did we discuss about billing last time?"
+            ... )
+            >>> print(context.summary)
+        """
+        if not self._connected:
+            raise RuntimeError("Client not connected. Use 'async with' or call connect() first.")
+
+        # Validate query parameters
+        is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
+        if not is_valid:
+            logger.error(f"Query validation failed: {error_msg}")
+            raise ValueError(f"Invalid query parameters: {error_msg}")
+
+        agent = self._get_smart_context_agent()
+
+        # Run agent (sync) in executor to not block event loop
+        loop = asyncio.get_running_loop()
+        context = await loop.run_in_executor(
+            None,
+            lambda: agent.process(
+                query=query,
+                user_id=user_id,
+                thread_id=thread_id,
+                additional_context=additional_context
+            )
+        )
+
+        logger.info(
+            f"SmartContextAgent assembled context (async): "
+            f"source={context.metadata.get('context_source', 'unknown')}, "
+            f"confidence={context.metadata.get('confidence', 'unknown')}"
+        )
         return context
 
     async def get_message(self, message_id: str) -> Optional[Message]:
