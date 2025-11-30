@@ -1,299 +1,437 @@
 <div align="center">
 
-# 🧠 Mindcore
+# Mindcore
 
-### Intelligent Memory & Context Management for AI Agents
+### The Context Protocol for AI Agents
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/M-Alfaris/mindcore)
+[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-**Cut your LLM token costs by 60-90%** with intelligent memory management powered by lightweight AI agents.
+**A semi-deterministic framework for persistent memory, intelligent context retrieval, and external data integration for AI agents.**
 
-**Now with local LLM support via llama.cpp — run completely offline with zero API costs!**
+Stop rebuilding memory infrastructure. Start building features.
 
-[Quick Start](#-quick-start) • [Features](#-features) • [Dashboard](#-web-dashboard) • [Async Support](#-async-support) • [Local LLM Setup](#-local-llm-setup) • [CLI](#-cli-commands)
+[Quick Start](#-quick-start) • [Why Mindcore](#-why-mindcore) • [Architecture](#-architecture) • [Features](#-features) • [Roadmap](#-roadmap)
 
 ---
-
-### Why Mindcore?
-
-| Traditional Approach | With Mindcore | With Mindcore + Local LLM |
-|---------------------|---------------|---------------------------|
-| Send entire conversation history | Send only relevant context | Same smart context |
-| 50,000+ tokens per request | ~1,500 tokens per request | ~1,500 tokens |
-| $2.60 per 20 requests | $0.20 per 20 requests | **$0.00** |
-| Hit context limits quickly | Scale to unlimited history | Unlimited + offline |
 
 </div>
 
+## The Problem
+
+Every team building AI agents faces the same challenges:
+
+| Challenge | What Teams Do Today | Time Spent |
+|-----------|---------------------|------------|
+| **Memory & Persistence** | Build custom storage, caching, retrieval | 2-4 weeks |
+| **Context Engineering** | Trial and error with vector DBs, embeddings | 3-6 weeks |
+| **User Preferences** | Ad-hoc storage, no consistency | 1-2 weeks |
+| **External Data** | Custom integrations per system | 2-4 weeks per system |
+| **Multi-Agent Consistency** | Each agent has its own memory | Ongoing pain |
+
+**Result**: 2-3 months before you can focus on what matters — your actual product.
+
+## The Solution
+
+Mindcore is an **open-source Context Protocol** that provides:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              YOUR AI AGENTS                                  │
+│         (Support Bot, Sales Assistant, Internal Tools, etc.)                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              MINDCORE                                        │
+│                        The Context Protocol                                  │
+│                                                                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │ MEMORY LAYER    │  │ INTELLIGENCE    │  │ EXTERNAL CONNECTORS         │  │
+│  │                 │  │                 │  │                             │  │
+│  │ • Messages      │  │ • Enrichment    │  │ • Orders (read-only)        │  │
+│  │ • Summaries     │  │ • Smart Context │  │ • Billing (read-only)       │  │
+│  │ • Preferences   │  │ • Tool Calling  │  │ • CRM (read-only)           │  │
+│  │ • Cache         │  │ • Compression   │  │ • Your Systems...           │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┴─────────────────┐
+                    ▼                                   ▼
+          ┌─────────────────┐                 ┌─────────────────┐
+          │    PostgreSQL   │                 │     SQLite      │
+          │   (Production)  │                 │  (Development)  │
+          └─────────────────┘                 └─────────────────┘
+```
+
 ---
 
-## 🚀 Quick Start
+## Why Mindcore?
 
-Get up and running in **under 2 minutes**. Choose your preferred setup:
+### 1. Semi-Deterministic Retrieval (No Vector DB Required)
 
-### Option A: Local LLM (Recommended - Zero API Costs!)
+Most teams assume they need a vector database for context retrieval. **They don't.**
 
-```bash
-# 1. Install with llama.cpp support
-pip install -e ".[llama]"
+| Approach | How It Works | The Reality |
+|----------|--------------|-------------|
+| **Pure Vector DB** | Embed everything, semantic search | Expensive, unpredictable, overkill for conversations |
+| **Pure Rules** | "Last 10 messages + keyword match" | Misses nuance, brittle |
+| **Mindcore** | LLM enriches metadata → Deterministic retrieval → LLM summarizes | Predictable, debuggable, cost-effective |
 
-# 2. Download a model (~2GB)
-mindcore download-model
+```python
+# User: "What did we discuss about billing last week?"
 
-# 3. Set the model path
-export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+# Mindcore approach:
+# 1. Message metadata already extracted: topics=["billing"], date=2024-03-15
+# 2. Deterministic query: SELECT * WHERE topics @> 'billing' AND date > '2024-03-08'
+# 3. LLM summarizes the filtered results
 
-# 4. You're ready! No API key needed.
+# Result: Faster, cheaper, and more predictable than vector similarity search
 ```
 
-### Option B: OpenAI API (Cloud)
+### 2. Shared Memory Across All Your Agents
 
-```bash
-# 1. Install
-pip install -e .
-
-# 2. Set your API key
-export OPENAI_API_KEY="sk-your-api-key"
+Without Mindcore:
+```
+Support Bot: "I see you're a new customer!"
+Sales Bot (same day): "Welcome! Interested in our product?"
+User: "I literally just bought it an hour ago..."
 ```
 
-### Option C: Auto Mode (Local + Cloud Fallback)
-
-```bash
-# Set both - uses local LLM primarily, falls back to OpenAI if needed
-export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
-export OPENAI_API_KEY="sk-your-api-key"  # Optional fallback
+With Mindcore:
+```
+All agents share the same memory → Consistent user experience
 ```
 
-### Start Building
+### 3. External Data Integration (Read-Only)
+
+Connect your AI agents to real business data:
+
+```python
+# User: "What's the status of my order from last week?"
+
+# Mindcore automatically:
+# 1. Detects topic: "orders"
+# 2. Extracts entities: date_range="last week"
+# 3. Queries your Orders DB (read-only)
+# 4. Includes order data in context
+
+# Your agent responds with actual order information
+```
+
+### 4. Production-Ready in Hours, Not Months
 
 ```python
 from mindcore import MindcoreClient
 
-# Initialize (works with any setup above!)
+# Initialize
 client = MindcoreClient(use_sqlite=True)
 
-# Ingest a message - automatically enriched with metadata
+# Ingest messages (auto-enriched with metadata)
+client.ingest_message({
+    "user_id": "user_123",
+    "thread_id": "thread_456",
+    "session_id": "session_789",
+    "role": "user",
+    "text": "I need help with my billing issue"
+})
+
+# Get intelligent context for any query
+context = client.get_context_smart(
+    user_id="user_123",
+    thread_id="thread_456",
+    query="What billing issues has this user mentioned?"
+)
+
+# Use in your LLM prompt
+print(context.assembled_context)
+```
+
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+# Basic installation
+pip install -e .
+
+# With local LLM support (zero API costs)
+pip install -e ".[llama]"
+
+# With async support
+pip install -e ".[async]"
+
+# Everything
+pip install -e ".[all]"
+```
+
+### Option A: Local LLM (Recommended - Zero API Costs)
+
+```bash
+# Download a model (~2GB)
+mindcore download-model
+
+# Set the model path
+export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+```
+
+### Option B: OpenAI API
+
+```bash
+export OPENAI_API_KEY="sk-your-api-key"
+```
+
+### Basic Usage
+
+```python
+from mindcore import MindcoreClient
+
+client = MindcoreClient(use_sqlite=True)
+
+# Ingest a message
 message = client.ingest_message({
     "user_id": "user_123",
     "thread_id": "thread_456",
     "session_id": "session_789",
     "role": "user",
-    "text": "What are best practices for building AI agents?"
+    "text": "What are the best practices for building AI agents?"
 })
 
-# See the auto-generated metadata
+# Auto-enriched metadata
 print(message.metadata.topics)      # ['AI', 'agents', 'best practices']
 print(message.metadata.intent)      # 'ask_question'
 print(message.metadata.importance)  # 0.8
 
-# Later: Get intelligent context for any query
-context = client.get_context(
+# Get intelligent context (single LLM call with tool calling)
+context = client.get_context_smart(
     user_id="user_123",
     thread_id="thread_456",
     query="AI agent architecture"
 )
 
-# Use in your LLM prompt
-print(context.assembled_context)  # Compressed, relevant summary
+print(context.assembled_context)  # Relevant, summarized context
 print(context.key_points)         # Key insights from history
 ```
 
-**That's it!** Two methods: `ingest_message()` and `get_context()`.
-
 ---
 
-## ✨ Features
+## Architecture
 
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 🤖 Intelligent AI Agents
-Two specialized agents powered by local or cloud LLMs:
-- **MetadataAgent** — Auto-enriches every message with topics, sentiment, intent, and importance
-- **ContextAgent** — Intelligently retrieves and summarizes only relevant history
-
-</td>
-<td width="50%" valign="top">
-
-### 🦙 Local LLM Support (NEW!)
-- **llama.cpp** — CPU-optimized local inference
-- **Zero API costs** — Run completely offline
-- **Auto-fallback** — Local primary, cloud backup
-- **Self-hosted** — vLLM, Ollama, LocalAI support
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 💰 Massive Cost Savings
-- **60-90% reduction** in token costs (or **100% with local LLM**)
-- Enterprise platforms save **$4M+/year**
-- Scales efficiently as conversations grow
-- One-time metadata enrichment (never recomputed)
-
-</td>
-<td width="50%" valign="top">
-
-### 💾 Flexible Storage
-- **SQLite** for local development (zero setup!)
-- **PostgreSQL** for production deployments
-- **In-memory cache** (cachetools) for blazing-fast retrieval
-- Automatic schema management
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🔒 Production Ready
-- **Rate limiting** (limits) — Redis-ready for cloud
-- **Structured logging** (structlog) — JSON for cloud aggregation
-- **Battle-tested libs** — cachetools, limits, structlog
-- **Security** — Input validation, parameterized queries
-
-</td>
-<td width="50%" valign="top">
-
-### 🔌 Framework Integrations
-- **LangChain** — Memory interface, callbacks
-- **LlamaIndex** — Chat memory integration
-- **Any Framework** — Simple, universal API
-- Plug-and-play adapters
-
-</td>
-<td width="50%" valign="top">
-
-### 🛠️ Developer Experience
-- **CLI tools** — Download models, check status
-- Clean, intuitive API
-- Full type hints & docstrings
-- Comprehensive logging
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### ⚡ Async Support (NEW!)
-- **AsyncMindcoreClient** — Non-blocking operations
-- **aiosqlite** — Async SQLite for high concurrency
-- **asyncpg** — Async PostgreSQL with connection pooling
-- Perfect for FastAPI and async applications
-
-</td>
-</tr>
-</table>
-
----
-
-## 🔍 How It Works
+### Core Components
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              YOUR APPLICATION                               │
+│                           MINDCORE ARCHITECTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                         MEMORY LAYER                                   │  │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
+│  │  │  Hot Messages   │  │ Thread Summaries│  │  User Preferences   │   │  │
+│  │  │  (recent)       │  │ (compressed)    │  │  (amendable)        │   │  │
+│  │  │                 │  │                 │  │                     │   │  │
+│  │  │ Full message    │  │ Old threads →   │  │ • Language          │   │  │
+│  │  │ history with    │  │ LLM-generated   │  │ • Timezone          │   │  │
+│  │  │ rich metadata   │  │ summaries       │  │ • Interests         │   │  │
+│  │  └─────────────────┘  └─────────────────┘  │ • Custom context    │   │  │
+│  │                                            └─────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      INTELLIGENCE LAYER                                │  │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
+│  │  │ EnrichmentAgent │  │SmartContextAgent│  │ SummarizationAgent  │   │  │
+│  │  │                 │  │                 │  │                     │   │  │
+│  │  │ • Topics        │  │ • Tool calling  │  │ • Compress threads  │   │  │
+│  │  │ • Intent        │  │ • Smart routing │  │ • Extract key facts │   │  │
+│  │  │ • Sentiment     │  │ • Context merge │  │ • Preserve entities │   │  │
+│  │  │ • Entities      │  │                 │  │                     │   │  │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    EXTERNAL CONNECTORS (Read-Only)                     │  │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │  │
+│  │  │   Orders    │  │   Billing   │  │     CRM     │  │  Your APIs  │  │  │
+│  │  │             │  │             │  │             │  │             │  │  │
+│  │  │ topic:orders│  │topic:billing│  │ topic:crm   │  │ topic:...   │  │  │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │  │
+│  │                                                                       │  │
+│  │  Connectors are READ-ONLY — they fetch data, never modify it          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                    ┌─────────────────┴─────────────────┐
-                    ▼                                   ▼
-           ┌───────────────┐                   ┌───────────────┐
-           │ ingest_message│                   │  get_context  │
-           └───────┬───────┘                   └───────┬───────┘
-                   │                                   │
-                   ▼                                   ▼
-        ┌─────────────────────┐             ┌─────────────────────┐
-        │   MetadataAgent     │             │    ContextAgent     │
-        │                     │             │                     │
-        │ • Extract topics    │             │ • Analyze query     │
-        │ • Detect intent     │             │ • Find relevant msgs│
-        │ • Score importance  │             │ • Summarize context │
-        │ • Analyze sentiment │             │ • Extract key points│
-        └──────────┬──────────┘             └──────────┬──────────┘
-                   │                                   │
-                   ▼                                   ▼
-        ┌─────────────────────────────────────────────────────────┐
-        │                    LLM Provider Layer                    │
-        │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-        │  │ llama.cpp   │  │   OpenAI    │  │  Self-Hosted    │  │
-        │  │  (Local)    │─►│  (Fallback) │  │ (vLLM/Ollama)   │  │
-        │  └─────────────┘  └─────────────┘  └─────────────────┘  │
-        └─────────────────────────────────────────────────────────┘
-                   │                                   │
-                   ▼                                   ▼
-        ┌─────────────────────┐             ┌─────────────────────┐
-        │      Storage        │◄───────────►│       Cache         │
-        │ (PostgreSQL/SQLite) │             │    (In-Memory)      │
-        └─────────────────────┘             └─────────────────────┘
 ```
 
-### The Problem with Traditional Approaches
-
-Every time your AI needs context, you send the **entire conversation history**:
+### Data Flow
 
 ```
-User message 1 → LLM
-User message 1 + 2 → LLM
-User message 1 + 2 + 3 → LLM
-...
-User message 1 + 2 + ... + 200 → LLM  (50,000+ tokens!)
+                    User Message
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │    ingest_message   │
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │   EnrichmentAgent   │ ◄── Extracts: topics, intent,
+              │                     │     sentiment, entities, importance
+              └──────────┬──────────┘
+                         │
+           ┌─────────────┴─────────────┐
+           ▼                           ▼
+    ┌─────────────┐             ┌─────────────┐
+    │  Database   │             │    Cache    │
+    │ (persistent)│             │ (fast read) │
+    └─────────────┘             └─────────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  get_context_smart  │ ◄── Query arrives
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  SmartContextAgent  │ ◄── Single LLM call with tools:
+              │                     │     • get_recent_messages
+              │   Tool Calling      │     • search_history
+              │                     │     • get_historical_summaries
+              │                     │     • get_user_preferences
+              │                     │     • lookup_external_data
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  AssembledContext   │
+              │                     │
+              │ • Summary           │
+              │ • Key points        │
+              │ • External data     │
+              │ • User preferences  │
+              └─────────────────────┘
 ```
-
-### The Mindcore Solution
-
-1. **Enrich Once** — When a message arrives, MetadataAgent extracts metadata (topics, intent, sentiment, importance) using a lightweight LLM
-2. **Retrieve Smart** — When context is needed, ContextAgent uses metadata to find and summarize only relevant messages
-3. **Send Less** — Your main LLM receives a compressed ~1,500 token context instead of 50,000+
 
 ---
 
-## ⚡ Async Support
+## Features
 
-For high-performance applications using asyncio, FastAPI, or other async frameworks.
+### Current Features
 
-### Installation
+| Feature | Description |
+|---------|-------------|
+| **Message Ingestion** | Store messages with automatic metadata enrichment |
+| **Smart Context Retrieval** | Single LLM call with tool calling for intelligent context assembly |
+| **Multi-tenant** | User/thread/session isolation out of the box |
+| **Flexible Storage** | SQLite (dev) or PostgreSQL (production) |
+| **LLM Agnostic** | OpenAI, local llama.cpp, or any OpenAI-compatible API |
+| **Async Support** | Full async client for high-performance applications |
+| **Background Enrichment** | Persistent queue for reliable metadata processing |
+| **REST API** | FastAPI server with interactive docs |
+| **Web Dashboard** | Vue.js dashboard for monitoring and configuration |
 
-```bash
-pip install mindcore[async]
-# Or for everything:
-pip install mindcore[all]
+### Planned Features (Roadmap)
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Thread Summarization** | Planned | Compress old threads into summaries, reduce storage 90% |
+| **User Preferences** | Planned | Amendable settings (language, timezone, interests) |
+| **External Connectors** | Planned | Read-only access to Orders, Billing, CRM systems |
+| **Forgetting Policies** | Planned | Auto-delete old data based on retention rules |
+| **Cross-thread Context** | Planned | "User mentioned X in another conversation" |
+
+---
+
+## Use Cases
+
+### Customer Support Bot
+
+```python
+# Support bot with full context awareness
+context = client.get_context_smart(
+    user_id="customer_123",
+    thread_id="support_ticket_456",
+    query="Customer is asking about their refund"
+)
+
+# Context includes:
+# - Previous support interactions
+# - Order history (via Orders connector)
+# - Billing status (via Billing connector)
+# - User preferences (language, communication style)
 ```
 
-### Basic Usage
+### Multi-Agent Organization
+
+```python
+# All agents share the same Mindcore instance
+support_bot = YourSupportBot(mindcore=client)
+sales_bot = YourSalesBot(mindcore=client)
+internal_assistant = YourInternalBot(mindcore=client)
+
+# When a user talks to support, sales bot knows about it
+# No more "I see you're a new customer" after they just purchased
+```
+
+### Enterprise AI Assistant
+
+```python
+# Connect to internal systems
+from mindcore.connectors import OrdersConnector, BillingConnector
+
+client.register_connector(OrdersConnector(
+    db_url="postgresql://readonly:pass@orders-db/orders"
+))
+
+client.register_connector(BillingConnector(
+    db_url="postgresql://readonly:pass@billing-db/billing"
+))
+
+# Now context automatically includes relevant business data
+context = client.get_context_smart(
+    user_id="employee_123",
+    thread_id="internal_chat",
+    query="What's the status of order #12345?"
+)
+# Context includes actual order data from your Orders DB
+```
+
+---
+
+## Async Support
+
+For high-performance applications using FastAPI or other async frameworks:
 
 ```python
 import asyncio
 from mindcore import get_async_client
 
 async def main():
-    # Get the async client class
     AsyncMindcoreClient = get_async_client()
 
-    # Use as context manager (recommended)
     async with AsyncMindcoreClient(use_sqlite=True) as client:
-        # Ingest message (async)
+        # Ingest (async)
         message = await client.ingest_message({
             "user_id": "user_123",
             "thread_id": "thread_456",
             "session_id": "session_789",
             "role": "user",
-            "text": "What are best practices for async Python?"
+            "text": "Hello!"
         })
 
-        print(f"Ingested: {message.message_id}")
-        print(f"Topics: {message.metadata.topics}")
-
         # Get context (async)
-        context = await client.get_context(
+        context = await client.get_context_smart(
             user_id="user_123",
             thread_id="thread_456",
-            query="async programming"
+            query="greeting"
         )
-
-        print(f"Context: {context.assembled_context}")
 
 asyncio.run(main())
 ```
@@ -301,30 +439,26 @@ asyncio.run(main())
 ### FastAPI Integration
 
 ```python
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from mindcore import get_async_client
 
-# Global client instance
 mindcore_client = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialize client
     global mindcore_client
     AsyncMindcoreClient = get_async_client()
     mindcore_client = AsyncMindcoreClient(use_sqlite=True)
     await mindcore_client.connect()
     yield
-    # Shutdown: cleanup
     await mindcore_client.close()
 
 app = FastAPI(lifespan=lifespan)
 
 @app.post("/chat")
 async def chat(user_id: str, thread_id: str, message: str):
-    # Ingest the user message
-    msg = await mindcore_client.ingest_message({
+    await mindcore_client.ingest_message({
         "user_id": user_id,
         "thread_id": thread_id,
         "session_id": "web",
@@ -332,527 +466,206 @@ async def chat(user_id: str, thread_id: str, message: str):
         "text": message
     })
 
-    # Get context for generating response
-    context = await mindcore_client.get_context(
+    context = await mindcore_client.get_context_smart(
         user_id=user_id,
         thread_id=thread_id,
         query=message
     )
 
-    return {
-        "message_id": msg.message_id,
-        "context": context.assembled_context,
-        "key_points": context.key_points
-    }
-```
-
-### Async vs Sync Comparison
-
-| Feature | MindcoreClient | AsyncMindcoreClient |
-|---------|----------------|---------------------|
-| Database | psycopg2 / sqlite3 | asyncpg / aiosqlite |
-| Concurrency | Thread-based | Event loop |
-| Best for | Scripts, CLI apps | Web servers, high concurrency |
-| FastAPI | Works (blocking) | Native async |
-
----
-
-## 🦙 Local LLM Setup
-
-Run Mindcore completely offline with zero API costs using llama.cpp.
-
-### Quick Setup
-
-```bash
-# Install with llama.cpp support
-pip install -e ".[llama]"
-
-# Download the default model (Llama 3.2 3B, ~2GB)
-mindcore download-model
-
-# Set the model path
-export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
-```
-
-### Available Models
-
-| Model | Size | RAM | Best For |
-|-------|------|-----|----------|
-| `llama-3.2-3b` (default) | 2.0 GB | 4+ GB | General use, best quality |
-| `llama-3.2-1b` | 0.8 GB | 2+ GB | Low-resource environments |
-| `qwen2.5-3b` | 2.1 GB | 4+ GB | Multilingual, structured output |
-| `phi-3.5-mini` | 2.2 GB | 4+ GB | Reasoning tasks |
-| `gemma-2-2b` | 1.6 GB | 3+ GB | Good balance |
-| `smollm2-1.7b` | 1.1 GB | 2+ GB | Ultra-lightweight |
-
-```bash
-# Download a specific model
-mindcore download-model -m qwen2.5-3b
-
-# List all available models
-mindcore list-models -v
-```
-
-### Self-Hosted LLM Servers
-
-Use any OpenAI-compatible server (vLLM, Ollama, LocalAI, etc.):
-
-```bash
-# vLLM server
-export MINDCORE_OPENAI_BASE_URL="http://localhost:8000/v1"
-export OPENAI_API_KEY="not-needed"
-export MINDCORE_OPENAI_MODEL="meta-llama/Llama-3.2-3B-Instruct"
-
-# Ollama
-export MINDCORE_OPENAI_BASE_URL="http://localhost:11434/v1"
-export OPENAI_API_KEY="ollama"
-export MINDCORE_OPENAI_MODEL="llama3.2"
-```
-
-### Provider Modes
-
-```python
-from mindcore import MindcoreClient
-
-# Auto mode (default): llama.cpp primary, OpenAI fallback
-client = MindcoreClient(use_sqlite=True)
-
-# Force local LLM only
-client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
-
-# Force OpenAI only
-client = MindcoreClient(use_sqlite=True, llm_provider="openai")
+    return {"context": context.assembled_context}
 ```
 
 ---
 
-## 📖 Documentation
+## Cost Comparison
 
-### MindcoreClient
+### Token Usage: Traditional vs Mindcore
 
-The main entry point for all operations.
+| Approach | Tokens per Request | Cost per 1000 Requests | Annual (100k requests) |
+|----------|-------------------|------------------------|------------------------|
+| **Traditional** (full history) | 50,000+ | $130 | $156,000 |
+| **Mindcore** (smart context) | ~1,500 | $4 | $4,800 |
+| **Mindcore + Local LLM** | ~1,500 | $0 | $0 |
 
-```python
-from mindcore import MindcoreClient
+### Why It's Efficient
 
-# Local development with SQLite (recommended for getting started)
-client = MindcoreClient(use_sqlite=True)
-
-# Production with PostgreSQL
-client = MindcoreClient()
-
-# Custom configuration
-client = MindcoreClient(config_path="path/to/config.yaml")
-
-# In-memory database (great for testing)
-client = MindcoreClient(use_sqlite=True, sqlite_path=":memory:")
-```
-
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `ingest_message(message_dict)` | Enrich and store a message |
-| `get_context(user_id, thread_id, query, max_messages=50)` | Get assembled context for a query |
-| `get_message(message_id)` | Retrieve a single message by ID |
-| `clear_cache(user_id, thread_id)` | Clear cached messages |
-| `close()` | Cleanup connections |
-
-#### Message Format
-
-```python
-message = client.ingest_message({
-    "user_id": "user_123",       # Required: User identifier
-    "thread_id": "thread_456",   # Required: Conversation thread
-    "session_id": "session_789", # Required: Session identifier
-    "role": "user",              # Required: user, assistant, system, or tool
-    "text": "Message content"    # Required: The message text
-})
-```
-
-#### Enriched Metadata
-
-After ingestion, messages include rich metadata:
-
-```python
-message.metadata.topics       # ['AI', 'machine learning']
-message.metadata.categories   # ['technology', 'programming']
-message.metadata.sentiment    # 'positive', 'negative', 'neutral'
-message.metadata.intent       # 'ask_question', 'provide_info', etc.
-message.metadata.importance   # 0.0 to 1.0
-message.metadata.entities     # ['OpenAI', 'GPT-4']
-message.metadata.key_phrases  # ['best practices', 'AI agents']
-```
-
-#### Assembled Context
-
-```python
-context = client.get_context(user_id, thread_id, query)
-
-context.assembled_context    # Summarized relevant history (string)
-context.key_points           # ['Point 1', 'Point 2', ...]
-context.relevant_message_ids # ['msg_1', 'msg_2', ...]
-context.metadata             # {'topics': [...], 'importance': 0.8}
-```
+1. **Metadata extracted once** — Never recomputed
+2. **Deterministic retrieval** — No expensive embedding operations
+3. **Smart summarization** — Only relevant messages processed
+4. **Optional local LLM** — Zero API costs for metadata operations
 
 ---
 
-## 🔌 Framework Integrations
-
-### LangChain
-
-```python
-from mindcore import MindcoreClient
-from mindcore.integrations import LangChainAdapter
-
-client = MindcoreClient(use_sqlite=True)
-adapter = LangChainAdapter(client)
-
-# Option 1: Use as LangChain memory
-memory = adapter.as_langchain_memory("user_123", "thread_456", "session_789")
-
-# Option 2: Auto-capture with callbacks
-callback = adapter.create_langchain_callback("user_123", "thread_456", "session_789")
-llm = ChatOpenAI(callbacks=[callback])
-
-# Option 3: Inject context into prompts
-context = adapter.get_enhanced_context(user_id, thread_id, query)
-enhanced_prompt = adapter.inject_context_into_prompt(context, system_prompt)
-```
-
-### LlamaIndex
-
-```python
-from mindcore.integrations import LlamaIndexAdapter
-
-adapter = LlamaIndexAdapter(client)
-memory = adapter.create_chat_memory("user_123", "thread_456", "session_789")
-
-# Get messages
-messages = memory.get_messages()
-
-# Add message
-memory.add_message(role="user", content="Hello!")
-```
-
-### Any Framework
-
-Mindcore works with any AI system:
-
-```python
-# Your existing code
-response = your_llm.generate(user_message)
-
-# Add Mindcore
-context = client.get_context(user_id, thread_id, user_message)
-response = your_llm.generate(
-    f"Context: {context.assembled_context}\n\nUser: {user_message}"
-)
-```
-
----
-
-## 💵 Cost Analysis
-
-### Benchmark: 200 Messages, 20 Context Requests
-
-| Approach | Tokens Used | Cost | Savings |
-|----------|-------------|------|---------|
-| **Traditional** (full history) | 1,010,000 | $2.60 | — |
-| **Mindcore** (intelligent) | 190,000 | $0.20 | **92%** |
-
-### Real-World Annual Savings
-
-| Use Case | Traditional | Mindcore | Annual Savings |
-|----------|-------------|----------|----------------|
-| Customer Support (1k users/day) | $225,000 | $45,000 | **$180,000** |
-| AI Assistant (per enterprise user) | $61,000 | $4,000 | **$57,000** |
-| Platform (10k daily users) | $4,500,000 | $450,000 | **$4,050,000** |
-
-### Why It's So Efficient
-
-1. **GPT-4o-mini** — Enrichment uses the cheapest capable model ($0.15/1M tokens)
-2. **One-time processing** — Metadata is extracted once, never recomputed
-3. **Smart retrieval** — Only relevant messages are summarized
-4. **Compressed output** — ~1,500 tokens instead of 50,000+
-
----
-
-## 🖥️ REST API
-
-Start the FastAPI server for HTTP access:
-
-```bash
-# Using the CLI
-mindcore-server
-
-# Or with Python
-python -m mindcore.api.server
-
-# Custom host/port
-python -m mindcore.api.server --host 0.0.0.0 --port 8080
-```
-
-### Endpoints
-
-#### POST /ingest
-```bash
-curl -X POST http://localhost:8000/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user_123",
-    "thread_id": "thread_456",
-    "session_id": "session_789",
-    "role": "user",
-    "text": "Hello, world!"
-  }'
-```
-
-#### POST /context
-```bash
-curl -X POST http://localhost:8000/context \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user_123",
-    "thread_id": "thread_456",
-    "query": "What did we discuss?"
-  }'
-```
-
-#### GET /health
-```bash
-curl http://localhost:8000/health
-```
-
-**Interactive Docs:** http://localhost:8000/docs
-
----
-
-## 🎨 Web Dashboard
-
-Mindcore includes a modern web dashboard for monitoring and configuration.
-
-### Quick Start
-
-```bash
-# Start the API server
-python -m mindcore.api.server
-
-# In another terminal, start the dashboard
-cd dashboard
-npm install
-npm run dev
-```
-
-Open http://localhost:3000 to access the dashboard.
-
-### Features
-
-| Feature | Description |
-|---------|-------------|
-| **Overview** | Stats cards, message trends, role distribution charts |
-| **Messages** | Browse, search, filter, and delete messages |
-| **Threads** | View conversation threads and their messages |
-| **Logs** | Real-time system logs with level filtering |
-| **Configuration** | Configure LLM models, memory settings, cache |
-| **Models** | Visual model selector for cloud and local models |
-
-### Screenshots
-
-The dashboard features a modern light blue-purple theme with:
-- Card-based UI with subtle shadows
-- Chart.js visualizations
-- Ant Design Vue 4.1.2 components
-- Real-time log updates
-- Responsive design
-
----
-
-## 🔧 CLI Commands
-
-Mindcore includes a CLI for model management and status checking.
-
-```bash
-# Download a model
-mindcore download-model                    # Download default model
-mindcore download-model -m qwen2.5-3b     # Download specific model
-mindcore download-model -o ./models       # Custom output directory
-
-# List available models
-mindcore list-models                       # Show model table
-mindcore list-models -v                    # Detailed info
-
-# Check installation status
-mindcore status                            # Show provider status
-
-# Show configuration
-mindcore config --show                     # Display current config
-```
-
----
-
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
 ```bash
-# LLM Provider (choose one or both)
-export MINDCORE_LLAMA_MODEL_PATH="~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+# LLM Provider
+export MINDCORE_LLAMA_MODEL_PATH="~/.mindcore/models/model.gguf"
 export OPENAI_API_KEY="sk-your-api-key"
 
 # Self-hosted LLM (optional)
 export MINDCORE_OPENAI_BASE_URL="http://localhost:8000/v1"
 export MINDCORE_OPENAI_MODEL="your-model-name"
 
-# Database (only for PostgreSQL mode)
+# Database (PostgreSQL mode)
 export DB_HOST="localhost"
 export DB_PORT="5432"
 export DB_NAME="mindcore"
 export DB_USER="postgres"
 export DB_PASSWORD="your-password"
-
-# Logging (optional)
-export MINDCORE_LOG_LEVEL="INFO"          # DEBUG, INFO, WARNING, ERROR
-export MINDCORE_JSON_LOGS="true"          # JSON output for cloud logging
-
-# Rate Limiting (optional, for cloud deployments)
-export MINDCORE_REDIS_URL="redis://localhost:6379"  # Enable distributed rate limiting
 ```
 
 ### Config File (config.yaml)
 
 ```yaml
 llm:
-  # Provider mode: "auto", "llama_cpp", or "openai"
-  provider: auto
+  provider: auto  # auto, llama_cpp, or openai
 
-  # Local LLM (llama.cpp)
   llama_cpp:
     model_path: ${MINDCORE_LLAMA_MODEL_PATH}
-    n_ctx: 4096           # Context window
-    n_gpu_layers: 0       # 0 = CPU only, -1 = all GPU
+    n_ctx: 4096
 
-  # Cloud/Self-hosted LLM
   openai:
     api_key: ${OPENAI_API_KEY}
-    base_url: ${MINDCORE_OPENAI_BASE_URL:}  # Optional: for self-hosted
-    model: ${MINDCORE_OPENAI_MODEL:gpt-4o-mini}
-
-  # Generation settings
-  defaults:
-    temperature: 0.3
-    max_tokens_enrichment: 800
-    max_tokens_context: 1500
+    model: gpt-4o-mini
 
 database:
   host: ${DB_HOST:localhost}
   port: ${DB_PORT:5432}
   database: ${DB_NAME:mindcore}
-  user: ${DB_USER:postgres}
-  password: ${DB_PASSWORD:postgres}
 
-cache:
-  max_size: 50
-  ttl: 3600
-```
+# Coming soon
+summarization:
+  enabled: true
+  max_age_days: 7
+  delete_after_summary: false
 
-### PostgreSQL Setup (Production)
+preferences:
+  enabled: true
+  include_in_context: true
 
-```bash
-# Create database
-createdb mindcore
-
-# Initialize schema
-psql -d mindcore -f schema.sql
+connectors:
+  cache_ttl: 300
 ```
 
 ---
 
-## 🧪 Testing
+## CLI Commands
 
 ```bash
-# Run all tests
-pytest
+# Download a model
+mindcore download-model                    # Default model
+mindcore download-model -m qwen2.5-3b     # Specific model
 
-# With coverage report
-pytest --cov=mindcore --cov-report=html
+# List available models
+mindcore list-models -v
 
-# Run specific test file
-pytest tests/test_client.py -v
+# Check status
+mindcore status
+
+# Show configuration
+mindcore config --show
 ```
 
 ---
 
-## 📁 Project Structure
+## REST API
+
+```bash
+# Start the server
+python -m mindcore.api.server
+
+# Or with custom host/port
+python -m mindcore.api.server --host 0.0.0.0 --port 8080
+```
+
+### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ingest` | POST | Ingest a message |
+| `/context` | POST | Get assembled context |
+| `/context/smart` | POST | Get context with tool calling |
+| `/health` | GET | Health check |
+| `/docs` | GET | Interactive API documentation |
+
+---
+
+## Roadmap
+
+### Phase 1: Thread Summarization (Next)
+- Compress old threads into LLM-generated summaries
+- 90% storage reduction for threads > 7 days old
+- Background worker for automatic summarization
+
+### Phase 2: User Preferences
+- Amendable settings (language, timezone, interests)
+- Read-only system data separation (orders, billing never modified)
+- Preferences automatically included in context
+
+### Phase 3: External Connectors
+- Read-only connectors for Orders, Billing, CRM
+- Topic-based routing (mention "orders" → query Orders DB)
+- Custom connector SDK for any data source
+
+### Phase 4: Cloud Platform
+- Managed Mindcore service
+- Dashboard with analytics
+- SOC 2 compliance for enterprise
+
+See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for detailed technical plans.
+
+---
+
+## Project Structure
 
 ```
 mindcore/
 ├── __init__.py              # Main client & public API
-├── async_client.py          # AsyncMindcoreClient for async/await
-├── config.yaml              # Default configuration
-│
-├── core/                    # Core functionality
-│   ├── config_loader.py     # Configuration management
-│   ├── db_manager.py        # PostgreSQL operations
-│   ├── sqlite_manager.py    # SQLite operations (local dev)
-│   ├── async_db.py          # Async database managers (aiosqlite, asyncpg)
-│   ├── cache_manager.py     # In-memory caching
-│   └── schemas.py           # Data models (Message, Context, etc.)
-│
-├── llm/                     # LLM Provider Layer
-│   ├── base_provider.py     # Abstract base class
-│   ├── llama_cpp_provider.py # Local llama.cpp inference
-│   ├── openai_provider.py   # OpenAI/compatible APIs
-│   └── provider_factory.py  # Factory with fallback support
-│
-├── cli/                     # Command-line Interface
-│   ├── main.py              # CLI commands
-│   └── models.py            # Model registry
+├── async_client.py          # AsyncMindcoreClient
 │
 ├── agents/                  # AI agents
-│   ├── base_agent.py        # Base class with LLM provider
-│   ├── enrichment_agent.py  # MetadataAgent implementation
-│   └── context_assembler_agent.py  # ContextAgent implementation
+│   ├── enrichment_agent.py  # Metadata extraction
+│   ├── smart_context_agent.py # Tool-calling context assembly
+│   ├── context_assembler_agent.py
+│   └── summarization_agent.py  # (planned)
 │
-├── integrations/            # Framework adapters
-│   ├── langchain_adapter.py # LangChain integration
-│   └── llamaindex_adapter.py # LlamaIndex integration
+├── connectors/              # External data connectors (planned)
+│   ├── base.py
+│   ├── registry.py
+│   └── orders.py
+│
+├── core/                    # Core functionality
+│   ├── schemas.py           # Data models
+│   ├── sqlite_manager.py    # SQLite operations
+│   ├── async_db.py          # Async database managers
+│   ├── cache_manager.py     # In-memory caching
+│   └── preferences_manager.py  # (planned)
+│
+├── llm/                     # LLM providers
+│   ├── llama_cpp_provider.py
+│   ├── openai_provider.py
+│   └── provider_factory.py
 │
 ├── api/                     # REST API
-│   ├── server.py            # FastAPI application
-│   └── routes/              # API endpoints (including dashboard)
+│   └── server.py
 │
-└── utils/                   # Utilities
-    ├── security.py          # Validation & rate limiting (limits library)
-    └── logger.py            # Structured logging (structlog)
+└── workers/                 # Background workers (planned)
+    └── summarization_worker.py
 
-dashboard/                   # Web Dashboard (Vue 3 + Ant Design)
-├── src/
-│   ├── views/               # Page components (Overview, Messages, etc.)
-│   ├── components/          # Reusable UI components
-│   ├── stores/              # Pinia state management
-│   └── api/                 # API client
-├── package.json             # npm dependencies
-└── vite.config.js           # Vite configuration
+dashboard/                   # Vue.js web dashboard
 ```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
-3. **Make** your changes with tests
-4. **Commit**: `git commit -m 'Add amazing feature'`
-5. **Push**: `git push origin feature/amazing-feature`
-6. **Open** a Pull Request
-
-### Development Setup
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
-# Clone your fork
+# Clone
 git clone https://github.com/YOUR_USERNAME/mindcore.git
 cd mindcore
 
@@ -864,45 +677,40 @@ pytest
 
 # Format code
 black mindcore/
-isort mindcore/
 ```
 
 ---
 
-## 📄 License
+## License
 
-This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **llama.cpp** — CPU-optimized local LLM inference
 - **OpenAI** — GPT-4o-mini powers cloud agents
 - **FastAPI** — High-performance API framework
-- **PostgreSQL** — Robust production database
-- **SQLite** — Zero-config local development
-- **cachetools** — Battle-tested caching with TTL/LRU
-- **limits** — Redis-ready rate limiting
-- **structlog** — Structured logging for cloud deployments
-- **aiosqlite** — Async SQLite for high concurrency
-- **asyncpg** — High-performance async PostgreSQL
+- **PostgreSQL/SQLite** — Robust storage options
+- **cachetools, limits, structlog** — Battle-tested libraries
 
 ---
 
 <div align="center">
 
-### Ready to cut your LLM costs by 90% (or 100% with local LLM)?
+### The Context Protocol for AI Agents
+
+**Stop rebuilding memory infrastructure. Start building features.**
 
 ```bash
-# Quick start with local LLM
 pip install -e ".[llama]" && mindcore download-model && mindcore status
 ```
 
-**[Get Started](#-quick-start)** • **[Local LLM Setup](#-local-llm-setup)** • **[CLI Commands](#-cli-commands)**
+[Quick Start](#quick-start) • [Architecture](#-architecture) • [Roadmap](#-roadmap)
 
 ---
 
-Made with ❤️ by the Mindcore team
+Made with care by the Mindcore team
 
 </div>

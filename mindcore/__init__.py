@@ -64,12 +64,15 @@ from .core import (
     SQLiteManager,
     CacheManager,
     DiskCacheManager,
+    PreferencesManager,
     Message,
     MessageMetadata,
     MessageRole,
     AssembledContext,
     ContextRequest,
     IngestRequest,
+    ThreadSummary,
+    UserPreferences,
 )
 
 # AI Agents
@@ -77,6 +80,7 @@ from .agents import (
     BaseAgent,
     EnrichmentAgent as MetadataAgent,
     ContextAssemblerAgent as ContextAgent,
+    SummarizationAgent,
 )
 
 # LLM Providers
@@ -950,6 +954,57 @@ def get_async_client():
     return AsyncMindcoreClient
 
 
+# Modular Context Layer
+from .context_layer import (
+    ContextLayer,
+    ContextLayerConfig,
+    ContextLayerTier,
+    BasicContextLayer,
+    VectorContextLayer,
+    FullContextLayer,
+)
+
+# Knowledge Store (unified single/multi-agent interface)
+from .knowledge_store import (
+    KnowledgeStore,
+    KnowledgeItem,
+    AgentConfig,
+    StoreMode,
+    SimpleKnowledgeStore,
+)
+
+
+# Lazy imports for vector stores (optional dependencies)
+def get_vector_stores():
+    """
+    Get vector store classes (requires optional dependencies).
+
+    Returns:
+        Module with VectorStore, Document, embeddings, and implementations
+
+    Example:
+        vs = get_vector_stores()
+        store = vs.ChromaVectorStore(...)
+    """
+    from . import vectorstores
+    return vectorstores
+
+
+def get_connectors():
+    """
+    Get connector classes.
+
+    Returns:
+        Module with ConnectorRegistry, BaseConnector, and implementations
+
+    Example:
+        conn = get_connectors()
+        registry = conn.ConnectorRegistry()
+    """
+    from . import connectors
+    return connectors
+
+
 # Public API
 __all__ = [
     # Version
@@ -962,6 +1017,21 @@ __all__ = [
     "get_client",
     "get_async_client",
 
+    # Modular Context Layer
+    "ContextLayer",
+    "ContextLayerConfig",
+    "ContextLayerTier",
+    "BasicContextLayer",
+    "VectorContextLayer",
+    "FullContextLayer",
+
+    # Knowledge Store (single/multi-agent)
+    "KnowledgeStore",
+    "SimpleKnowledgeStore",
+    "KnowledgeItem",
+    "AgentConfig",
+    "StoreMode",
+
     # AI Agents
     "MetadataAgent",
     "ContextAgent",
@@ -969,6 +1039,7 @@ __all__ = [
     "QueryIntent",
     "SmartContextAgent",
     "ContextTools",
+    "SummarizationAgent",
     "BaseAgent",
 
     # LLM Providers
@@ -988,10 +1059,17 @@ __all__ = [
     "AssembledContext",
     "ContextRequest",
     "IngestRequest",
+    "ThreadSummary",
+    "UserPreferences",
 
     # Core managers
     "ConfigLoader",
     "DatabaseManager",
     "SQLiteManager",
     "CacheManager",
+    "PreferencesManager",
+
+    # Lazy imports for optional modules
+    "get_vector_stores",
+    "get_connectors",
 ]

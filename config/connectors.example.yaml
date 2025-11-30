@@ -1,0 +1,158 @@
+# Mindcore Connectors Configuration
+# Copy this file to connectors.yaml and customize for your data sources
+
+# =============================================================================
+# Orders Connector
+# =============================================================================
+# Provides read-only access to order/purchase data
+orders:
+  enabled: true
+
+  # Backend type: database, api, or custom
+  backend: database
+
+  # Database configuration
+  database:
+    # Connection URL (use read-only credentials!)
+    url: ${ORDERS_DB_URL}
+    # Example: postgresql://readonly:pass@orders-db:5432/orders
+
+    # Table name
+    table: orders
+
+    # Column that maps to Mindcore user_id
+    user_id_column: customer_id
+
+  # REST API configuration (alternative to database)
+  # api:
+  #   url: https://api.example.com/orders
+  #   key: ${ORDERS_API_KEY}
+  #   headers:
+  #     X-Custom-Header: value
+
+  # Query settings
+  max_results: 10
+  cache_ttl: 300  # 5 minutes
+
+# =============================================================================
+# Billing Connector
+# =============================================================================
+# Provides read-only access to billing/payment data
+billing:
+  enabled: true
+
+  # Backend type: stripe, api, database, or custom
+  backend: stripe
+
+  # Stripe configuration (recommended)
+  stripe:
+    # Use a RESTRICTED API key with read-only permissions!
+    api_key: ${STRIPE_API_KEY}
+
+    # Field in your user model that maps to Stripe customer ID
+    customer_id_field: stripe_customer_id
+
+  # REST API configuration (alternative)
+  # api:
+  #   url: https://billing.example.com/api
+  #   key: ${BILLING_API_KEY}
+
+  # Database configuration (alternative)
+  # database:
+  #   url: ${BILLING_DB_URL}
+  #   user_id_column: user_id
+
+  # Query settings
+  max_results: 10
+  cache_ttl: 300
+
+# =============================================================================
+# Custom Connector Template
+# =============================================================================
+# Use this as a template for your own connectors
+# custom_connector:
+#   enabled: false
+#
+#   # Topics this connector handles
+#   topics:
+#     - my_topic
+#     - related_topic
+#
+#   # Backend configuration
+#   api:
+#     url: https://api.example.com/custom
+#     key: ${CUSTOM_API_KEY}
+#
+#   # Custom settings
+#   max_results: 20
+#   cache_ttl: 600
+
+# =============================================================================
+# Support/Helpdesk Connector (Example)
+# =============================================================================
+# Provides read-only access to support ticket data
+# support:
+#   enabled: false
+#
+#   backend: api
+#
+#   api:
+#     url: https://helpdesk.example.com/api/v2
+#     key: ${HELPDESK_API_KEY}
+#     # Map user to helpdesk user
+#     user_field: requester_email
+#
+#   topics:
+#     - support
+#     - ticket
+#     - helpdesk
+#     - issue
+#
+#   max_results: 5
+#   cache_ttl: 120
+
+# =============================================================================
+# CRM Connector (Example)
+# =============================================================================
+# Provides read-only access to CRM data
+# crm:
+#   enabled: false
+#
+#   backend: api
+#
+#   api:
+#     url: https://api.salesforce.com/services/data/v58.0
+#     # OAuth token (refresh separately)
+#     token: ${SALESFORCE_ACCESS_TOKEN}
+#
+#   topics:
+#     - customer
+#     - account
+#     - contact
+#     - opportunity
+#
+#   max_results: 10
+#   cache_ttl: 300
+
+# =============================================================================
+# Inventory Connector (Example)
+# =============================================================================
+# Provides read-only access to inventory/stock data
+# inventory:
+#   enabled: false
+#
+#   backend: database
+#
+#   database:
+#     url: ${INVENTORY_DB_URL}
+#     table: products
+#     user_id_column: null  # Inventory isn't user-specific
+#
+#   topics:
+#     - inventory
+#     - stock
+#     - product
+#     - availability
+#
+#   max_results: 20
+#   cache_ttl: 60  # Short TTL for frequently changing data

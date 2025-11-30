@@ -42,8 +42,8 @@ classifiers = [
 dependencies = [
     # LLM Providers
     "openai>=1.0.0",
-    # Database
-    "psycopg2-binary>=2.9.0",
+    # Database (psycopg v3 - modern async-capable driver)
+    "psycopg[binary]>=3.1.0",
     # API Framework
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
@@ -73,6 +73,28 @@ async = [
     "aiosqlite>=0.19.0",
     "asyncpg>=0.29.0",
 ]
+# Vector stores
+vectors = [
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0",
+]
+chroma = [
+    "chromadb>=0.4.0",
+]
+pinecone = [
+    "pinecone-client>=3.0.0",
+]
+pgvector = [
+    "pgvector>=0.2.0",
+]
+# Access control (Casbin for RBAC/ABAC)
+rbac = [
+    "casbin>=1.50.0",
+]
+# Accurate token counting
+tokens = [
+    "tiktoken>=0.5.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
@@ -85,6 +107,8 @@ dev = [
 all = [
     "mindcore[llama]",
     "mindcore[async]",
+    "mindcore[vectors]",
+    "mindcore[rbac]",
 ]
 
 [project.urls]
@@ -98,7 +122,7 @@ mindcore = "mindcore.cli:main"
 mindcore-server = "mindcore.api.server:run_server"
 
 [tool.setuptools]
-packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.llm", "mindcore.cli", "mindcore.integrations"]
+packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.llm", "mindcore.cli", "mindcore.integrations", "mindcore.vectorstores", "mindcore.connectors"]
 
 [tool.setuptools.package-data]
 mindcore = ["config.yaml"]

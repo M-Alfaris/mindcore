@@ -1,0 +1,175 @@
+# Mindcore Vector Stores Configuration
+# Copy this file to vectorstores.yaml and customize for your setup
+
+# =============================================================================
+# Vector Store Selection
+# =============================================================================
+# Choose your vector store backend:
+# - memory: In-memory (development only, not persistent)
+# - chroma: Local or server (open-source, easy setup)
+# - pinecone: Cloud-managed (production-ready, scalable)
+# - pgvector: PostgreSQL extension (if you already use PostgreSQL)
+
+vector_store:
+  # Enable/disable vector store functionality
+  enabled: true
+
+  # Default backend type
+  type: chroma
+
+  # Distance metric: cosine, euclidean, dot_product
+  distance_metric: cosine
+
+# =============================================================================
+# Embedding Configuration
+# =============================================================================
+# Embeddings convert text to vectors. Choose your provider:
+# - openai: Best quality, requires API key
+# - sentence_transformers: Local, no API needed
+# - ollama: Local with Ollama server
+
+embeddings:
+  # Provider: openai, sentence_transformers, ollama
+  provider: openai
+
+  # OpenAI settings
+  openai:
+    # Use environment variable
+    api_key: ${OPENAI_API_KEY}
+    # Models: text-embedding-3-small (1536d), text-embedding-3-large (3072d)
+    model: text-embedding-3-small
+
+  # Sentence Transformers settings (local, no API)
+  # sentence_transformers:
+  #   model_name: all-MiniLM-L6-v2  # 384 dimensions, fast
+  #   # model_name: all-mpnet-base-v2  # 768 dimensions, better quality
+  #   device: null  # auto-detect (cpu/cuda/mps)
+  #   normalize_embeddings: true
+
+  # Ollama settings (local with Ollama server)
+  # ollama:
+  #   model: nomic-embed-text
+  #   base_url: http://localhost:11434
+
+# =============================================================================
+# Chroma Configuration
+# =============================================================================
+# Chroma: Open-source, local or client/server mode
+# Install: pip install chromadb
+
+chroma:
+  # Collection name
+  collection_name: mindcore_vectors
+
+  # Persistence mode:
+  # - Set persist_directory for local file persistence
+  # - Set host/port for client/server mode
+  # - Leave both empty for in-memory
+
+  # Local persistence (recommended for development)
+  persist_directory: ./data/chroma_db
+
+  # Client/server mode (for production)
+  # host: localhost
+  # port: 8000
+
+  # Additional collection metadata
+  # collection_metadata:
+  #   description: "Mindcore conversation vectors"
+
+# =============================================================================
+# Pinecone Configuration
+# =============================================================================
+# Pinecone: Cloud-managed, production-ready
+# Install: pip install pinecone-client
+
+pinecone:
+  # API key (use restricted key in production!)
+  api_key: ${PINECONE_API_KEY}
+
+  # Index name
+  index_name: mindcore
+
+  # Namespace for multi-tenancy (optional)
+  namespace: ""
+
+  # Index creation settings (if auto-creating)
+  # cloud: aws  # aws, gcp, azure
+  # region: us-east-1
+  # metric: cosine  # cosine, euclidean, dotproduct
+
+# =============================================================================
+# pgvector Configuration
+# =============================================================================
+# pgvector: PostgreSQL extension for vector search
+# Install: pip install 'psycopg[binary]' pgvector
+# Requires: PostgreSQL with pgvector extension
+
+pgvector:
+  # Connection string (use read/write user)
+  connection_string: ${PGVECTOR_CONNECTION_STRING}
+  # Example: postgresql://user:pass@localhost:5432/mindcore
+
+  # Table name
+  collection_name: mindcore_vectors
+
+  # Use JSONB for metadata (enables filtering)
+  use_jsonb: true
+
+  # Index settings
+  index:
+    # Index type: ivfflat (faster build) or hnsw (faster query)
+    type: ivfflat
+    # IVFFlat: number of lists (more = slower build, faster query)
+    lists: 100
+    # IVFFlat: probes per query (more = slower, more accurate)
+    probes: 10
+
+# =============================================================================
+# In-Memory Configuration
+# =============================================================================
+# In-memory: For development and testing only
+# Data is lost when the process exits
+
+memory:
+  # Distance metric
+  distance_metric: cosine
+
+# =============================================================================
+# Content Indexing Settings
+# =============================================================================
+# Settings for what gets indexed in the vector store
+
+indexing:
+  # Index message content
+  index_messages: true
+
+  # Index additional fields
+  index_metadata:
+    - summary
+    - topics
+
+  # Minimum message length to index (skip very short messages)
+  min_content_length: 10
+
+  # Maximum content length (truncate longer content)
+  max_content_length: 8000
+
+  # Batch size for bulk indexing
+  batch_size: 100
+
+# =============================================================================
+# Search Settings
+# =============================================================================
+search:
+  # Default number of results
+  default_k: 5
+
+  # Maximum results allowed
+  max_k: 50
+
+  # Minimum similarity score (0-1, filter out low matches)
+  min_score: 0.5
+
+  # Search timeout in seconds
+  timeout: 10

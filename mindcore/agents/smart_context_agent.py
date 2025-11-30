@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, AssembledContext, MetadataSchema, DEFAULT_METADATA_SCHEMA
+from ..core.schemas import Message, AssembledContext, MetadataSchema, DEFAULT_METADATA_SCHEMA, ThreadSummary, UserPreferences
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -30,6 +30,13 @@ class ContextTools:
     get_recent_messages: Callable[[str, str, int], List[Message]]
     search_history: Callable[[str, Optional[str], List[str], List[str], Optional[str], int], List[Message]]
     get_session_metadata: Callable[[str, str], Dict[str, Any]]
+    # New tools for enhanced context
+    get_historical_summaries: Optional[Callable[[str, Optional[List[str]], int], List[ThreadSummary]]] = None
+    get_user_preferences: Optional[Callable[[str], UserPreferences]] = None
+    update_user_preference: Optional[Callable[[str, str, Any, str], tuple]] = None
+    # External connector tools
+    lookup_external_data: Optional[Callable[[str, List[str], Dict[str, Any]], List[Any]]] = None
+    extract_entities: Optional[Callable[[str, List[str]], Dict[str, Any]]] = None
 
 
 # Tool definitions for OpenAI function calling
@@ -100,6 +107,90 @@ CONTEXT_TOOLS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_historical_summaries",
+            "description": "Get summaries of past conversation threads. Use when user references older conversations or you need context from previous sessions that have been summarized.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Topics to filter summaries by"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of summaries to retrieve (default: 5)",
+                        "default": 5
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_user_preferences",
+            "description": "Get user's preferences (language, timezone, interests, goals, communication style). Use to personalize responses.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_user_preference",
+            "description": "Update a user's preference when they explicitly request it. Only works for amendable fields like language, timezone, interests, goals, communication_style, preferred_name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "enum": ["language", "timezone", "communication_style", "interests", "goals", "preferred_name"],
+                        "description": "The preference field to update"
+                    },
+                    "value": {
+                        "description": "The new value for the field"
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["set", "add", "remove"],
+                        "description": "For list fields (interests, goals): 'add' or 'remove' item. For others: 'set' value.",
+                        "default": "set"
+                    }
+                },
+                "required": ["field", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "lookup_external_data",
+            "description": "Fetch data from external systems (orders, billing, etc.) based on topics. Use when user asks about their orders, payments, subscriptions, deliveries, or other business data. This provides READ-ONLY access to external systems.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Topics to look up (e.g., 'orders', 'billing', 'subscription', 'delivery')"
+                    },
+                    "context": {
+                        "type": "object",
+                        "description": "Extracted entities like order_id, invoice_id, dates. Pass relevant IDs mentioned in conversation."
+                    }
+                },
+                "required": ["topics"]
+            }
+        }
     }
 ]
 
@@ -167,7 +258,7 @@ class SmartContextAgent(BaseAgent):
 
         return f"""You are a context assembly agent. Your task is to gather relevant context for an AI assistant to answer a user's query.
 
-You have access to tools that fetch conversation history and metadata. Use them intelligently:
+You have access to tools that fetch conversation history, summaries, user preferences, and external data. Use them intelligently:
 
 1. **get_recent_messages**: Get recent messages from the current thread. Use this for ongoing conversation context.
 
@@ -178,20 +269,49 @@ You have access to tools that fetch conversation history and metadata. Use them 
 
 3. **get_session_metadata**: Get aggregated info about current session topics. Use this to understand what's been discussed.
 
+4. **get_historical_summaries**: Get summaries of older conversation threads. Use this when:
+   - User references conversations from a while ago
+   - You need context from multiple past sessions
+   - Recent history search doesn't have enough information
+
+5. **get_user_preferences**: Get user's preferences (language, timezone, interests, etc.). Use this to:
+   - Personalize responses based on user preferences
+   - Understand user's communication style preference
+   - Include relevant context about the user
+
+6. **update_user_preference**: Update user preferences when they explicitly request it. Use this when:
+   - User says "remember that I prefer..." or "change my preference to..."
+   - User asks to update their language, timezone, interests, or goals
+   - ONLY use when user explicitly requests a preference change
+
+7. **lookup_external_data**: Fetch data from external business systems. Use this when:
+   - User asks about their orders, deliveries, or shipping status
+   - User asks about billing, invoices, payments, or subscriptions
+   - User needs information from external systems (CRM, orders, billing, etc.)
+   - Pass relevant IDs (order numbers, invoice numbers) in the context parameter
+   - This tool provides READ-ONLY access to external systems
+
 {schema_list}
 
 After gathering context, respond with a JSON object:
 {{
     "relevant_context": "A concise summary of relevant information from the fetched messages",
     "key_points": ["Important point 1", "Important point 2", ...],
-    "context_source": "recent|historical|both",
-    "confidence": "high|medium|low"
+    "context_source": "recent|historical|summaries|preferences|external|multiple",
+    "confidence": "high|medium|low",
+    "user_preferences_applied": true|false,
+    "preference_updates": [],
+    "external_data_fetched": []
 }}
 
 Guidelines:
 - Be selective - don't fetch everything, only what's relevant to the query
 - If the query is simple and recent context is enough, don't search history
-- If the query references past interactions, search history
+- If the query references past interactions, try summaries first (more efficient), then search_history
+- Use get_user_preferences when personalizing responses would help
+- Only update_user_preference when user explicitly requests a change
+- Use lookup_external_data when user asks about orders, billing, or other business data
+- When using lookup_external_data, extract any relevant IDs from the conversation first
 - Summarize the context concisely - the main AI doesn't need raw messages
 - Focus on information that helps answer the user's query"""
 
@@ -226,6 +346,37 @@ Guidelines:
                 metadata = self.tools.get_session_metadata(user_id, thread_id)
                 return json.dumps(metadata, indent=2)
 
+            elif tool_name == "get_historical_summaries":
+                if self.tools.get_historical_summaries is None:
+                    return "Historical summaries feature is not enabled."
+                topics = arguments.get("topics")
+                limit = arguments.get("limit", 5)
+                summaries = self.tools.get_historical_summaries(user_id, topics, limit)
+                return self._format_summaries(summaries)
+
+            elif tool_name == "get_user_preferences":
+                if self.tools.get_user_preferences is None:
+                    return "User preferences feature is not enabled."
+                prefs = self.tools.get_user_preferences(user_id)
+                return self._format_preferences(prefs)
+
+            elif tool_name == "update_user_preference":
+                if self.tools.update_user_preference is None:
+                    return "User preference updates are not enabled."
+                field = arguments.get("field")
+                value = arguments.get("value")
+                action = arguments.get("action", "set")
+                success, message = self.tools.update_user_preference(user_id, field, value, action)
+                return json.dumps({"success": success, "message": message})
+
+            elif tool_name == "lookup_external_data":
+                if self.tools.lookup_external_data is None:
+                    return "External data lookup is not enabled. Configure connectors to enable."
+                topics = arguments.get("topics", [])
+                context = arguments.get("context", {})
+                results = self.tools.lookup_external_data(user_id, topics, context)
+                return self._format_external_results(results)
+
             else:
                 return f"Unknown tool: {tool_name}"
 
@@ -249,6 +400,80 @@ Guidelines:
             )
 
         return "\n".join(formatted)
+
+    def _format_summaries(self, summaries: List[ThreadSummary]) -> str:
+        """Format thread summaries for the LLM."""
+        if not summaries:
+            return "No historical summaries found."
+
+        formatted = []
+        for summary in summaries[:10]:  # Limit to prevent context overflow
+            date_str = ""
+            if summary.last_message_at:
+                date_str = f" (last activity: {summary.last_message_at.strftime('%Y-%m-%d')})"
+
+            topics_str = f" [topics: {', '.join(summary.topics)}]" if summary.topics else ""
+
+            formatted.append(
+                f"Thread {summary.thread_id}{date_str}{topics_str}:\n"
+                f"  Summary: {summary.summary[:500]}\n"
+                f"  Key facts: {'; '.join(summary.key_facts[:3]) if summary.key_facts else 'None'}"
+            )
+
+        return "\n\n".join(formatted)
+
+    def _format_preferences(self, prefs: UserPreferences) -> str:
+        """Format user preferences for the LLM."""
+        if not prefs:
+            return "No user preferences found."
+
+        parts = [f"User Preferences for {prefs.user_id}:"]
+
+        if prefs.preferred_name:
+            parts.append(f"  Preferred name: {prefs.preferred_name}")
+        parts.append(f"  Language: {prefs.language}")
+        parts.append(f"  Timezone: {prefs.timezone}")
+        parts.append(f"  Communication style: {prefs.communication_style}")
+
+        if prefs.interests:
+            parts.append(f"  Interests: {', '.join(prefs.interests)}")
+        if prefs.goals:
+            parts.append(f"  Goals: {', '.join(prefs.goals)}")
+        if prefs.custom_context:
+            for key, value in prefs.custom_context.items():
+                parts.append(f"  {key}: {value}")
+
+        return "\n".join(parts)
+
+    def _format_external_results(self, results: List[Any]) -> str:
+        """Format external connector results for the LLM."""
+        if not results:
+            return "No external data found."
+
+        formatted = []
+        for result in results:
+            # Handle ConnectorResult objects
+            if hasattr(result, 'to_context_string'):
+                formatted.append(result.to_context_string())
+            elif hasattr(result, 'source') and hasattr(result, 'data'):
+                # Duck typing for ConnectorResult-like objects
+                if result.error:
+                    formatted.append(f"[{result.source}] Error: {result.error}")
+                elif result.data:
+                    formatted.append(f"[{result.source}] Data retrieved:")
+                    data_str = json.dumps(result.data, indent=2, default=str)
+                    # Truncate if too long
+                    if len(data_str) > 1000:
+                        data_str = data_str[:1000] + "..."
+                    formatted.append(data_str)
+                else:
+                    formatted.append(f"[{result.source}] No data found.")
+            elif isinstance(result, dict):
+                formatted.append(json.dumps(result, indent=2, default=str))
+            else:
+                formatted.append(str(result))
+
+        return "\n\n".join(formatted)
 
     def process(
         self,

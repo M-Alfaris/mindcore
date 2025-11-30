@@ -2,7 +2,7 @@
 Data schemas and models for Mindcore framework.
 """
 from dataclasses import dataclass, field, asdict
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, Any, List, Optional, Set, ClassVar
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -130,9 +130,22 @@ class MessageMetadata:
         )
 
 
+class KnowledgeVisibility(str, Enum):
+    """Visibility levels for knowledge items in multi-agent mode."""
+    PRIVATE = "private"    # Only the owning agent can access
+    SHARED = "shared"      # Shared with specific agents/groups
+    PUBLIC = "public"      # Accessible by all agents in organization
+
+
 @dataclass
 class Message:
-    """Core message structure."""
+    """
+    Core message structure.
+
+    Supports both single-agent and multi-agent deployments:
+    - Single-agent: agent_id and visibility are optional/ignored
+    - Multi-agent: agent_id identifies owning agent, visibility controls access
+    """
     message_id: str
     user_id: str
     thread_id: str
@@ -141,6 +154,11 @@ class Message:
     raw_text: str
     metadata: MessageMetadata = field(default_factory=MessageMetadata)
     created_at: Optional[datetime] = None
+
+    # Multi-agent support (optional - ignored in single-agent mode)
+    agent_id: Optional[str] = None  # Agent that created/owns this message
+    visibility: str = "private"      # "private", "shared", "public"
+    sharing_groups: List[str] = field(default_factory=list)  # Groups with access
 
     def __post_init__(self):
         """Post-initialization processing."""
@@ -161,7 +179,11 @@ class Message:
             "role": self.role.value,
             "raw_text": self.raw_text,
             "metadata": self.metadata.to_dict() if isinstance(self.metadata, MessageMetadata) else self.metadata,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            # Multi-agent fields
+            "agent_id": self.agent_id,
+            "visibility": self.visibility,
+            "sharing_groups": self.sharing_groups,
         }
 
 
@@ -205,3 +227,191 @@ class IngestRequest:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
+
+
+@dataclass
+class ThreadSummary:
+    """
+    Compressed summary of a thread/session.
+
+    Used to reduce storage and speed up retrieval for older conversations.
+    Instead of fetching all messages, the system can retrieve the summary.
+    """
+    summary_id: str
+    user_id: str
+    thread_id: str
+    session_id: Optional[str] = None
+
+    # Summary content
+    summary: str = ""  # LLM-generated summary
+    key_facts: List[str] = field(default_factory=list)  # Extractable facts
+    topics: List[str] = field(default_factory=list)  # Aggregated topics
+    categories: List[str] = field(default_factory=list)  # Aggregated categories
+    overall_sentiment: str = "neutral"  # Overall sentiment
+
+    # Metadata
+    message_count: int = 0  # Original message count
+    first_message_at: Optional[datetime] = None
+    last_message_at: Optional[datetime] = None
+    summarized_at: Optional[datetime] = None
+
+    # Entities extracted (order IDs, dates, etc.)
+    entities: Dict[str, List[str]] = field(default_factory=dict)
+    # Example: {"order_ids": ["#12345"], "dates": ["2024-03-15"]}
+
+    # Status
+    messages_deleted: bool = False  # Whether raw messages were purged
+
+    def __post_init__(self):
+        """Post-initialization processing."""
+        if self.summarized_at is None:
+            self.summarized_at = datetime.now(timezone.utc)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "summary_id": self.summary_id,
+            "user_id": self.user_id,
+            "thread_id": self.thread_id,
+            "session_id": self.session_id,
+            "summary": self.summary,
+            "key_facts": self.key_facts,
+            "topics": self.topics,
+            "categories": self.categories,
+            "overall_sentiment": self.overall_sentiment,
+            "message_count": self.message_count,
+            "first_message_at": self.first_message_at.isoformat() if self.first_message_at else None,
+            "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
+            "summarized_at": self.summarized_at.isoformat() if self.summarized_at else None,
+            "entities": self.entities,
+            "messages_deleted": self.messages_deleted
+        }
+
+    def to_context_string(self) -> str:
+        """Format summary for inclusion in AI context."""
+        parts = [f"Summary: {self.summary}"]
+        if self.key_facts:
+            parts.append(f"Key facts: {'; '.join(self.key_facts)}")
+        if self.topics:
+            parts.append(f"Topics discussed: {', '.join(self.topics)}")
+        return "\n".join(parts)
+
+
+@dataclass
+class UserPreferences:
+    """
+    Amendable user preferences.
+
+    These can be updated by user request through the AI agent.
+    Separate from read-only system data (orders, billing, etc.).
+    """
+    user_id: str
+
+    # Communication preferences
+    language: str = "en"
+    timezone: str = "UTC"
+    communication_style: str = "balanced"  # formal, casual, technical, balanced
+
+    # Personalization
+    interests: List[str] = field(default_factory=list)
+    goals: List[str] = field(default_factory=list)
+    preferred_name: Optional[str] = None
+
+    # Context hints (user-provided context that should always be included)
+    custom_context: Dict[str, Any] = field(default_factory=dict)
+    # Example: {"role": "developer", "company": "Acme Inc"}
+
+    # Notification preferences
+    notification_topics: List[str] = field(default_factory=list)
+
+    # Metadata
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    # Define which fields are amendable by AI agent
+    AMENDABLE_FIELDS: ClassVar[Set[str]] = {
+        "language", "timezone", "communication_style",
+        "interests", "goals", "preferred_name",
+        "custom_context", "notification_topics"
+    }
+
+    def __post_init__(self):
+        """Post-initialization processing."""
+        if self.created_at is None:
+            self.created_at = datetime.now(timezone.utc)
+        if self.updated_at is None:
+            self.updated_at = self.created_at
+
+    def update(self, field_name: str, value: Any) -> bool:
+        """
+        Update a preference field if amendable.
+
+        Args:
+            field_name: Name of the field to update
+            value: New value for the field
+
+        Returns:
+            True if update succeeded, False if field not amendable
+        """
+        if field_name not in self.AMENDABLE_FIELDS:
+            return False
+        setattr(self, field_name, value)
+        self.updated_at = datetime.now(timezone.utc)
+        return True
+
+    def add_to_list(self, field_name: str, value: str) -> bool:
+        """Add a value to a list field (interests, goals, notification_topics)."""
+        if field_name not in {"interests", "goals", "notification_topics"}:
+            return False
+        current_list = getattr(self, field_name, [])
+        if value not in current_list:
+            current_list.append(value)
+            setattr(self, field_name, current_list)
+            self.updated_at = datetime.now(timezone.utc)
+        return True
+
+    def remove_from_list(self, field_name: str, value: str) -> bool:
+        """Remove a value from a list field."""
+        if field_name not in {"interests", "goals", "notification_topics"}:
+            return False
+        current_list = getattr(self, field_name, [])
+        if value in current_list:
+            current_list.remove(value)
+            setattr(self, field_name, current_list)
+            self.updated_at = datetime.now(timezone.utc)
+            return True
+        return False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "user_id": self.user_id,
+            "language": self.language,
+            "timezone": self.timezone,
+            "communication_style": self.communication_style,
+            "interests": self.interests,
+            "goals": self.goals,
+            "preferred_name": self.preferred_name,
+            "custom_context": self.custom_context,
+            "notification_topics": self.notification_topics,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+    def to_context_string(self) -> str:
+        """Format preferences for inclusion in AI context."""
+        parts = []
+        if self.preferred_name:
+            parts.append(f"User prefers to be called: {self.preferred_name}")
+        if self.language != "en":
+            parts.append(f"Preferred language: {self.language}")
+        if self.communication_style != "balanced":
+            parts.append(f"Communication style: {self.communication_style}")
+        if self.interests:
+            parts.append(f"Interests: {', '.join(self.interests)}")
+        if self.goals:
+            parts.append(f"Goals: {', '.join(self.goals)}")
+        if self.custom_context:
+            for k, v in self.custom_context.items():
+                parts.append(f"{k}: {v}")
+        return "\n".join(parts) if parts else ""

@@ -1,0 +1,147 @@
+# Mindcore Configuration Example
+# Copy this file to mindcore.yaml and customize for your environment
+
+# =============================================================================
+# Core Settings
+# =============================================================================
+mindcore:
+  # Application name (used in logging)
+  app_name: "my-ai-agent"
+
+  # Environment: development, staging, production
+  environment: development
+
+  # Debug mode (enables verbose logging)
+  debug: true
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+database:
+  # SQLite (default, good for development)
+  type: sqlite
+  path: ./data/mindcore.db
+
+  # PostgreSQL (recommended for production)
+  # type: postgresql
+  # host: localhost
+  # port: 5432
+  # name: mindcore
+  # user: mindcore_user
+  # password: ${MINDCORE_DB_PASSWORD}  # Use environment variable
+
+  # Connection pool settings
+  pool:
+    min_size: 2
+    max_size: 10
+    timeout: 30
+
+# =============================================================================
+# Cache Configuration
+# =============================================================================
+cache:
+  # Cache type: memory, redis
+  type: memory
+
+  # Default TTL in seconds
+  default_ttl: 300
+
+  # Maximum cache size (for memory cache)
+  max_size: 1000
+
+  # Redis configuration (if type: redis)
+  # redis:
+  #   url: redis://localhost:6379/0
+  #   password: ${REDIS_PASSWORD}
+
+# =============================================================================
+# LLM Provider Configuration
+# =============================================================================
+llm:
+  # Primary provider: openai, anthropic, local
+  provider: openai
+
+  # OpenAI configuration
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4o-mini
+    max_tokens: 4096
+    temperature: 0.7
+
+  # Anthropic configuration
+  # anthropic:
+  #   api_key: ${ANTHROPIC_API_KEY}
+  #   model: claude-3-haiku-20240307
+  #   max_tokens: 4096
+
+  # Local LLM (llama.cpp) configuration
+  # local:
+  #   model_path: ./models/llama-2-7b.gguf
+  #   n_ctx: 4096
+  #   n_gpu_layers: 35
+
+  # Fallback provider (used if primary fails)
+  fallback_provider: null
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log to file
+  file:
+    enabled: true
+    path: ./logs/mindcore.log
+    max_size: 10485760  # 10MB
+    backup_count: 5
+
+  # Log to console
+  console:
+    enabled: true
+    colored: true
+
+# =============================================================================
+# API Server Configuration
+# =============================================================================
+api:
+  # Host and port
+  host: 0.0.0.0
+  port: 8000
+
+  # CORS settings
+  cors:
+    enabled: true
+    origins:
+      - http://localhost:3000
+      - http://localhost:8080
+
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+
+  # Authentication
+  auth:
+    enabled: false
+    # jwt:
+    #   secret: ${JWT_SECRET}
+    #   algorithm: HS256
+    #   expiry: 3600
+
+# =============================================================================
+# External Connectors Configuration
+# =============================================================================
+connectors:
+  # Enable/disable connectors globally
+  enabled: true
+
+  # Default timeout for connector lookups (seconds)
+  timeout: 10
+
+  # Cache connector results
+  cache_results: true

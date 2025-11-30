@@ -1,0 +1,137 @@
+# Mindcore Docker Compose
+# One-command setup for PostgreSQL + PgBouncer + API server
+#
+# Usage:
+#   docker-compose up -d              # Start services
+#   docker-compose logs -f mindcore   # View logs
+#   docker-compose down               # Stop services
+#   docker-compose down -v            # Stop and remove volumes
+#
+# Access:
+#   API:        http://localhost:8000
+#   Swagger UI: http://localhost:8000/docs
+#   PgBouncer:  localhost:6432 (connection pooler)
+#   PostgreSQL: localhost:5432 (direct, for admin only)
+#
+# Architecture:
+#   Mindcore API -> PgBouncer (pool) -> PostgreSQL
+#   This provides enterprise-grade connection pooling similar to Supabase/Neon
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindcore-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mindcore_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mindcore_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-mindcore}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - mindcore_postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # Direct access for admin/migrations (not for app traffic)
+    ports:
+      - "${POSTGRES_DIRECT_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mindcore_user} -d ${POSTGRES_DB:-mindcore}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - mindcore-network
+
+  # PgBouncer - Connection Pooler
+  # Handles connection pooling like Supabase Pooler or Neon
+  pgbouncer:
+    image: bitnami/pgbouncer:latest
+    container_name: mindcore-pgbouncer
+    environment:
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USERNAME: ${POSTGRES_USER:-mindcore_user}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:-mindcore_pass}
+      POSTGRESQL_DATABASE: ${POSTGRES_DB:-mindcore}
+      # Pool configuration
+      PGBOUNCER_POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      PGBOUNCER_MIN_POOL_SIZE: ${PGBOUNCER_MIN_POOL_SIZE:-5}
+      PGBOUNCER_RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-5}
+      PGBOUNCER_MAX_DB_CONNECTIONS: ${PGBOUNCER_MAX_DB_CONNECTIONS:-50}
+      # Timeouts
+      PGBOUNCER_SERVER_IDLE_TIMEOUT: ${PGBOUNCER_SERVER_IDLE_TIMEOUT:-600}
+      PGBOUNCER_CLIENT_IDLE_TIMEOUT: ${PGBOUNCER_CLIENT_IDLE_TIMEOUT:-0}
+      # Auth
+      PGBOUNCER_AUTH_TYPE: md5
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "${PGBOUNCER_PORT:-6432}:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - mindcore-network
+
+  # Mindcore API Server
+  mindcore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mindcore-api
+    environment:
+      # Connect via PgBouncer (pooled connections)
+      MINDCORE_DB_HOST: pgbouncer
+      MINDCORE_DB_PORT: 6432
+      MINDCORE_DB_NAME: ${POSTGRES_DB:-mindcore}
+      MINDCORE_DB_USER: ${POSTGRES_USER:-mindcore_user}
+      MINDCORE_DB_PASSWORD: ${POSTGRES_PASSWORD:-mindcore_pass}
+      # Enable PgBouncer mode (disables prepared statements, minimal app pool)
+      MINDCORE_DB_USE_PGBOUNCER: "true"
+      MINDCORE_DB_MIN_CONNECTIONS: 1
+      MINDCORE_DB_MAX_CONNECTIONS: 5
+      # LLM Provider (required)
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Optional: Use local llama.cpp instead of OpenAI
+      # MINDCORE_LLM_PROVIDER: llama
+      # MINDCORE_LLAMA_MODEL_PATH: /models/your-model.gguf
+      # Timezone configuration
+      MINDCORE_TIMEZONE: ${MINDCORE_TIMEZONE:-UTC}
+      # CORS (comma-separated origins)
+      MINDCORE_CORS_ORIGINS: ${MINDCORE_CORS_ORIGINS:-*}
+      # Logging
+      MINDCORE_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - mindcore-network
+    # Optional: Mount local models for llama.cpp
+    # volumes:
+    #   - ./models:/models:ro
+
+volumes:
+  mindcore_postgres_data:
+    driver: local
+
+networks:
+  mindcore-network:
+    driver: bridge

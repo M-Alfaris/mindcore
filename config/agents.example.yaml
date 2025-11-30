@@ -1,0 +1,115 @@
+# Mindcore Agents Configuration
+# Copy this file to agents.yaml and customize for your AI agents
+
+# =============================================================================
+# Smart Context Agent
+# =============================================================================
+# The main agent that assembles context for conversations
+smart_context_agent:
+  enabled: true
+
+  # System prompt customization
+  system_prompt: |
+    You are a helpful AI assistant with access to contextual tools.
+    Use the available tools to gather relevant information before responding.
+    Always be accurate and cite your sources when using external data.
+
+  # Maximum context window to use
+  max_context_tokens: 8000
+
+  # Tools configuration
+  tools:
+    # Enable/disable specific tools
+    get_user_context: true
+    get_conversation_history: true
+    search_knowledge_base: true
+    get_current_datetime: true
+    get_user_preferences: true
+    calculate: true
+    lookup_external_data: true
+
+    # Tool-specific settings
+    conversation_history:
+      max_messages: 20
+      include_system: false
+
+    knowledge_base:
+      max_results: 5
+      min_relevance: 0.7
+
+    external_data:
+      timeout: 10
+      cache_results: true
+
+  # Response settings
+  response:
+    max_tokens: 2048
+    temperature: 0.7
+    include_sources: true
+
+# =============================================================================
+# Classifier Agent (Optional)
+# =============================================================================
+# Classifies user intents and routes to appropriate handlers
+# classifier_agent:
+#   enabled: false
+#
+#   # Intent categories
+#   intents:
+#     - name: order_inquiry
+#       description: Questions about orders, shipping, tracking
+#       topics: [orders, shipping, tracking, delivery]
+#
+#     - name: billing_inquiry
+#       description: Questions about payments, invoices, subscriptions
+#       topics: [billing, payment, invoice, subscription]
+#
+#     - name: support_request
+#       description: Technical issues, bugs, help requests
+#       topics: [support, help, issue, bug]
+#
+#     - name: general_question
+#       description: General questions, information requests
+#       topics: [general, info, question]
+#
+#   # Fallback intent when classification is uncertain
+#   fallback_intent: general_question
+#
+#   # Minimum confidence for classification
+#   min_confidence: 0.6
+
+# =============================================================================
+# Summarization Agent (Optional)
+# =============================================================================
+# Summarizes long conversations or documents
+# summarization_agent:
+#   enabled: false
+#
+#   # Summarization settings
+#   max_input_tokens: 16000
+#   target_summary_length: 500
+#
+#   # Style: concise, detailed, bullet_points
+#   style: concise
+#
+#   # Include key entities in summary
+#   extract_entities: true
+
+# =============================================================================
+# Research Agent (Optional)
+# =============================================================================
+# Performs multi-step research tasks
+# research_agent:
+#   enabled: false
+#
+#   # Maximum research steps
+#   max_steps: 10
+#
+#   # Tools available for research
+#   tools:
+#     - web_search
+#     - document_analysis
+#     - data_extraction
+#
+#   # Output format: report, summary, raw
+#   output_format: report
