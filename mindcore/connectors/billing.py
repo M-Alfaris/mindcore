@@ -24,6 +24,9 @@ class BillingConnector(BaseConnector):
     Refunds, cancellations, and other write operations must go through
     proper business channels.
 
+    Topics are automatically registered with VocabularyManager for
+    consistent vocabulary across the system.
+
     Configuration:
     -------------
     The connector can be configured to work with different backends:
@@ -48,6 +51,7 @@ class BillingConnector(BaseConnector):
     topics = ["billing", "payment", "invoice", "subscription", "charge", "refund", "receipt"]
     name = "billing"
     cache_ttl = 300  # 5 minutes
+    _topics_registered = False
 
     def __init__(
         self,
@@ -86,6 +90,9 @@ class BillingConnector(BaseConnector):
         self.lookup_fn = lookup_fn
         self.max_results = max_results
         self.enabled = enabled
+
+        # Register topics with VocabularyManager
+        super().__init__()
 
     async def lookup(
         self,

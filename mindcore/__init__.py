@@ -5,26 +5,22 @@ Mindcore: Intelligent Memory and Context Management for AI Agents
 Save 60-90% on token costs with intelligent memory management powered by
 lightweight AI agents using local (llama.cpp) or cloud (OpenAI) LLMs.
 
-Quick Start (Local LLM - No API Key Required):
----------------------------------------------
-    # 1. Download a model first:
-    #    mindcore download-model
-
-    # 2. Set the model path:
-    #    export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
-
+Quick Start:
+------------
     from mindcore import MindcoreClient
 
     client = MindcoreClient(use_sqlite=True)
 
-    message = client.ingest_message({
-        "user_id": "user123",
-        "thread_id": "thread456",
-        "session_id": "session789",
-        "role": "user",
-        "text": "Hello, how do I build AI agents?"
-    })
+    # Ingest message (fast async enrichment)
+    message = client.ingest(
+        user_id="user123",
+        thread_id="thread456",
+        session_id="session789",
+        role="user",
+        text="Hello, how do I build AI agents?"
+    )
 
+    # Get context (single LLM call with tools)
     context = client.get_context(
         user_id="user123",
         thread_id="thread456",
@@ -36,24 +32,26 @@ Features:
 - Local LLM inference with llama.cpp (CPU-optimized, no API costs)
 - OpenAI fallback for reliability
 - Automatic metadata enrichment (topics, sentiment, intent, etc.)
-- Intelligent context assembly
+- Intelligent context assembly with tool calling
+- VocabularyManager for controlled, extensible vocabulary
 - PostgreSQL or SQLite persistence
-- In-memory caching for speed
+- In-memory and disk-backed caching
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import threading
 import atexit
 import tempfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+import warnings
 
 # Persistent queue (survives crashes/restarts)
 import persistqueue
 
 # Version
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Mindcore Contributors"
 __license__ = "MIT"
 
@@ -73,14 +71,23 @@ from .core import (
     IngestRequest,
     ThreadSummary,
     UserPreferences,
+    # VocabularyManager
+    VocabularyManager,
+    VocabularySource,
+    Intent,
+    Sentiment,
+    CommunicationStyle,
+    EntityType,
+    get_vocabulary,
 )
 
 # AI Agents
 from .agents import (
     BaseAgent,
     EnrichmentAgent as MetadataAgent,
-    ContextAssemblerAgent as ContextAgent,
     SummarizationAgent,
+    SmartContextAgent,
+    ContextTools,
 )
 
 # LLM Providers
@@ -98,41 +105,22 @@ from .llm import (
 # Utilities
 from .utils import get_logger, generate_message_id, SecurityValidator
 
-# Retrieval Query Agent (LLM-powered query analysis)
-from .agents import RetrievalQueryAgent, QueryIntent
-
-# Smart Context Agent (single LLM call with tool calling)
-from .agents import SmartContextAgent, ContextTools
-
 logger = get_logger(__name__)
 
 
 def _get_sort_key(message: Message) -> float:
-    """
-    Get a sortable key for a message, handling timezone-naive and timezone-aware datetimes.
-
-    Converts datetime to Unix timestamp (float) to avoid comparison issues between
-    offset-naive and offset-aware datetimes.
-
-    Args:
-        message: Message object to get sort key for.
-
-    Returns:
-        Unix timestamp as float, or 0.0 if no valid datetime.
-    """
+    """Get a sortable key for a message, handling timezone issues."""
     if message.created_at is None:
         return 0.0
 
     dt = message.created_at
 
-    # Handle string datetimes (from SQLite)
     if isinstance(dt, str):
         try:
             dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
         except (ValueError, AttributeError):
             return 0.0
 
-    # Ensure datetime is timezone-aware (assume UTC if naive)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
 
@@ -148,22 +136,31 @@ class MindcoreClient:
     """
     Main Mindcore client for intelligent memory and context management.
 
-    Uses LLM providers (llama.cpp or OpenAI) for:
-    - Automatic metadata enrichment with MetadataAgent
-    - Intelligent context assembly with ContextAgent
-    - PostgreSQL or SQLite persistence with caching
+    Simplified API with:
+    - Single ingestion flow (async background enrichment)
+    - Single context retrieval (SmartContextAgent with tools)
+    - VocabularyManager for controlled vocabulary
 
     Usage:
         >>> from mindcore import MindcoreClient
         >>>
-        >>> # Auto mode: uses llama.cpp if available, falls back to OpenAI
         >>> client = MindcoreClient(use_sqlite=True)
         >>>
-        >>> # Force local LLM only
-        >>> client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
+        >>> # Ingest message (instant, enriched in background)
+        >>> message = client.ingest(
+        ...     user_id="user123",
+        ...     thread_id="thread456",
+        ...     session_id="session789",
+        ...     role="user",
+        ...     text="How do I track my order?"
+        ... )
         >>>
-        >>> # Force OpenAI only
-        >>> client = MindcoreClient(use_sqlite=True, llm_provider="openai")
+        >>> # Get context (single LLM call with tools)
+        >>> context = client.get_context(
+        ...     user_id="user123",
+        ...     thread_id="thread456",
+        ...     query="order tracking"
+        ... )
     """
 
     def __init__(
@@ -173,7 +170,8 @@ class MindcoreClient:
         sqlite_path: str = "mindcore.db",
         llm_provider: Optional[str] = None,
         persistent_cache: bool = True,
-        cache_dir: Optional[str] = None
+        cache_dir: Optional[str] = None,
+        vocabulary: Optional[VocabularyManager] = None
     ):
         """
         Initialize Mindcore client.
@@ -186,23 +184,21 @@ class MindcoreClient:
                 - "auto" (default): llama.cpp primary, OpenAI fallback
                 - "llama_cpp": Local inference only
                 - "openai": Cloud inference only
-            persistent_cache: If True (default), use disk-backed cache that
-                survives restarts. If False, use in-memory cache.
+            persistent_cache: If True (default), use disk-backed cache.
             cache_dir: Optional directory for persistent cache files.
+            vocabulary: Optional VocabularyManager. If None, uses global instance.
 
         Raises:
             ValueError: If no LLM provider can be initialized
-
-        Example:
-            >>> client = MindcoreClient(use_sqlite=True)
-            >>> client = MindcoreClient(use_sqlite=True, llm_provider="llama_cpp")
-            >>> client = MindcoreClient(use_sqlite=True, persistent_cache=True)
         """
         logger.info(f"Initializing Mindcore v{__version__}")
 
         # Load configuration
         self.config = ConfigLoader(config_path)
         self._use_sqlite = use_sqlite
+
+        # Initialize vocabulary (central to the system)
+        self.vocabulary = vocabulary or get_vocabulary()
 
         # Initialize database
         if use_sqlite:
@@ -236,32 +232,18 @@ class MindcoreClient:
         llm_config = self.config.get_llm_config()
         defaults = llm_config.get('defaults', {})
 
-        # Initialize AI agents with the provider
-        self.metadata_agent = MetadataAgent(
+        # Initialize enrichment agent (for background enrichment)
+        self._metadata_agent = MetadataAgent(
             llm_provider=self._llm_provider,
             temperature=defaults.get('temperature', 0.3),
-            max_tokens=defaults.get('max_tokens_enrichment', 800)
+            max_tokens=defaults.get('max_tokens_enrichment', 800),
+            vocabulary=self.vocabulary
         )
 
-        self.context_agent = ContextAgent(
-            llm_provider=self._llm_provider,
-            temperature=defaults.get('temperature', 0.3),
-            max_tokens=defaults.get('max_tokens_context', 1500)
-        )
-
-        # Retrieval query agent (LLM-powered, no keyword matching)
-        self.retrieval_query_agent = RetrievalQueryAgent(
-            llm_provider=self._llm_provider,
-            temperature=0.2,  # Lower for consistency
-            max_tokens=500
-        )
-
-        # Smart context agent (single LLM call with tool calling)
-        # Replaces RetrievalQueryAgent + ContextAssemblerAgent for lower latency
+        # SmartContextAgent is the PRIMARY context retrieval method
         self._smart_context_agent = None  # Lazy initialized
 
         # Background enrichment queue (persistent - survives crashes/restarts)
-        # Uses SQLite-backed queue from persistqueue library
         self._queue_path = Path(tempfile.gettempdir()) / "mindcore_enrichment_queue"
         self._queue_path.mkdir(parents=True, exist_ok=True)
         self._enrichment_queue = persistqueue.SQLiteQueue(
@@ -280,27 +262,14 @@ class MindcoreClient:
         )
 
     def _create_llm_provider(self, provider_type_str: Optional[str]) -> BaseLLMProvider:
-        """
-        Create LLM provider based on configuration.
-
-        Args:
-            provider_type_str: Provider type string or None for config default
-
-        Returns:
-            Configured LLM provider
-
-        Raises:
-            ValueError: If no provider can be initialized
-        """
+        """Create LLM provider based on configuration."""
         llm_config = self.config.get_llm_config()
 
-        # Determine provider type
         if provider_type_str:
             provider_type = get_provider_type(provider_type_str)
         else:
             provider_type = get_provider_type(llm_config.get('provider', 'auto'))
 
-        # Build provider configs
         llama_config = {}
         if llm_config['llama_cpp'].get('model_path'):
             llama_config = {
@@ -322,7 +291,6 @@ class MindcoreClient:
                 'max_retries': llm_config['openai'].get('max_retries', 3),
             }
 
-        # Create provider
         try:
             return create_provider(
                 provider_type=provider_type,
@@ -348,79 +316,65 @@ class MindcoreClient:
         """Get the name of the active LLM provider."""
         return self._llm_provider.name
 
-    def ingest_message(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Ingest a message with automatic metadata enrichment.
+    # -------------------------------------------------------------------------
+    # PRIMARY API: Ingestion
+    # -------------------------------------------------------------------------
 
-        The message will be:
-        1. Validated for security
-        2. Enriched with metadata (topics, sentiment, intent, etc.)
-        3. Stored in database
-        4. Cached for fast retrieval
+    def ingest(
+        self,
+        user_id: str,
+        thread_id: str,
+        session_id: str,
+        role: str,
+        text: str,
+        message_id: Optional[str] = None,
+        **metadata
+    ) -> Message:
+        """
+        Ingest a message with background enrichment.
+
+        This is the PRIMARY ingestion method. Messages are stored immediately
+        and enriched asynchronously in the background.
+
+        Benefits:
+        - Zero LLM latency on ingestion
+        - Message immediately available for context
+        - Persistent queue survives crashes
+        - Enrichment happens automatically
 
         Args:
-            message_dict: Dictionary containing:
-                - user_id (str): User identifier
-                - thread_id (str): Thread identifier
-                - session_id (str): Session identifier
-                - role (str): Message role (user, assistant, system, tool)
-                - text (str): Message content
-                - message_id (str, optional): Auto-generated if not provided
+            user_id: User identifier
+            thread_id: Thread/conversation identifier
+            session_id: Session identifier
+            role: Message role (user, assistant, system, tool)
+            text: Message content
+            message_id: Optional custom message ID
+            **metadata: Additional metadata to attach
 
         Returns:
-            Message: Enriched message object with metadata.
+            Message object (enrichment happens in background)
 
         Raises:
-            ValueError: If validation fails.
+            ValueError: If validation fails
+
+        Example:
+            >>> message = client.ingest(
+            ...     user_id="user123",
+            ...     thread_id="thread456",
+            ...     session_id="session789",
+            ...     role="user",
+            ...     text="How do I track my order #12345?"
+            ... )
         """
-        # Validate message
-        is_valid, error_msg = SecurityValidator.validate_message_dict(message_dict)
-        if not is_valid:
-            logger.error(f"Message validation failed: {error_msg}")
-            raise ValueError(f"Invalid message: {error_msg}")
+        message_dict = {
+            'user_id': user_id,
+            'thread_id': thread_id,
+            'session_id': session_id,
+            'role': role,
+            'text': text,
+            'message_id': message_id,
+        }
 
-        # Enrich message with metadata
-        message = self.metadata_agent.process(message_dict)
-
-        # Store in database
-        success = self.db.insert_message(message)
-        if not success:
-            logger.warning(f"Failed to store message {message.message_id} in database")
-
-        # Add to cache
-        self.cache.add_message(message)
-
-        logger.info(f"Message {message.message_id} ingested successfully")
-        return message
-
-    def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Ingest a message immediately without blocking on enrichment.
-
-        The message is stored immediately with empty metadata, cached for the
-        current session, and queued for background enrichment. This is ideal
-        for real-time applications where response latency is critical.
-
-        Enrichment happens asynchronously:
-        1. Message stored with empty metadata (~0ms delay)
-        2. Message added to cache (available for current session context)
-        3. Background worker enriches and updates database
-
-        Args:
-            message_dict: Dictionary containing:
-                - user_id (str): User identifier
-                - thread_id (str): Thread identifier
-                - session_id (str): Session identifier
-                - role (str): Message role (user, assistant, system, tool)
-                - text (str): Message content
-                - message_id (str, optional): Auto-generated if not provided
-
-        Returns:
-            Message: Message object with empty metadata (will be enriched in background).
-
-        Raises:
-            ValueError: If validation fails.
-        """
         # Validate message
         is_valid, error_msg = SecurityValidator.validate_message_dict(message_dict)
         if not is_valid:
@@ -428,14 +382,13 @@ class MindcoreClient:
             raise ValueError(f"Invalid message: {error_msg}")
 
         # Create message with empty metadata (no LLM call)
-        from .core.schemas import MessageRole
         message = Message(
             message_id=message_dict.get('message_id') or generate_message_id(),
-            user_id=message_dict['user_id'],
-            thread_id=message_dict['thread_id'],
-            session_id=message_dict['session_id'],
-            role=MessageRole(message_dict['role']),
-            raw_text=message_dict['text'],
+            user_id=user_id,
+            thread_id=thread_id,
+            session_id=session_id,
+            role=MessageRole(role),
+            raw_text=text,
             metadata=MessageMetadata(),  # Empty metadata
         )
 
@@ -447,8 +400,7 @@ class MindcoreClient:
         # Add to cache for immediate session context
         self.cache.add_message(message)
 
-        # Queue for background enrichment with ALL IDs preserved
-        # Using persistent queue - survives crashes/restarts
+        # Queue for background enrichment
         enrichment_task = {
             'message_id': message.message_id,
             'user_id': message.user_id,
@@ -459,8 +411,31 @@ class MindcoreClient:
         }
         self._enrichment_queue.put(enrichment_task)
 
-        logger.info(f"Message {message.message_id} ingested fast (enrichment queued)")
+        logger.debug(f"Message {message.message_id} ingested (enrichment queued)")
         return message
+
+    def ingest_message(self, message_dict: Dict[str, Any]) -> Message:
+        """
+        Ingest a message (legacy API).
+
+        Deprecated: Use ingest() instead for cleaner API.
+        """
+        return self.ingest(
+            user_id=message_dict['user_id'],
+            thread_id=message_dict['thread_id'],
+            session_id=message_dict['session_id'],
+            role=message_dict['role'],
+            text=message_dict['text'],
+            message_id=message_dict.get('message_id')
+        )
+
+    def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
+        """
+        Ingest a message (legacy API).
+
+        Deprecated: Use ingest() instead. All ingestion is now fast by default.
+        """
+        return self.ingest_message(message_dict)
 
     def _enrichment_worker(self) -> None:
         """Background worker that enriches messages from the persistent queue."""
@@ -468,12 +443,9 @@ class MindcoreClient:
 
         while self._enrichment_running:
             try:
-                # Wait for task with timeout (allows graceful shutdown)
-                # persistqueue uses get() with block=True by default
                 try:
                     task = self._enrichment_queue.get(block=True, timeout=1.0)
                 except Exception:
-                    # persistqueue raises Empty on timeout
                     continue
 
                 if task is None:
@@ -485,16 +457,16 @@ class MindcoreClient:
                     self._enrichment_queue.task_done()
                     continue
 
-                # Check if already enriched in database
+                # Check if already enriched
                 existing = self.db.get_message_by_id(message_id)
                 if existing and existing.metadata.is_enriched:
                     logger.debug(f"Message {message_id} already enriched, skipping")
                     self._enrichment_queue.task_done()
                     continue
 
-                # Enrich message using task data (all IDs preserved from queue)
+                # Enrich message
                 try:
-                    enriched_message = self.metadata_agent.process({
+                    enriched_message = self._metadata_agent.process({
                         'message_id': task['message_id'],
                         'user_id': task['user_id'],
                         'thread_id': task['thread_id'],
@@ -503,20 +475,19 @@ class MindcoreClient:
                         'text': task['text'],
                     })
 
-                    # Update database with enriched metadata
+                    # Update database
                     self.db.update_message_metadata(
                         message_id=message_id,
                         metadata=enriched_message.metadata
                     )
 
-                    # Update cache with enriched message (preserves all IDs)
+                    # Update cache
                     self.cache.update_message(enriched_message)
 
                     logger.debug(f"Background enrichment completed for {message_id}")
 
                 except Exception as e:
                     logger.error(f"Background enrichment failed for {message_id}: {e}")
-                    # Mark as failed in database
                     failed_metadata = MessageMetadata(
                         enrichment_failed=True,
                         enrichment_error=str(e)
@@ -530,27 +501,50 @@ class MindcoreClient:
 
         logger.info("Background enrichment worker stopped")
 
+    # -------------------------------------------------------------------------
+    # PRIMARY API: Context Retrieval
+    # -------------------------------------------------------------------------
+
     def get_context(
         self,
         user_id: str,
         thread_id: str,
         query: str,
-        max_messages: int = 50
+        additional_context: Optional[str] = None
     ) -> AssembledContext:
         """
         Get intelligently assembled context for a query.
 
+        This is the PRIMARY context retrieval method. Uses SmartContextAgent
+        with tool calling for efficient, intelligent context assembly.
+
+        The agent decides which tools to use based on the query:
+        - get_recent_messages: Current conversation context
+        - search_history: Historical messages by topic
+        - get_session_metadata: Session aggregated info
+        - get_historical_summaries: Past conversation summaries
+        - get_user_preferences: User preferences for personalization
+        - lookup_external_data: External system data (orders, billing)
+
         Args:
-            user_id: User identifier.
-            thread_id: Thread identifier.
-            query: Query or topic to find relevant context for.
-            max_messages: Maximum messages to consider.
+            user_id: User identifier
+            thread_id: Thread identifier
+            query: Query to find relevant context for
+            additional_context: Optional additional context to provide
 
         Returns:
             AssembledContext with summarized context, key points, etc.
 
         Raises:
-            ValueError: If validation fails.
+            ValueError: If validation fails
+
+        Example:
+            >>> context = client.get_context(
+            ...     user_id="user123",
+            ...     thread_id="thread456",
+            ...     query="What did we discuss about billing?"
+            ... )
+            >>> print(context.assembled_context)
         """
         # Validate query parameters
         is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
@@ -558,170 +552,27 @@ class MindcoreClient:
             logger.error(f"Query validation failed: {error_msg}")
             raise ValueError(f"Invalid query parameters: {error_msg}")
 
-        # Get messages from cache first
-        cached_messages = self.cache.get_recent_messages(user_id, thread_id, limit=max_messages)
-
-        # If cache doesn't have enough, fetch from database
-        if len(cached_messages) < max_messages:
-            db_messages = self.db.fetch_recent_messages(user_id, thread_id, limit=max_messages)
-
-            # Merge messages, avoiding duplicates
-            message_ids = {msg.message_id for msg in cached_messages}
-            all_messages = list(cached_messages)
-
-            for msg in db_messages:
-                if msg.message_id not in message_ids:
-                    all_messages.append(msg)
-                    message_ids.add(msg.message_id)
-
-            # Sort by created_at (most recent first) using timestamp to avoid timezone issues
-            all_messages.sort(key=_get_sort_key, reverse=True)
-            cached_messages = all_messages[:max_messages]
-
-        logger.info(f"Retrieved {len(cached_messages)} messages for context assembly")
-
-        # Assemble context
-        context = self.context_agent.process(cached_messages, query)
-        return context
-
-    def get_relevant_context(
-        self,
-        user_id: str,
-        query: str,
-        thread_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        max_messages: int = 20,
-        min_importance: float = 0.3,
-        include_current_thread: bool = True,
-        use_session_metadata: bool = True,
-        use_llm_query_analysis: bool = True
-    ) -> AssembledContext:
-        """
-        Get context using relevance-based search on enriched metadata.
-
-        Uses LLM-powered query analysis to understand semantic INTENT, not keywords.
-        This correctly handles cases like "I don't need a refund" by NOT searching
-        for refund-related messages.
-
-        Args:
-            user_id: User identifier.
-            query: Query to find relevant context for.
-            thread_id: Optional thread filter (None = search all threads).
-            session_id: Optional session filter.
-            max_messages: Maximum relevant messages to retrieve.
-            min_importance: Minimum importance score (0.0-1.0) to include.
-            include_current_thread: If True and thread_id is set, always include
-                                   recent messages from current thread.
-            use_session_metadata: If True and thread_id is set, use session's
-                                 aggregated topics/categories for search.
-            use_llm_query_analysis: If True, use LLM to analyze query intent.
-                                   If False, only use session metadata.
-
-        Returns:
-            AssembledContext with summarized context, key points, etc.
-
-        Raises:
-            ValueError: If validation fails.
-        """
-        # Validate query parameters
-        is_valid, error_msg = SecurityValidator.validate_query_params(
-            user_id, thread_id or "any", query
-        )
-        if not is_valid:
-            logger.error(f"Query validation failed: {error_msg}")
-            raise ValueError(f"Invalid query parameters: {error_msg}")
-
-        # Initialize search criteria
-        topics_to_search = []
-        categories_to_search = []
-        intent_to_search = None
-
-        # Get recent context for LLM query analysis
-        recent_context = None
-        if thread_id:
-            cached_messages = self.cache.get_recent_messages(user_id, thread_id, limit=5)
-            if cached_messages:
-                recent_context = "\n".join([
-                    f"[{msg.role}]: {msg.raw_text[:200]}"
-                    for msg in cached_messages[:5]
-                ])
-
-        # Use LLM to analyze query intent (no keyword matching!)
-        if use_llm_query_analysis:
-            query_intent = self.retrieval_query_agent.analyze_query(
-                query=query,
-                recent_context=recent_context
-            )
-            topics_to_search = query_intent.topics
-            categories_to_search = query_intent.categories
-            intent_to_search = query_intent.intent
-
-            logger.debug(
-                f"LLM query analysis: topics={topics_to_search}, "
-                f"categories={categories_to_search}, intent={intent_to_search}"
-            )
-
-        # Merge with session metadata if available
-        if use_session_metadata and thread_id:
-            session_meta = self.cache.get_session_metadata(user_id, thread_id)
-            session_topics = session_meta.get('topics', [])
-            session_categories = session_meta.get('categories', [])
-            session_intents = session_meta.get('intents', [])
-
-            # Merge (LLM analysis takes priority, session adds context)
-            topics_to_search = list(set(topics_to_search + session_topics))
-            categories_to_search = list(set(categories_to_search + session_categories))
-            if not intent_to_search and session_intents:
-                intent_to_search = session_intents[0]
-
-            logger.debug(f"After session merge: topics={topics_to_search[:5]}, categories={categories_to_search}")
-
-        # Search by relevance using enriched metadata
-        relevant_messages = self.db.search_by_relevance(
+        agent = self._get_smart_context_agent()
+        context = agent.process(
+            query=query,
             user_id=user_id,
-            topics=topics_to_search if topics_to_search else None,
-            categories=categories_to_search if categories_to_search else None,
-            intent=intent_to_search,
-            min_importance=min_importance,
-            thread_id=None,  # Search across all threads for historical context
-            session_id=session_id,
-            limit=max_messages
+            thread_id=thread_id,
+            additional_context=additional_context
         )
 
-        # If current thread specified, also include recent cached messages
-        if include_current_thread and thread_id:
-            cached_messages = self.cache.get_recent_messages(
-                user_id, thread_id, limit=10
-            )
-            # Merge, avoiding duplicates
-            relevant_ids = {msg.message_id for msg in relevant_messages}
-            for msg in cached_messages:
-                if msg.message_id not in relevant_ids:
-                    relevant_messages.append(msg)
-                    relevant_ids.add(msg.message_id)
-
-        # Sort by relevance (already sorted by DB) then recency
-        relevant_messages.sort(key=_get_sort_key, reverse=True)
-        relevant_messages = relevant_messages[:max_messages]
-
-        logger.info(f"Retrieved {len(relevant_messages)} relevant messages for context assembly")
-
-        # Assemble context (LLM summarizes pre-filtered messages)
-        context = self.context_agent.process(relevant_messages, query)
+        logger.info(
+            f"Context assembled: source={context.metadata.get('context_source', 'unknown')}, "
+            f"confidence={context.metadata.get('confidence', 'unknown')}"
+        )
         return context
 
     def _get_smart_context_agent(self) -> SmartContextAgent:
-        """
-        Get or create the SmartContextAgent (lazy initialization).
-
-        Creates ContextTools callbacks that connect the agent to
-        cache and database for fetching context data.
-        """
+        """Get or create the SmartContextAgent (lazy initialization)."""
         if self._smart_context_agent is not None:
             return self._smart_context_agent
 
-        # Create callbacks for the agent's tools with exception handling
-        def get_recent_messages(user_id: str, thread_id: str, limit: int) -> list:
+        # Create callbacks for the agent's tools
+        def get_recent_messages(user_id: str, thread_id: str, limit: int) -> List[Message]:
             try:
                 return self.cache.get_recent_messages(user_id, thread_id, limit)
             except Exception as e:
@@ -731,11 +582,11 @@ class MindcoreClient:
         def search_history(
             user_id: str,
             thread_id: Optional[str],
-            topics: list,
-            categories: list,
+            topics: List[str],
+            categories: List[str],
             intent: Optional[str],
             limit: int
-        ) -> list:
+        ) -> List[Message]:
             try:
                 return self.db.search_by_relevance(
                     user_id=user_id,
@@ -749,7 +600,7 @@ class MindcoreClient:
                 logger.error(f"Error searching history: {e}")
                 return []
 
-        def get_session_metadata(user_id: str, thread_id: str) -> dict:
+        def get_session_metadata(user_id: str, thread_id: str) -> Dict[str, Any]:
             try:
                 return self.cache.get_session_metadata(user_id, thread_id)
             except Exception as e:
@@ -768,78 +619,45 @@ class MindcoreClient:
         self._smart_context_agent = SmartContextAgent(
             llm_provider=self._llm_provider,
             context_tools=tools,
-            temperature=0.2,  # Low for consistency
+            temperature=0.2,
             max_tokens=defaults.get('max_tokens_context', 1500),
+            vocabulary=self.vocabulary,
             max_tool_rounds=3
         )
 
         logger.info("SmartContextAgent initialized with database/cache tools")
         return self._smart_context_agent
 
-    def get_context_smart(
-        self,
-        user_id: str,
-        thread_id: str,
-        query: str,
-        additional_context: Optional[str] = None
-    ) -> AssembledContext:
-        """
-        Get context using single LLM call with tool calling (optimized latency).
-
-        This method uses SmartContextAgent which combines query analysis and
-        context assembly into a single LLM call with tools. The agent
-        intelligently decides what context to fetch using:
-        - get_recent_messages: Recent conversation context
-        - search_history: Historical messages by topics/categories/intent
-        - get_session_metadata: Session aggregated metadata
-
-        This reduces latency from 2 LLM calls to 1 while maintaining
-        intelligent context selection.
-
-        Args:
-            user_id: User identifier.
-            thread_id: Thread identifier.
-            query: Query to find relevant context for.
-            additional_context: Optional context to provide to the agent.
-
-        Returns:
-            AssembledContext with summarized context, key points, etc.
-
-        Raises:
-            ValueError: If validation fails.
-
-        Example:
-            >>> context = client.get_context_smart(
-            ...     user_id="user123",
-            ...     thread_id="thread456",
-            ...     query="What did we discuss about billing last time?"
-            ... )
-            >>> print(context.summary)
-        """
-        # Validate query parameters
-        is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
-        if not is_valid:
-            logger.error(f"Query validation failed: {error_msg}")
-            raise ValueError(f"Invalid query parameters: {error_msg}")
-
-        agent = self._get_smart_context_agent()
-        context = agent.process(
-            query=query,
-            user_id=user_id,
-            thread_id=thread_id,
-            additional_context=additional_context
-        )
-
-        logger.info(
-            f"SmartContextAgent assembled context: "
-            f"source={context.metadata.get('context_source', 'unknown')}, "
-            f"confidence={context.metadata.get('confidence', 'unknown')}"
-        )
-        return context
+    # -------------------------------------------------------------------------
+    # Utility Methods
+    # -------------------------------------------------------------------------
 
     def get_message(self, message_id: str) -> Optional[Message]:
         """Get a single message by ID."""
         return self.db.get_message_by_id(message_id)
+
+    def get_recent_messages(
+        self,
+        user_id: str,
+        thread_id: str,
+        limit: int = 20
+    ) -> List[Message]:
+        """Get recent messages from cache/database."""
+        cached = self.cache.get_recent_messages(user_id, thread_id, limit)
+        if len(cached) >= limit:
+            return cached[:limit]
+
+        # Fetch from database if cache incomplete
+        db_messages = self.db.fetch_recent_messages(user_id, thread_id, limit)
+        message_ids = {msg.message_id for msg in cached}
+        all_messages = list(cached)
+
+        for msg in db_messages:
+            if msg.message_id not in message_ids:
+                all_messages.append(msg)
+
+        all_messages.sort(key=_get_sort_key, reverse=True)
+        return all_messages[:limit]
 
     def clear_cache(self, user_id: Optional[str] = None, thread_id: Optional[str] = None) -> None:
         """Clear message cache."""
@@ -848,6 +666,15 @@ class MindcoreClient:
         else:
             self.cache.clear_all()
 
+    def refresh_vocabulary(self) -> None:
+        """Refresh vocabulary from external sources and update agents."""
+        self.vocabulary.refresh_from_external()
+        if self._smart_context_agent:
+            self._smart_context_agent.refresh_vocabulary()
+        if self._metadata_agent:
+            self._metadata_agent.refresh_vocabulary()
+        logger.info("Vocabulary refreshed across all agents")
+
     def close(self) -> None:
         """Close all connections and cleanup resources."""
         # Stop background enrichment worker
@@ -855,18 +682,18 @@ class MindcoreClient:
             self._enrichment_running = False
             if hasattr(self, '_enrichment_future'):
                 try:
-                    self._enrichment_future.result(timeout=5.0)  # Wait for worker to stop
+                    self._enrichment_future.result(timeout=5.0)
                 except Exception:
                     pass
             if hasattr(self, '_enrichment_executor'):
                 self._enrichment_executor.shutdown(wait=True)
             logger.info("Background enrichment worker stopped")
 
-        # Close persistent queue if exists
+        # Close persistent queue
         if hasattr(self, '_enrichment_queue') and hasattr(self._enrichment_queue, 'close'):
             self._enrichment_queue.close()
 
-        # Close cache (DiskCacheManager needs explicit close)
+        # Close cache
         if hasattr(self, 'cache') and hasattr(self.cache, 'close'):
             self.cache.close()
 
@@ -885,17 +712,7 @@ def initialize(
     use_sqlite: bool = False,
     llm_provider: Optional[str] = None
 ) -> MindcoreClient:
-    """
-    Initialize global Mindcore instance (thread-safe singleton).
-
-    Args:
-        config_path: Optional path to config.yaml
-        use_sqlite: Use SQLite instead of PostgreSQL
-        llm_provider: LLM provider mode ("auto", "llama_cpp", "openai")
-
-    Returns:
-        MindcoreClient instance
-    """
+    """Initialize global Mindcore instance (thread-safe singleton)."""
     global _mindcore_instance
 
     if _mindcore_instance is None:
@@ -935,25 +752,6 @@ def _cleanup_on_exit():
 atexit.register(_cleanup_on_exit)
 
 
-# Async client (lazy import to avoid requiring async deps by default)
-def get_async_client():
-    """
-    Get AsyncMindcoreClient class.
-
-    Requires async dependencies: pip install mindcore[async]
-
-    Returns:
-        AsyncMindcoreClient class
-
-    Example:
-        AsyncMindcoreClient = get_async_client()
-        async with AsyncMindcoreClient(use_sqlite=True) as client:
-            message = await client.ingest_message(message_dict)
-    """
-    from .async_client import AsyncMindcoreClient
-    return AsyncMindcoreClient
-
-
 # Modular Context Layer
 from .context_layer import (
     ContextLayer,
@@ -976,31 +774,13 @@ from .knowledge_store import (
 
 # Lazy imports for vector stores (optional dependencies)
 def get_vector_stores():
-    """
-    Get vector store classes (requires optional dependencies).
-
-    Returns:
-        Module with VectorStore, Document, embeddings, and implementations
-
-    Example:
-        vs = get_vector_stores()
-        store = vs.ChromaVectorStore(...)
-    """
+    """Get vector store classes (requires optional dependencies)."""
     from . import vectorstores
     return vectorstores
 
 
 def get_connectors():
-    """
-    Get connector classes.
-
-    Returns:
-        Module with ConnectorRegistry, BaseConnector, and implementations
-
-    Example:
-        conn = get_connectors()
-        registry = conn.ConnectorRegistry()
-    """
+    """Get connector classes."""
     from . import connectors
     return connectors
 
@@ -1015,7 +795,6 @@ __all__ = [
     "Mindcore",
     "initialize",
     "get_client",
-    "get_async_client",
 
     # Modular Context Layer
     "ContextLayer",
@@ -1025,7 +804,7 @@ __all__ = [
     "VectorContextLayer",
     "FullContextLayer",
 
-    # Knowledge Store (single/multi-agent)
+    # Knowledge Store
     "KnowledgeStore",
     "SimpleKnowledgeStore",
     "KnowledgeItem",
@@ -1034,13 +813,19 @@ __all__ = [
 
     # AI Agents
     "MetadataAgent",
-    "ContextAgent",
-    "RetrievalQueryAgent",
-    "QueryIntent",
     "SmartContextAgent",
     "ContextTools",
     "SummarizationAgent",
     "BaseAgent",
+
+    # VocabularyManager
+    "VocabularyManager",
+    "VocabularySource",
+    "Intent",
+    "Sentiment",
+    "CommunicationStyle",
+    "EntityType",
+    "get_vocabulary",
 
     # LLM Providers
     "BaseLLMProvider",
@@ -1069,7 +854,7 @@ __all__ = [
     "CacheManager",
     "PreferencesManager",
 
-    # Lazy imports for optional modules
+    # Lazy imports
     "get_vector_stores",
     "get_connectors",
 ]

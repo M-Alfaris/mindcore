@@ -16,10 +16,21 @@ from .schemas import (
     AssembledContext,
     ContextRequest,
     IngestRequest,
-    MetadataSchema,
-    DEFAULT_METADATA_SCHEMA,
+    MetadataSchema,  # Deprecated: use VocabularyManager instead
+    DEFAULT_METADATA_SCHEMA,  # Deprecated: use get_vocabulary() instead
     ThreadSummary,
     UserPreferences,
+)
+from .vocabulary import (
+    VocabularyManager,
+    VocabularySource,
+    VocabularyEntry,
+    Intent,
+    Sentiment,
+    CommunicationStyle,
+    EntityType,
+    get_vocabulary,
+    reset_vocabulary,
 )
 
 # Async database managers (lazy import to avoid requiring async deps)
@@ -67,10 +78,20 @@ __all__ = [
     "AssembledContext",
     "ContextRequest",
     "IngestRequest",
-    "MetadataSchema",
-    "DEFAULT_METADATA_SCHEMA",
+    "MetadataSchema",  # Deprecated
+    "DEFAULT_METADATA_SCHEMA",  # Deprecated
     "ThreadSummary",
     "UserPreferences",
+    # VocabularyManager (central vocabulary control)
+    "VocabularyManager",
+    "VocabularySource",
+    "VocabularyEntry",
+    "Intent",
+    "Sentiment",
+    "CommunicationStyle",
+    "EntityType",
+    "get_vocabulary",
+    "reset_vocabulary",
     # Async helpers
     "get_async_sqlite_manager",
     "get_async_database_manager",
