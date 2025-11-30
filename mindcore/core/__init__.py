@@ -32,6 +32,36 @@ from .vocabulary import (
     get_vocabulary,
     reset_vocabulary,
 )
+from .worker_monitor import (
+    WorkerMonitor,
+    WorkerMetrics,
+    WorkerStatus,
+    get_worker_monitor,
+    reset_worker_monitor,
+)
+from .adaptive_preferences import (
+    AdaptivePreferencesLearner,
+    AdaptiveConfig,
+    PreferenceSignal,
+    get_adaptive_learner,
+    reset_adaptive_learner,
+)
+from .retention_policy import (
+    RetentionPolicyManager,
+    RetentionConfig,
+    MemoryTier,
+    TierMigrationResult,
+    get_retention_policy,
+    reset_retention_policy,
+)
+from .cache_invalidation import (
+    CacheInvalidationManager,
+    InvalidationReason,
+    InvalidationEvent,
+    InvalidationStats,
+    get_cache_invalidation,
+    reset_cache_invalidation,
+)
 
 # Async database managers (lazy import to avoid requiring async deps)
 def get_async_sqlite_manager():
@@ -92,6 +122,32 @@ __all__ = [
     "EntityType",
     "get_vocabulary",
     "reset_vocabulary",
+    # Worker monitoring
+    "WorkerMonitor",
+    "WorkerMetrics",
+    "WorkerStatus",
+    "get_worker_monitor",
+    "reset_worker_monitor",
+    # Adaptive preferences
+    "AdaptivePreferencesLearner",
+    "AdaptiveConfig",
+    "PreferenceSignal",
+    "get_adaptive_learner",
+    "reset_adaptive_learner",
+    # Retention policy
+    "RetentionPolicyManager",
+    "RetentionConfig",
+    "MemoryTier",
+    "TierMigrationResult",
+    "get_retention_policy",
+    "reset_retention_policy",
+    # Cache invalidation
+    "CacheInvalidationManager",
+    "InvalidationReason",
+    "InvalidationEvent",
+    "InvalidationStats",
+    "get_cache_invalidation",
+    "reset_cache_invalidation",
     # Async helpers
     "get_async_sqlite_manager",
     "get_async_database_manager",

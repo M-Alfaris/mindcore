@@ -43,6 +43,7 @@ from datetime import datetime, timezone
 import threading
 import atexit
 import tempfile
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import warnings
@@ -88,6 +89,39 @@ from .agents import (
     SummarizationAgent,
     SmartContextAgent,
     ContextTools,
+    TrivialMessageDetector,
+    TrivialCategory,
+    get_trivial_detector,
+)
+
+# Worker monitoring
+from .core.worker_monitor import (
+    WorkerMonitor,
+    WorkerMetrics,
+    WorkerStatus,
+    get_worker_monitor,
+)
+
+# Adaptive preferences
+from .core.adaptive_preferences import (
+    AdaptivePreferencesLearner,
+    AdaptiveConfig,
+    get_adaptive_learner,
+)
+
+# Retention policy
+from .core.retention_policy import (
+    RetentionPolicyManager,
+    RetentionConfig,
+    MemoryTier,
+    get_retention_policy,
+)
+
+# Cache invalidation
+from .core.cache_invalidation import (
+    CacheInvalidationManager,
+    InvalidationReason,
+    get_cache_invalidation,
 )
 
 # LLM Providers
@@ -251,6 +285,34 @@ class MindcoreClient:
             auto_commit=True,
             multithreading=True
         )
+
+        # Trivial message detector (skip LLM for greetings, fillers, etc.)
+        self._trivial_detector = get_trivial_detector()
+
+        # Worker monitoring
+        self._worker_monitor = get_worker_monitor()
+        self._worker_metrics = self._worker_monitor.register_worker("enrichment")
+
+        # Preferences manager (for adaptive preferences)
+        self._preferences_manager = PreferencesManager(self.db)
+
+        # Adaptive preferences learner
+        from .core.adaptive_preferences import AdaptivePreferencesLearner
+        self._adaptive_learner = AdaptivePreferencesLearner(
+            self._preferences_manager, self.db
+        )
+
+        # Retention policy manager
+        self._retention_policy = RetentionPolicyManager(
+            self.db,
+            summarization_agent=None,  # Set later if needed
+            config=RetentionConfig()
+        )
+
+        # Cache invalidation manager
+        self._cache_invalidation = get_cache_invalidation()
+        self._cache_invalidation.register_cache("messages", self.cache)
+
         self._enrichment_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mindcore_enrichment")
         self._enrichment_running = True
         self._enrichment_future = self._enrichment_executor.submit(self._enrichment_worker)
@@ -440,9 +502,17 @@ class MindcoreClient:
     def _enrichment_worker(self) -> None:
         """Background worker that enriches messages from the persistent queue."""
         logger.info("Background enrichment worker started (persistent queue)")
+        self._worker_metrics.status = WorkerStatus.IDLE
 
         while self._enrichment_running:
             try:
+                # Update queue size for monitoring
+                try:
+                    queue_size = self._enrichment_queue.qsize()
+                    self._worker_monitor.update_queue_size("enrichment", queue_size)
+                except Exception:
+                    pass
+
                 try:
                     task = self._enrichment_queue.get(block=True, timeout=1.0)
                 except Exception:
@@ -464,16 +534,41 @@ class MindcoreClient:
                     self._enrichment_queue.task_done()
                     continue
 
-                # Enrich message
+                # Mark as processing
+                self._worker_metrics.status = WorkerStatus.PROCESSING
+                start_time = time.time()
+
                 try:
-                    enriched_message = self._metadata_agent.process({
-                        'message_id': task['message_id'],
-                        'user_id': task['user_id'],
-                        'thread_id': task['thread_id'],
-                        'session_id': task['session_id'],
-                        'role': task['role'],
-                        'text': task['text'],
-                    })
+                    text = task.get('text', '')
+
+                    # Check if trivial message (skip LLM call)
+                    trivial_result = self._trivial_detector.detect(text)
+
+                    if trivial_result.is_trivial:
+                        # Auto-enrich without LLM
+                        enriched_message = self._trivial_detector.auto_enrich(
+                            text=text,
+                            user_id=task['user_id'],
+                            thread_id=task['thread_id'],
+                            session_id=task['session_id'],
+                            role=task['role'],
+                            message_id=message_id
+                        )
+                        self._worker_metrics.record_trivial_skip()
+                        logger.debug(
+                            f"Trivial message {message_id} auto-enriched "
+                            f"(category={trivial_result.category.value})"
+                        )
+                    else:
+                        # Full LLM enrichment
+                        enriched_message = self._metadata_agent.process({
+                            'message_id': task['message_id'],
+                            'user_id': task['user_id'],
+                            'thread_id': task['thread_id'],
+                            'session_id': task['session_id'],
+                            'role': task['role'],
+                            'text': text,
+                        })
 
                     # Update database
                     self.db.update_message_metadata(
@@ -481,13 +576,24 @@ class MindcoreClient:
                         metadata=enriched_message.metadata
                     )
 
-                    # Update cache
-                    self.cache.update_message(enriched_message)
+                    # Notify cache invalidation manager (updates cache and indexes)
+                    self._cache_invalidation.notify_enrichment_complete(enriched_message)
 
+                    # Learn from message metadata (adaptive preferences)
+                    if not trivial_result.is_trivial:
+                        self._adaptive_learner.process_message_metadata(
+                            user_id=enriched_message.user_id,
+                            metadata=enriched_message.metadata
+                        )
+
+                    # Record metrics
+                    duration_ms = (time.time() - start_time) * 1000
+                    self._worker_metrics.record_processing(duration_ms)
                     logger.debug(f"Background enrichment completed for {message_id}")
 
                 except Exception as e:
                     logger.error(f"Background enrichment failed for {message_id}: {e}")
+                    self._worker_metrics.record_error(str(e))
                     failed_metadata = MessageMetadata(
                         enrichment_failed=True,
                         enrichment_error=str(e)
@@ -495,10 +601,14 @@ class MindcoreClient:
                     self.db.update_message_metadata(message_id, failed_metadata)
 
                 self._enrichment_queue.task_done()
+                self._worker_metrics.status = WorkerStatus.IDLE
 
             except Exception as e:
                 logger.error(f"Enrichment worker error: {e}")
+                self._worker_metrics.record_error(str(e))
+                self._worker_metrics.status = WorkerStatus.ERROR
 
+        self._worker_metrics.status = WorkerStatus.STOPPED
         logger.info("Background enrichment worker stopped")
 
     # -------------------------------------------------------------------------
@@ -632,6 +742,41 @@ class MindcoreClient:
     # Utility Methods
     # -------------------------------------------------------------------------
 
+    def get_worker_health(self) -> Dict[str, Any]:
+        """
+        Get health and metrics for background workers.
+
+        Returns:
+            Health check result with worker status, metrics, and issues
+
+        Example:
+            >>> health = client.get_worker_health()
+            >>> print(health['healthy'])
+            True
+            >>> print(health['workers']['enrichment']['metrics']['processed_count'])
+            42
+        """
+        return self._worker_monitor.get_health()
+
+    def get_enrichment_metrics(self) -> Dict[str, Any]:
+        """
+        Get metrics for the enrichment worker.
+
+        Returns:
+            Dictionary with enrichment worker metrics including:
+            - processed_count: Total messages enriched
+            - trivial_skip_count: Messages skipped (trivial detection)
+            - error_count: Failed enrichments
+            - avg_processing_time_ms: Average processing time
+            - savings_from_trivial: LLM calls saved
+
+        Example:
+            >>> metrics = client.get_enrichment_metrics()
+            >>> print(f"Processed: {metrics['processed_count']}")
+            >>> print(f"LLM calls saved: {metrics['savings_from_trivial']['llm_calls_saved']}")
+        """
+        return self._worker_metrics.to_dict()
+
     def get_message(self, message_id: str) -> Optional[Message]:
         """Get a single message by ID."""
         return self.db.get_message_by_id(message_id)
@@ -674,6 +819,164 @@ class MindcoreClient:
         if self._metadata_agent:
             self._metadata_agent.refresh_vocabulary()
         logger.info("Vocabulary refreshed across all agents")
+
+    # -------------------------------------------------------------------------
+    # Retention & Memory Management
+    # -------------------------------------------------------------------------
+
+    def run_tier_migration(
+        self,
+        user_id: Optional[str] = None,
+        dry_run: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Run tier migration for memory management.
+
+        Moves messages between tiers (short-term → mid-term → long-term)
+        based on age and importance.
+
+        Args:
+            user_id: Optional user to migrate (all users if None)
+            dry_run: If True, report what would be done without migrating
+
+        Returns:
+            Migration result with counts
+
+        Example:
+            >>> result = client.run_tier_migration()
+            >>> print(f"Migrated {result['messages_migrated']} messages")
+        """
+        result = self._retention_policy.run_migration(user_id, dry_run)
+        return {
+            "messages_migrated": result.messages_migrated,
+            "threads_summarized": result.threads_summarized,
+            "messages_deleted": result.messages_deleted,
+            "errors": result.errors,
+        }
+
+    def get_decayed_importance(self, message: Message) -> float:
+        """
+        Get importance score with time-based decay.
+
+        More recent messages have higher importance.
+
+        Args:
+            message: Message to calculate importance for
+
+        Returns:
+            Decayed importance (0.0 to 1.0)
+        """
+        return self._retention_policy.get_decayed_importance(message)
+
+    def get_context_window(
+        self,
+        user_id: str,
+        thread_id: str,
+        max_messages: int = 50,
+        min_importance: float = 0.1
+    ) -> List[Message]:
+        """
+        Get optimized context window for a conversation.
+
+        Selects messages based on recency, importance, and token budget.
+
+        Args:
+            user_id: User identifier
+            thread_id: Thread identifier
+            max_messages: Maximum messages to include
+            min_importance: Minimum decayed importance to include
+
+        Returns:
+            List of messages optimized for context window
+        """
+        return self._retention_policy.get_context_window(
+            user_id, thread_id, max_messages, min_importance=min_importance
+        )
+
+    # -------------------------------------------------------------------------
+    # Adaptive Preferences
+    # -------------------------------------------------------------------------
+
+    def apply_learned_preferences(self, user_id: str) -> List[tuple]:
+        """
+        Apply learned preferences for a user.
+
+        Updates user preferences based on patterns observed in their messages.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            List of (field, action, value) tuples for updates applied
+        """
+        return self._adaptive_learner.apply_updates(user_id)
+
+    def get_preference_signals(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get summary of accumulated preference signals for a user.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Summary with signal counts and top signals by type
+        """
+        return self._adaptive_learner.get_signal_summary(user_id)
+
+    def get_user_preferences(self, user_id: str):
+        """
+        Get user preferences.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            UserPreferences object
+        """
+        return self._preferences_manager.get_preferences(user_id)
+
+    # -------------------------------------------------------------------------
+    # Cache Management
+    # -------------------------------------------------------------------------
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics including invalidation metrics.
+
+        Returns:
+            Dictionary with cache and invalidation stats
+        """
+        cache_stats = self.cache.get_stats() if hasattr(self.cache, 'get_stats') else {}
+        invalidation_stats = self._cache_invalidation.get_stats()
+
+        return {
+            "cache": cache_stats,
+            "invalidation": invalidation_stats,
+        }
+
+    def invalidate_cache_by_topic(self, topic: str) -> int:
+        """
+        Invalidate all cached data related to a topic.
+
+        Args:
+            topic: Topic to invalidate
+
+        Returns:
+            Number of threads invalidated
+        """
+        return self._cache_invalidation.invalidate_by_topic(topic)
+
+    def invalidate_stale_cache(self, max_age_seconds: int = 3600) -> int:
+        """
+        Invalidate cache entries older than max_age.
+
+        Args:
+            max_age_seconds: Maximum age in seconds
+
+        Returns:
+            Number of entries invalidated
+        """
+        return self._cache_invalidation.invalidate_stale(max_age_seconds)
 
     def close(self) -> None:
         """Close all connections and cleanup resources."""
@@ -817,6 +1120,9 @@ __all__ = [
     "ContextTools",
     "SummarizationAgent",
     "BaseAgent",
+    "TrivialMessageDetector",
+    "TrivialCategory",
+    "get_trivial_detector",
 
     # VocabularyManager
     "VocabularyManager",
@@ -826,6 +1132,28 @@ __all__ = [
     "CommunicationStyle",
     "EntityType",
     "get_vocabulary",
+
+    # Worker Monitoring
+    "WorkerMonitor",
+    "WorkerMetrics",
+    "WorkerStatus",
+    "get_worker_monitor",
+
+    # Adaptive Preferences
+    "AdaptivePreferencesLearner",
+    "AdaptiveConfig",
+    "get_adaptive_learner",
+
+    # Retention Policy
+    "RetentionPolicyManager",
+    "RetentionConfig",
+    "MemoryTier",
+    "get_retention_policy",
+
+    # Cache Invalidation
+    "CacheInvalidationManager",
+    "InvalidationReason",
+    "get_cache_invalidation",
 
     # LLM Providers
     "BaseLLMProvider",
