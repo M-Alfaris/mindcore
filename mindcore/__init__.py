@@ -47,6 +47,7 @@ import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import warnings
+import os
 
 # Persistent queue (survives crashes/restarts)
 import persistqueue
@@ -122,6 +123,14 @@ from .core.cache_invalidation import (
     CacheInvalidationManager,
     InvalidationReason,
     get_cache_invalidation,
+)
+
+# Prometheus metrics
+from .core.prometheus_metrics import (
+    MindcoreMetrics,
+    get_metrics as get_prometheus_metrics,
+    start_metrics_server,
+    is_prometheus_available,
 )
 
 # Multi-agent support
@@ -217,7 +226,8 @@ class MindcoreClient:
         persistent_cache: bool = True,
         cache_dir: Optional[str] = None,
         vocabulary: Optional[VocabularyManager] = None,
-        multi_agent_config: Optional[MultiAgentConfig] = None
+        multi_agent_config: Optional[MultiAgentConfig] = None,
+        enrichment_workers: Optional[int] = None
     ):
         """
         Initialize Mindcore client.
@@ -235,6 +245,9 @@ class MindcoreClient:
             vocabulary: Optional VocabularyManager. If None, uses global instance.
             multi_agent_config: Optional MultiAgentConfig for shared memory mode.
                 When enabled, agent_id is required for ingest() and get_context().
+            enrichment_workers: Number of background enrichment worker threads.
+                Defaults to MINDCORE_ENRICHMENT_WORKERS env var, or 1 if not set.
+                Increase for high-throughput scenarios (recommended: 2-4 workers).
 
         Raises:
             ValueError: If no LLM provider can be initialized
@@ -356,9 +369,33 @@ class MindcoreClient:
         self._cache_invalidation = get_cache_invalidation()
         self._cache_invalidation.register_cache("messages", self.cache)
 
-        self._enrichment_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mindcore_enrichment")
+        # Prometheus metrics (optional)
+        self._metrics = get_prometheus_metrics()
+
+        # Configure enrichment worker pool size
+        # Priority: constructor arg > env var > default (1)
+        self._enrichment_workers = enrichment_workers or int(
+            os.environ.get('MINDCORE_ENRICHMENT_WORKERS', '1')
+        )
+        self._enrichment_workers = max(1, min(self._enrichment_workers, 16))  # Clamp 1-16
+
+        self._enrichment_executor = ThreadPoolExecutor(
+            max_workers=self._enrichment_workers,
+            thread_name_prefix="mindcore_enrichment"
+        )
         self._enrichment_running = True
-        self._enrichment_future = self._enrichment_executor.submit(self._enrichment_worker)
+
+        # Start worker threads
+        self._enrichment_futures = []
+        for i in range(self._enrichment_workers):
+            future = self._enrichment_executor.submit(self._enrichment_worker)
+            self._enrichment_futures.append(future)
+
+        if self._enrichment_workers > 1:
+            logger.info(f"Started {self._enrichment_workers} enrichment worker threads")
+
+        # Set initial metrics
+        self._metrics.set_worker_pool_size(self._enrichment_workers)
 
         db_type = "SQLite" if use_sqlite else "PostgreSQL"
         logger.info(
@@ -490,6 +527,8 @@ class MindcoreClient:
             ...     sharing_groups=["support", "orders"]
             ... )
         """
+        ingest_start_time = time.time()
+
         # Validate agent_id in multi-agent mode
         is_valid, error_msg = self._multi_agent_manager.validate_agent_id(agent_id, for_write=True)
         if not is_valid:
@@ -546,6 +585,10 @@ class MindcoreClient:
         }
         self._enrichment_queue.put(enrichment_task)
 
+        # Record metrics
+        ingest_duration_ms = (time.time() - ingest_start_time) * 1000
+        self._metrics.record_ingestion(duration_ms=ingest_duration_ms)
+
         logger.debug(f"Message {message.message_id} ingested (enrichment queued)")
         return message
 
@@ -588,6 +631,10 @@ class MindcoreClient:
 
                 try:
                     task = self._enrichment_queue.get(block=True, timeout=1.0)
+                    self._metrics.set_active_workers(
+                        self._metrics._gauges.get('active_workers', 0) + 1
+                        if not self._metrics.enabled else 1
+                    )
                 except Exception:
                     continue
 
@@ -662,11 +709,16 @@ class MindcoreClient:
                     # Record metrics
                     duration_ms = (time.time() - start_time) * 1000
                     self._worker_metrics.record_processing(duration_ms)
+                    self._metrics.record_enrichment(
+                        duration_ms=duration_ms,
+                        trivial=trivial_result.is_trivial
+                    )
                     logger.debug(f"Background enrichment completed for {message_id}")
 
                 except Exception as e:
                     logger.error(f"Background enrichment failed for {message_id}: {e}")
                     self._worker_metrics.record_error(str(e))
+                    self._metrics.record_error('enrichment')
                     failed_metadata = MessageMetadata(
                         enrichment_failed=True,
                         enrichment_error=str(e)
@@ -747,6 +799,8 @@ class MindcoreClient:
             ... )
             >>> print(context.assembled_context)
         """
+        context_start_time = time.time()
+
         # Validate agent_id in multi-agent mode
         is_valid, error_msg = self._multi_agent_manager.validate_agent_id(agent_id, for_write=False)
         if not is_valid:
@@ -777,6 +831,10 @@ class MindcoreClient:
             thread_id=thread_id,
             additional_context=additional_context
         )
+
+        # Record metrics
+        context_duration_ms = (time.time() - context_start_time) * 1000
+        self._metrics.record_context_retrieval(duration_ms=context_duration_ms)
 
         logger.info(
             f"Context assembled: source={context.metadata.get('context_source', 'unknown')}, "
@@ -850,6 +908,11 @@ class MindcoreClient:
     # Utility Methods
     # -------------------------------------------------------------------------
 
+    @property
+    def enrichment_worker_count(self) -> int:
+        """Get the number of enrichment worker threads."""
+        return getattr(self, '_enrichment_workers', 1)
+
     def get_worker_health(self) -> Dict[str, Any]:
         """
         Get health and metrics for background workers.
@@ -864,7 +927,9 @@ class MindcoreClient:
             >>> print(health['workers']['enrichment']['metrics']['processed_count'])
             42
         """
-        return self._worker_monitor.get_health()
+        health = self._worker_monitor.get_health()
+        health['worker_pool_size'] = self._enrichment_workers
+        return health
 
     def get_enrichment_metrics(self) -> Dict[str, Any]:
         """
@@ -1190,19 +1255,63 @@ class MindcoreClient:
         """
         return self._cache_invalidation.invalidate_stale(max_age_seconds)
 
+    # -------------------------------------------------------------------------
+    # Prometheus Metrics
+    # -------------------------------------------------------------------------
+
+    def get_prometheus_metrics(self) -> Dict[str, Any]:
+        """
+        Get current Prometheus metrics as a dictionary.
+
+        Useful for monitoring dashboards or debugging.
+
+        Returns:
+            Dictionary with all current metric values
+
+        Example:
+            >>> metrics = client.get_prometheus_metrics()
+            >>> print(f"Messages ingested: {metrics.get('messages_ingested', 0)}")
+        """
+        return self._metrics.get_metrics_dict()
+
+    def start_metrics_server(self, port: int = 9090) -> bool:
+        """
+        Start HTTP server for Prometheus metrics scraping.
+
+        The server exposes metrics at http://localhost:{port}/metrics
+
+        Args:
+            port: Port to listen on (default: 9090)
+
+        Returns:
+            True if server started, False if prometheus_client not available
+
+        Example:
+            >>> if client.start_metrics_server(port=9090):
+            ...     print("Metrics available at http://localhost:9090/metrics")
+        """
+        return start_metrics_server(port)
+
+    @property
+    def prometheus_enabled(self) -> bool:
+        """Check if Prometheus metrics export is available."""
+        return is_prometheus_available()
+
     def close(self) -> None:
         """Close all connections and cleanup resources."""
-        # Stop background enrichment worker
+        # Stop background enrichment workers
         if hasattr(self, '_enrichment_running'):
             self._enrichment_running = False
-            if hasattr(self, '_enrichment_future'):
-                try:
-                    self._enrichment_future.result(timeout=5.0)
-                except Exception:
-                    pass
+            if hasattr(self, '_enrichment_futures'):
+                for future in self._enrichment_futures:
+                    try:
+                        future.result(timeout=5.0)
+                    except Exception:
+                        pass
             if hasattr(self, '_enrichment_executor'):
                 self._enrichment_executor.shutdown(wait=True)
-            logger.info("Background enrichment worker stopped")
+            workers = getattr(self, '_enrichment_workers', 1)
+            logger.info(f"Background enrichment worker(s) stopped ({workers} threads)")
 
         # Close persistent queue
         if hasattr(self, '_enrichment_queue') and hasattr(self._enrichment_queue, 'close'):
@@ -1366,6 +1475,12 @@ __all__ = [
     "CacheInvalidationManager",
     "InvalidationReason",
     "get_cache_invalidation",
+
+    # Prometheus Metrics
+    "MindcoreMetrics",
+    "get_prometheus_metrics",
+    "start_metrics_server",
+    "is_prometheus_available",
 
     # Multi-Agent Support
     "MultiAgentConfig",

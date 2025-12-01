@@ -139,7 +139,11 @@ class AdaptivePreferencesLearner:
         intent = getattr(metadata, 'intent', None)
 
         if sentiment:
-            style = self._infer_style_from_sentiment(sentiment)
+            # Handle both string and dict formats for sentiment
+            sentiment_value = sentiment
+            if isinstance(sentiment, dict):
+                sentiment_value = sentiment.get('overall', '')
+            style = self._infer_style_from_sentiment(sentiment_value)
             if style:
                 signals.append(PreferenceSignal(
                     signal_type="communication_style",

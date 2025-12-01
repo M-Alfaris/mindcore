@@ -72,6 +72,13 @@ from .multi_agent import (
     reset_multi_agent_manager,
     configure_multi_agent,
 )
+from .prometheus_metrics import (
+    MindcoreMetrics,
+    get_metrics,
+    reset_metrics,
+    start_metrics_server,
+    is_prometheus_available,
+)
 
 # Async database managers (lazy import to avoid requiring async deps)
 def get_async_sqlite_manager():
@@ -167,6 +174,12 @@ __all__ = [
     "get_multi_agent_manager",
     "reset_multi_agent_manager",
     "configure_multi_agent",
+    # Prometheus metrics
+    "MindcoreMetrics",
+    "get_metrics",
+    "reset_metrics",
+    "start_metrics_server",
+    "is_prometheus_available",
     # Async helpers
     "get_async_sqlite_manager",
     "get_async_database_manager",
