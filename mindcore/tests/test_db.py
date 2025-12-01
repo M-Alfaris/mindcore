@@ -5,6 +5,19 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from mindcore.core import DatabaseManager, Message, MessageMetadata
 
+# Check if psycopg2 is available for mocking
+try:
+    import psycopg2
+    HAS_PSYCOPG2 = True
+except ImportError:
+    HAS_PSYCOPG2 = False
+
+# Skip all tests in this module if psycopg2 is not available
+pytestmark = pytest.mark.skipif(
+    not HAS_PSYCOPG2,
+    reason="psycopg2 not installed. Install with: pip install mindcore[postgres]"
+)
+
 
 class TestDatabaseManager:
     """Test cases for DatabaseManager."""

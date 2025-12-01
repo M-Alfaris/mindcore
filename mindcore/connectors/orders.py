@@ -22,6 +22,9 @@ class OrdersConnector(BaseConnector):
 
     IMPORTANT: This connector is READ-ONLY. It never modifies order data.
 
+    Topics are automatically registered with VocabularyManager for
+    consistent vocabulary across the system.
+
     Configuration:
     -------------
     The connector can be configured to work with different backends:
@@ -53,6 +56,7 @@ class OrdersConnector(BaseConnector):
     topics = ["orders", "order", "purchase", "delivery", "shipping", "tracking"]
     name = "orders"
     cache_ttl = 300  # 5 minutes
+    _topics_registered = False
 
     def __init__(
         self,
@@ -90,8 +94,10 @@ class OrdersConnector(BaseConnector):
         self.lookup_fn = lookup_fn
         self.max_results = max_results
         self.enabled = enabled
-
         self._db_pool = None
+
+        # Register topics with VocabularyManager
+        super().__init__()
 
     async def lookup(
         self,

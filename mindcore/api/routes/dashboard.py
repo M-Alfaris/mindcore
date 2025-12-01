@@ -1048,7 +1048,7 @@ def record_performance_metric(metric_type: str, data: Dict[str, Any]):
 
 @router.get("/performance")
 async def get_performance_stats(
-    range: str = Query("24h", regex="^(1h|24h|7d)$")
+    range: str = Query("24h", pattern="^(1h|24h|7d)$")
 ):
     """Get performance statistics and metrics."""
     from ... import _mindcore_instance

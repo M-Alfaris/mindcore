@@ -2,11 +2,13 @@
 Metadata Enrichment AI Agent.
 
 Enriches messages with intelligent metadata using LLM providers.
+Uses VocabularyManager for controlled vocabulary.
 """
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, MessageMetadata, MetadataSchema, DEFAULT_METADATA_SCHEMA
+from ..core.schemas import Message, MessageMetadata
+from ..core.vocabulary import get_vocabulary, VocabularyManager
 from ..utils.logger import get_logger
 from ..utils.helper import generate_message_id
 
@@ -21,14 +23,17 @@ class EnrichmentAgent(BaseAgent):
     AI agent that enriches messages with metadata.
 
     Analyzes message content and generates:
-    - Topics
-    - Categories
+    - Topics (from controlled vocabulary)
+    - Categories (from controlled vocabulary)
     - Importance score
-    - Sentiment
-    - Intent
-    - Tags
-    - Entities
+    - Sentiment (enum: positive, negative, neutral, mixed)
+    - Intent (enum: ask_question, request_action, etc.)
+    - Tags (free-form keywords)
+    - Entities (extracted named entities)
     - Key phrases
+
+    Uses VocabularyManager to ensure consistent, controlled vocabulary
+    that integrates with connectors and external systems.
 
     Example:
         >>> from mindcore.llm import create_provider, ProviderType
@@ -39,10 +44,10 @@ class EnrichmentAgent(BaseAgent):
         ...     "thread_id": "thread1",
         ...     "session_id": "session1",
         ...     "role": "user",
-        ...     "text": "How do I implement caching?"
+        ...     "text": "How do I check my order status?"
         ... })
         >>> print(message.metadata.topics)
-        ['caching', 'implementation']
+        ['orders', 'tracking']
     """
 
     def __init__(
@@ -50,7 +55,7 @@ class EnrichmentAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.3,
         max_tokens: int = 800,
-        metadata_schema: Optional[MetadataSchema] = None
+        vocabulary: Optional[VocabularyManager] = None
     ):
         """
         Initialize enrichment agent.
@@ -59,43 +64,44 @@ class EnrichmentAgent(BaseAgent):
             llm_provider: LLM provider instance
             temperature: Temperature for generation
             max_tokens: Maximum tokens in response
-            metadata_schema: Predefined metadata schema for consistent enrichment.
-                           If None, uses DEFAULT_METADATA_SCHEMA.
+            vocabulary: VocabularyManager instance. If None, uses global instance.
         """
         super().__init__(llm_provider, temperature, max_tokens)
-        self.metadata_schema = metadata_schema or DEFAULT_METADATA_SCHEMA
+        self.vocabulary = vocabulary or get_vocabulary()
         self.system_prompt = self._create_system_prompt()
 
     def _create_system_prompt(self) -> str:
-        """Create system prompt for enrichment with predefined schema."""
-        schema_list = self.metadata_schema.to_prompt_list()
+        """Create system prompt for enrichment with vocabulary constraints."""
+        vocab_prompt = self.vocabulary.to_prompt_list()
 
         return f"""You are a metadata enrichment AI agent. Your task is to analyze messages and extract structured metadata.
 
-IMPORTANT: You must ONLY use values from the predefined lists below. Do NOT invent new topics, categories, or intents.
+CRITICAL: You MUST ONLY use values from the predefined lists below. Do NOT invent new topics, categories, intents, or sentiments.
 
-{schema_list}
+{vocab_prompt}
 
 For each message, return a JSON object with these fields:
 
 {{
-  "topics": ["select 1-3 topics from the Available Topics list above"],
-  "categories": ["select 1-2 categories from the Available Categories list above"],
+  "topics": ["select 1-3 topics from Available Topics"],
+  "categories": ["select 1-2 categories from Available Categories"],
   "importance": 0.0-1.0 (float, where 1.0 is most important),
   "sentiment": {{
-    "overall": "select from Available Sentiments above",
-    "score": 0.0-1.0 (float)
+    "overall": "select from Available Sentiments",
+    "score": 0.0-1.0 (float, 0=very negative, 1=very positive)
   }},
-  "intent": "select ONE intent from Available Intents above",
-  "tags": ["relevant keywords from the message"],
-  "entities": ["named entities like people, places, technologies, products"],
+  "intent": "select ONE intent from Available Intents",
+  "tags": ["relevant keywords extracted from the message"],
+  "entities": ["named entities: people, places, products, order IDs, etc."],
   "key_phrases": ["important phrases from the message"]
 }}
 
 Rules:
 - ONLY use values from the predefined lists for topics, categories, intent, and sentiment
-- If no topic matches, use the closest one or "general"
+- If no topic matches well, use "general" or the closest match
 - importance: 0.0-0.3 for greetings/casual, 0.4-0.6 for normal, 0.7-1.0 for urgent/important
+- For order-related queries, use topics like "orders", "tracking", "delivery"
+- For billing queries, use topics like "billing", "payment", "invoice", "refund"
 - Be concise and accurate. Return ONLY valid JSON."""
 
     def process(self, message_dict: Dict[str, Any]) -> Message:
@@ -134,22 +140,39 @@ Rules:
             # Parse response
             metadata_dict = self._parse_json_response(response)
 
-            # Validate and normalize against predefined schema
+            # Validate against vocabulary (strict - no fallback to invalid values)
             raw_topics = metadata_dict.get('topics', [])
             raw_categories = metadata_dict.get('categories', [])
             raw_intent = metadata_dict.get('intent')
+            raw_sentiment = metadata_dict.get('sentiment', {})
 
-            # Use schema validation (allows LLM flexibility but ensures consistency)
-            validated_topics = self.metadata_schema.validate_topics(raw_topics) or raw_topics[:3]
-            validated_categories = self.metadata_schema.validate_categories(raw_categories) or raw_categories[:2]
-            validated_intent = self.metadata_schema.validate_intent(raw_intent) or raw_intent
+            # Validate using VocabularyManager
+            validated_topics = self.vocabulary.validate_topics(raw_topics)
+            validated_categories = self.vocabulary.validate_categories(raw_categories)
+            validated_intent = self.vocabulary.resolve_intent(raw_intent) if raw_intent else None
+
+            # Validate sentiment
+            sentiment_overall = raw_sentiment.get('overall', 'neutral')
+            if not self.vocabulary.is_valid_sentiment(sentiment_overall):
+                sentiment_overall = 'neutral'
+
+            # If no valid topics found, default to "general"
+            if not validated_topics:
+                validated_topics = ["general"]
+
+            # If no valid categories found, default to "general"
+            if not validated_categories:
+                validated_categories = ["general"]
 
             # Create MessageMetadata object with validated values
             metadata = MessageMetadata(
                 topics=validated_topics,
                 categories=validated_categories,
                 importance=max(0.0, min(1.0, metadata_dict.get('importance', 0.5))),
-                sentiment=metadata_dict.get('sentiment', {}),
+                sentiment={
+                    "overall": sentiment_overall,
+                    "score": max(0.0, min(1.0, raw_sentiment.get('score', 0.5)))
+                },
                 intent=validated_intent,
                 tags=metadata_dict.get('tags', []),
                 entities=metadata_dict.get('entities', []),
@@ -204,3 +227,9 @@ Rules:
 
         logger.info(f"Enriched {len(enriched)}/{len(messages)} messages")
         return enriched
+
+    def refresh_vocabulary(self) -> None:
+        """Refresh the vocabulary from external sources."""
+        self.vocabulary.refresh_from_external()
+        self.system_prompt = self._create_system_prompt()
+        logger.info("Enrichment agent vocabulary refreshed")

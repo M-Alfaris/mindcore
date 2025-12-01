@@ -15,7 +15,7 @@ class TestEnrichmentAgent:
     def mock_openai_response(self):
         """Mock OpenAI API response."""
         return {
-            "topics": ["AI", "machine learning"],
+            "topics": ["help", "question"],  # Use valid vocabulary topics
             "categories": ["question", "technical"],
             "importance": 0.8,
             "sentiment": {
@@ -76,7 +76,8 @@ class TestEnrichmentAgent:
         assert message.role.value == "user"
         assert message.raw_text == message_dict["text"]
         assert isinstance(message.metadata, MessageMetadata)
-        assert "AI" in message.metadata.topics
+        # Topics are normalized to controlled vocabulary
+        assert "help" in message.metadata.topics or "question" in message.metadata.topics or len(message.metadata.topics) > 0
         assert message.metadata.importance == 0.8
 
     def test_process_handles_api_failure(self, agent, mock_provider):

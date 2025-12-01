@@ -16,10 +16,68 @@ from .schemas import (
     AssembledContext,
     ContextRequest,
     IngestRequest,
-    MetadataSchema,
-    DEFAULT_METADATA_SCHEMA,
+    MetadataSchema,  # Deprecated: use VocabularyManager instead
+    DEFAULT_METADATA_SCHEMA,  # Deprecated: use get_vocabulary() instead
     ThreadSummary,
     UserPreferences,
+)
+from .vocabulary import (
+    VocabularyManager,
+    VocabularySource,
+    VocabularyEntry,
+    Intent,
+    Sentiment,
+    CommunicationStyle,
+    EntityType,
+    get_vocabulary,
+    reset_vocabulary,
+)
+from .worker_monitor import (
+    WorkerMonitor,
+    WorkerMetrics,
+    WorkerStatus,
+    get_worker_monitor,
+    reset_worker_monitor,
+)
+from .adaptive_preferences import (
+    AdaptivePreferencesLearner,
+    AdaptiveConfig,
+    PreferenceSignal,
+    get_adaptive_learner,
+    reset_adaptive_learner,
+)
+from .retention_policy import (
+    RetentionPolicyManager,
+    RetentionConfig,
+    MemoryTier,
+    TierMigrationResult,
+    get_retention_policy,
+    reset_retention_policy,
+)
+from .cache_invalidation import (
+    CacheInvalidationManager,
+    InvalidationReason,
+    InvalidationEvent,
+    InvalidationStats,
+    get_cache_invalidation,
+    reset_cache_invalidation,
+)
+from .multi_agent import (
+    MultiAgentConfig,
+    MultiAgentManager,
+    MemorySharingMode,
+    AgentVisibility,
+    AgentProfile,
+    get_multi_agent_manager,
+    reset_multi_agent_manager,
+    configure_multi_agent,
+)
+from .prometheus_metrics import (
+    MindcoreMetrics,
+    get_metrics,
+    reset_metrics,
+    start_metrics_server,
+    is_prometheus_available,
 )
 
 # Async database managers (lazy import to avoid requiring async deps)
@@ -67,10 +125,61 @@ __all__ = [
     "AssembledContext",
     "ContextRequest",
     "IngestRequest",
-    "MetadataSchema",
-    "DEFAULT_METADATA_SCHEMA",
+    "MetadataSchema",  # Deprecated
+    "DEFAULT_METADATA_SCHEMA",  # Deprecated
     "ThreadSummary",
     "UserPreferences",
+    # VocabularyManager (central vocabulary control)
+    "VocabularyManager",
+    "VocabularySource",
+    "VocabularyEntry",
+    "Intent",
+    "Sentiment",
+    "CommunicationStyle",
+    "EntityType",
+    "get_vocabulary",
+    "reset_vocabulary",
+    # Worker monitoring
+    "WorkerMonitor",
+    "WorkerMetrics",
+    "WorkerStatus",
+    "get_worker_monitor",
+    "reset_worker_monitor",
+    # Adaptive preferences
+    "AdaptivePreferencesLearner",
+    "AdaptiveConfig",
+    "PreferenceSignal",
+    "get_adaptive_learner",
+    "reset_adaptive_learner",
+    # Retention policy
+    "RetentionPolicyManager",
+    "RetentionConfig",
+    "MemoryTier",
+    "TierMigrationResult",
+    "get_retention_policy",
+    "reset_retention_policy",
+    # Cache invalidation
+    "CacheInvalidationManager",
+    "InvalidationReason",
+    "InvalidationEvent",
+    "InvalidationStats",
+    "get_cache_invalidation",
+    "reset_cache_invalidation",
+    # Multi-agent
+    "MultiAgentConfig",
+    "MultiAgentManager",
+    "MemorySharingMode",
+    "AgentVisibility",
+    "AgentProfile",
+    "get_multi_agent_manager",
+    "reset_multi_agent_manager",
+    "configure_multi_agent",
+    # Prometheus metrics
+    "MindcoreMetrics",
+    "get_metrics",
+    "reset_metrics",
+    "start_metrics_server",
+    "is_prometheus_available",
     # Async helpers
     "get_async_sqlite_manager",
     "get_async_database_manager",

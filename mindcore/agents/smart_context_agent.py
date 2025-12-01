@@ -2,16 +2,17 @@
 Smart Context Agent with Tool Calling.
 
 Single LLM call that uses tools to fetch relevant context.
-Replaces the need for separate RetrievalQueryAgent + ContextAssemblerAgent.
+Uses VocabularyManager for controlled vocabulary in tool parameters.
 
-Uses gpt-4o-mini with native tool support for efficient context assembly.
+This is the PRIMARY context retrieval method for Mindcore.
 """
 import json
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, AssembledContext, MetadataSchema, DEFAULT_METADATA_SCHEMA, ThreadSummary, UserPreferences
+from ..core.schemas import Message, AssembledContext, ThreadSummary, UserPreferences
+from ..core.vocabulary import get_vocabulary, VocabularyManager
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -36,168 +37,195 @@ class ContextTools:
     update_user_preference: Optional[Callable[[str, str, Any, str], tuple]] = None
     # External connector tools
     lookup_external_data: Optional[Callable[[str, List[str], Dict[str, Any]], List[Any]]] = None
-    extract_entities: Optional[Callable[[str, List[str]], Dict[str, Any]]] = None
 
 
-# Tool definitions for OpenAI function calling
-CONTEXT_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_recent_messages",
-            "description": "Get the most recent messages from the current conversation thread. Use this for context about the ongoing conversation.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of recent messages to retrieve (default: 10, max: 50)",
-                        "default": 10
-                    }
-                },
-                "required": []
+def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
+    """
+    Build tool definitions with vocabulary-constrained parameters.
+
+    Args:
+        vocabulary: VocabularyManager instance for enum constraints.
+
+    Returns:
+        List of tool definitions for OpenAI function calling.
+    """
+    topics = vocabulary.get_topics()
+    categories = vocabulary.get_categories()
+    intents = vocabulary.get_intents()
+
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_recent_messages",
+                "description": "Get the most recent messages from the current conversation thread. Use this for context about the ongoing conversation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of recent messages to retrieve (default: 10, max: 50)",
+                            "default": 10
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search_history",
+                "description": "Search historical messages across threads. Use this when the user references past conversations, previous topics, or needs context from earlier interactions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topics": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": topics  # Constrained to vocabulary
+                            },
+                            "description": "Topics to search for (must be from predefined list)"
+                        },
+                        "categories": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": categories  # Constrained to vocabulary
+                            },
+                            "description": "Categories to filter by (must be from predefined list)"
+                        },
+                        "intent": {
+                            "type": "string",
+                            "enum": intents,  # Constrained to vocabulary
+                            "description": "Intent type to filter by"
+                        },
+                        "search_current_thread_only": {
+                            "type": "boolean",
+                            "description": "If true, only search within current thread. If false, search across all user's threads.",
+                            "default": False
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of historical messages to retrieve (default: 20)",
+                            "default": 20
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_session_metadata",
+                "description": "Get aggregated metadata about the current session (topics discussed, categories, intents). Useful for understanding the overall context of the conversation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_historical_summaries",
+                "description": "Get summaries of past conversation threads. Use when user references older conversations or you need context from previous sessions that have been summarized.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topics": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": topics
+                            },
+                            "description": "Topics to filter summaries by"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of summaries to retrieve (default: 5)",
+                            "default": 5
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_user_preferences",
+                "description": "Get user's preferences (language, timezone, interests, goals, communication style). Use to personalize responses.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_user_preference",
+                "description": "Update a user's preference when they explicitly request it. Only works for amendable fields like language, timezone, interests, goals, communication_style, preferred_name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "field": {
+                            "type": "string",
+                            "enum": ["language", "timezone", "communication_style", "interests", "goals", "preferred_name"],
+                            "description": "The preference field to update"
+                        },
+                        "value": {
+                            "description": "The new value for the field"
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["set", "add", "remove"],
+                            "description": "For list fields (interests, goals): 'add' or 'remove' item. For others: 'set' value.",
+                            "default": "set"
+                        }
+                    },
+                    "required": ["field", "value"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup_external_data",
+                "description": "Fetch data from external systems (orders, billing, etc.) based on topics. Use when user asks about their orders, payments, subscriptions, deliveries, or other business data. This provides READ-ONLY access to external systems.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topics": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": topics
+                            },
+                            "description": "Topics to look up (e.g., 'orders', 'billing', 'subscription', 'delivery')"
+                        },
+                        "context": {
+                            "type": "object",
+                            "description": "Extracted entities like order_id, invoice_id, dates. Pass relevant IDs mentioned in conversation."
+                        }
+                    },
+                    "required": ["topics"]
+                }
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_history",
-            "description": "Search historical messages across threads. Use this when the user references past conversations, previous topics, or needs context from earlier interactions.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topics": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Topics to search for (e.g., ['billing', 'refund', 'account'])"
-                    },
-                    "categories": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Categories to filter by (e.g., ['support', 'sales'])"
-                    },
-                    "intent": {
-                        "type": "string",
-                        "description": "Intent type to filter by (e.g., 'question', 'complaint', 'feedback')"
-                    },
-                    "search_current_thread_only": {
-                        "type": "boolean",
-                        "description": "If true, only search within current thread. If false, search across all user's threads.",
-                        "default": False
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of historical messages to retrieve (default: 20)",
-                        "default": 20
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_session_metadata",
-            "description": "Get aggregated metadata about the current session (topics discussed, categories, intents). Useful for understanding the overall context of the conversation.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_historical_summaries",
-            "description": "Get summaries of past conversation threads. Use when user references older conversations or you need context from previous sessions that have been summarized.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topics": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Topics to filter summaries by"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of summaries to retrieve (default: 5)",
-                        "default": 5
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_user_preferences",
-            "description": "Get user's preferences (language, timezone, interests, goals, communication style). Use to personalize responses.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_user_preference",
-            "description": "Update a user's preference when they explicitly request it. Only works for amendable fields like language, timezone, interests, goals, communication_style, preferred_name.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "field": {
-                        "type": "string",
-                        "enum": ["language", "timezone", "communication_style", "interests", "goals", "preferred_name"],
-                        "description": "The preference field to update"
-                    },
-                    "value": {
-                        "description": "The new value for the field"
-                    },
-                    "action": {
-                        "type": "string",
-                        "enum": ["set", "add", "remove"],
-                        "description": "For list fields (interests, goals): 'add' or 'remove' item. For others: 'set' value.",
-                        "default": "set"
-                    }
-                },
-                "required": ["field", "value"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "lookup_external_data",
-            "description": "Fetch data from external systems (orders, billing, etc.) based on topics. Use when user asks about their orders, payments, subscriptions, deliveries, or other business data. This provides READ-ONLY access to external systems.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topics": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Topics to look up (e.g., 'orders', 'billing', 'subscription', 'delivery')"
-                    },
-                    "context": {
-                        "type": "object",
-                        "description": "Extracted entities like order_id, invoice_id, dates. Pass relevant IDs mentioned in conversation."
-                    }
-                },
-                "required": ["topics"]
-            }
-        }
-    }
-]
+    ]
 
 
 class SmartContextAgent(BaseAgent):
     """
     Intelligent context assembly agent using tool calling.
+
+    This is the PRIMARY context retrieval method for Mindcore.
 
     Instead of separate query analysis and context assembly steps,
     this agent uses a single LLM call with tools to:
@@ -205,8 +233,8 @@ class SmartContextAgent(BaseAgent):
     2. Fetch relevant data via tool calls
     3. Assemble the final context
 
-    This reduces latency by eliminating one LLM round-trip while
-    maintaining intelligent context selection.
+    Uses VocabularyManager to ensure all topic/category/intent parameters
+    are constrained to the controlled vocabulary.
 
     Example:
         >>> from mindcore.llm import create_provider, ProviderType
@@ -232,7 +260,7 @@ class SmartContextAgent(BaseAgent):
         context_tools: ContextTools,
         temperature: float = 0.2,
         max_tokens: int = 1500,
-        metadata_schema: Optional[MetadataSchema] = None,
+        vocabulary: Optional[VocabularyManager] = None,
         max_tool_rounds: int = 3
     ):
         """
@@ -243,18 +271,21 @@ class SmartContextAgent(BaseAgent):
             context_tools: Callbacks for fetching context data
             temperature: Temperature for generation (lower for consistency)
             max_tokens: Maximum tokens in response
-            metadata_schema: Schema for valid topics/categories/intents
+            vocabulary: VocabularyManager for vocabulary constraints. If None, uses global.
             max_tool_rounds: Maximum rounds of tool calling (default: 3)
         """
         super().__init__(llm_provider, temperature, max_tokens)
         self.tools = context_tools
-        self.metadata_schema = metadata_schema or DEFAULT_METADATA_SCHEMA
+        self.vocabulary = vocabulary or get_vocabulary()
         self.max_tool_rounds = max_tool_rounds
+
+        # Build tool definitions with vocabulary constraints
+        self._tool_definitions = _build_context_tools(self.vocabulary)
         self.system_prompt = self._create_system_prompt()
 
     def _create_system_prompt(self) -> str:
         """Create system prompt for context assembly."""
-        schema_list = self.metadata_schema.to_prompt_list()
+        vocab_prompt = self.vocabulary.to_prompt_list()
 
         return f"""You are a context assembly agent. Your task is to gather relevant context for an AI assistant to answer a user's query.
 
@@ -291,7 +322,10 @@ You have access to tools that fetch conversation history, summaries, user prefer
    - Pass relevant IDs (order numbers, invoice numbers) in the context parameter
    - This tool provides READ-ONLY access to external systems
 
-{schema_list}
+VOCABULARY CONSTRAINTS:
+{vocab_prompt}
+
+IMPORTANT: When using search_history or lookup_external_data, you MUST use topics and categories from the Available lists above.
 
 After gathering context, respond with a JSON object:
 {{
@@ -330,9 +364,15 @@ Guidelines:
                 return self._format_messages(messages)
 
             elif tool_name == "search_history":
-                topics = arguments.get("topics", [])
-                categories = arguments.get("categories", [])
-                intent = arguments.get("intent")
+                # Validate topics/categories against vocabulary
+                raw_topics = arguments.get("topics", [])
+                raw_categories = arguments.get("categories", [])
+                raw_intent = arguments.get("intent")
+
+                topics = self.vocabulary.validate_topics(raw_topics)
+                categories = self.vocabulary.validate_categories(raw_categories)
+                intent = self.vocabulary.resolve_intent(raw_intent) if raw_intent else None
+
                 current_only = arguments.get("search_current_thread_only", False)
                 limit = arguments.get("limit", 20)
 
@@ -349,7 +389,8 @@ Guidelines:
             elif tool_name == "get_historical_summaries":
                 if self.tools.get_historical_summaries is None:
                     return "Historical summaries feature is not enabled."
-                topics = arguments.get("topics")
+                raw_topics = arguments.get("topics")
+                topics = self.vocabulary.validate_topics(raw_topics) if raw_topics else None
                 limit = arguments.get("limit", 5)
                 summaries = self.tools.get_historical_summaries(user_id, topics, limit)
                 return self._format_summaries(summaries)
@@ -372,7 +413,8 @@ Guidelines:
             elif tool_name == "lookup_external_data":
                 if self.tools.lookup_external_data is None:
                     return "External data lookup is not enabled. Configure connectors to enable."
-                topics = arguments.get("topics", [])
+                raw_topics = arguments.get("topics", [])
+                topics = self.vocabulary.validate_topics(raw_topics)
                 context = arguments.get("context", {})
                 results = self.tools.lookup_external_data(user_id, topics, context)
                 return self._format_external_results(results)
@@ -579,7 +621,7 @@ Guidelines:
             # Use the provider's native tool support
             response = self._llm_provider.generate_with_tools(
                 messages=messages,
-                tools=CONTEXT_TOOLS,
+                tools=self._tool_definitions,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
@@ -614,3 +656,10 @@ Guidelines:
                 relevant_message_ids=[],
                 metadata={"parse_error": str(e)}
             )
+
+    def refresh_vocabulary(self) -> None:
+        """Refresh vocabulary and rebuild tool definitions."""
+        self.vocabulary.refresh_from_external()
+        self._tool_definitions = _build_context_tools(self.vocabulary)
+        self.system_prompt = self._create_system_prompt()
+        logger.info("SmartContextAgent vocabulary and tools refreshed")

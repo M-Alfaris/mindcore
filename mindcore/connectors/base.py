@@ -3,13 +3,17 @@ Base classes for external connectors.
 
 Connectors provide READ-ONLY access to external business systems.
 They map conversation topics to external data sources.
+
+Connectors automatically register their topics with VocabularyManager
+to ensure consistent vocabulary across the system.
 """
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, ClassVar
 
+from ..core.vocabulary import get_vocabulary
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +91,14 @@ class BaseConnector(ABC):
     IMPORTANT: Connectors must NEVER write to external systems.
     All operations must be read-only for security.
 
+    Vocabulary Integration:
+    ----------------------
+    Connectors automatically register their topics with VocabularyManager
+    when created. This ensures:
+    - Topics are available for enrichment
+    - Topics are constrained in SmartContextAgent tool calls
+    - Consistent vocabulary across the system
+
     Implementing a Custom Connector:
     --------------------------------
     1. Subclass BaseConnector
@@ -112,16 +124,38 @@ class BaseConnector(ABC):
     """
 
     # Topic(s) this connector handles
-    topics: List[str] = []
+    topics: ClassVar[List[str]] = []
 
     # Human-readable name
-    name: str = "base_connector"
+    name: ClassVar[str] = "base_connector"
 
     # Cache TTL in seconds (default 5 minutes)
     cache_ttl: int = 300
 
     # Whether this connector is enabled
     enabled: bool = True
+
+    # Track if topics registered
+    _topics_registered: ClassVar[bool] = False
+
+    def __init__(self, **kwargs):
+        """
+        Initialize connector and register topics with VocabularyManager.
+
+        Subclasses should call super().__init__(**kwargs) to ensure
+        topic registration.
+        """
+        # Register topics with vocabulary manager (once per class)
+        self._register_topics()
+
+    def _register_topics(self) -> None:
+        """Register connector topics with VocabularyManager."""
+        cls = self.__class__
+        if not cls._topics_registered and cls.topics:
+            vocabulary = get_vocabulary()
+            vocabulary.register_connector_topics(cls.name, cls.topics)
+            cls._topics_registered = True
+            logger.info(f"Connector '{cls.name}' registered topics: {cls.topics}")
 
     @abstractmethod
     async def lookup(
@@ -184,7 +218,7 @@ class BaseConnector(ABC):
         """
         Check if this connector handles any of the given topics.
 
-        Override for custom matching logic (e.g., regex, synonyms).
+        Uses VocabularyManager to resolve topic aliases.
 
         Args:
             topics: List of topics from conversation
@@ -194,7 +228,16 @@ class BaseConnector(ABC):
         """
         if not self.enabled:
             return False
-        return bool(set(self.topics) & set(topics))
+
+        vocabulary = get_vocabulary()
+        resolved_topics = set()
+        for topic in topics:
+            resolved = vocabulary.resolve_topic(topic)
+            if resolved:
+                resolved_topics.add(resolved)
+
+        connector_topics = set(self.topics)
+        return bool(connector_topics & resolved_topics)
 
     def _extract_dates(self, text: str) -> Dict[str, Any]:
         """
