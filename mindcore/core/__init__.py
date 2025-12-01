@@ -62,6 +62,16 @@ from .cache_invalidation import (
     get_cache_invalidation,
     reset_cache_invalidation,
 )
+from .multi_agent import (
+    MultiAgentConfig,
+    MultiAgentManager,
+    MemorySharingMode,
+    AgentVisibility,
+    AgentProfile,
+    get_multi_agent_manager,
+    reset_multi_agent_manager,
+    configure_multi_agent,
+)
 
 # Async database managers (lazy import to avoid requiring async deps)
 def get_async_sqlite_manager():
@@ -148,6 +158,15 @@ __all__ = [
     "InvalidationStats",
     "get_cache_invalidation",
     "reset_cache_invalidation",
+    # Multi-agent
+    "MultiAgentConfig",
+    "MultiAgentManager",
+    "MemorySharingMode",
+    "AgentVisibility",
+    "AgentProfile",
+    "get_multi_agent_manager",
+    "reset_multi_agent_manager",
+    "configure_multi_agent",
     # Async helpers
     "get_async_sqlite_manager",
     "get_async_database_manager",

@@ -124,6 +124,17 @@ from .core.cache_invalidation import (
     get_cache_invalidation,
 )
 
+# Multi-agent support
+from .core.multi_agent import (
+    MultiAgentConfig,
+    MultiAgentManager,
+    MemorySharingMode,
+    AgentVisibility,
+    AgentProfile,
+    get_multi_agent_manager,
+    configure_multi_agent,
+)
+
 # LLM Providers
 from .llm import (
     BaseLLMProvider,
@@ -205,7 +216,8 @@ class MindcoreClient:
         llm_provider: Optional[str] = None,
         persistent_cache: bool = True,
         cache_dir: Optional[str] = None,
-        vocabulary: Optional[VocabularyManager] = None
+        vocabulary: Optional[VocabularyManager] = None,
+        multi_agent_config: Optional[MultiAgentConfig] = None
     ):
         """
         Initialize Mindcore client.
@@ -221,9 +233,31 @@ class MindcoreClient:
             persistent_cache: If True (default), use disk-backed cache.
             cache_dir: Optional directory for persistent cache files.
             vocabulary: Optional VocabularyManager. If None, uses global instance.
+            multi_agent_config: Optional MultiAgentConfig for shared memory mode.
+                When enabled, agent_id is required for ingest() and get_context().
 
         Raises:
             ValueError: If no LLM provider can be initialized
+
+        Example (multi-agent mode):
+            >>> from mindcore import MindcoreClient, MultiAgentConfig, MemorySharingMode
+            >>>
+            >>> config = MultiAgentConfig(
+            ...     enabled=True,
+            ...     mode=MemorySharingMode.SHARED,
+            ...     require_agent_id=True
+            ... )
+            >>> client = MindcoreClient(use_sqlite=True, multi_agent_config=config)
+            >>>
+            >>> # Register agents
+            >>> client.register_agent("support_bot", "Support Agent", groups=["support"])
+            >>> client.register_agent("sales_bot", "Sales Agent", groups=["sales"])
+            >>>
+            >>> # Ingest with agent_id
+            >>> client.ingest(..., agent_id="support_bot")
+            >>>
+            >>> # Get context (can filter by agent_ids)
+            >>> client.get_context(..., agent_id="support_bot")
         """
         logger.info(f"Initializing Mindcore v{__version__}")
 
@@ -233,6 +267,15 @@ class MindcoreClient:
 
         # Initialize vocabulary (central to the system)
         self.vocabulary = vocabulary or get_vocabulary()
+
+        # Initialize multi-agent manager
+        self._multi_agent_config = multi_agent_config or MultiAgentConfig()
+        self._multi_agent_manager = MultiAgentManager(self._multi_agent_config)
+        if self._multi_agent_config.enabled:
+            logger.info(
+                f"Multi-agent mode enabled: {self._multi_agent_config.mode.value}, "
+                f"require_agent_id={self._multi_agent_config.require_agent_id}"
+            )
 
         # Initialize database
         if use_sqlite:
@@ -390,6 +433,9 @@ class MindcoreClient:
         role: str,
         text: str,
         message_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        visibility: Optional[str] = None,
+        sharing_groups: Optional[List[str]] = None,
         **metadata
     ) -> Message:
         """
@@ -411,15 +457,19 @@ class MindcoreClient:
             role: Message role (user, assistant, system, tool)
             text: Message content
             message_id: Optional custom message ID
+            agent_id: Agent identifier (required if multi-agent mode enabled with require_agent_id)
+            visibility: Message visibility ("private", "shared", "public")
+            sharing_groups: Groups that can access this message (for "shared" visibility)
             **metadata: Additional metadata to attach
 
         Returns:
             Message object (enrichment happens in background)
 
         Raises:
-            ValueError: If validation fails
+            ValueError: If validation fails or agent_id required but not provided
 
         Example:
+            >>> # Single-agent mode
             >>> message = client.ingest(
             ...     user_id="user123",
             ...     thread_id="thread456",
@@ -427,7 +477,23 @@ class MindcoreClient:
             ...     role="user",
             ...     text="How do I track my order #12345?"
             ... )
+
+            >>> # Multi-agent mode
+            >>> message = client.ingest(
+            ...     user_id="user123",
+            ...     thread_id="thread456",
+            ...     session_id="session789",
+            ...     role="assistant",
+            ...     text="I can help with that!",
+            ...     agent_id="support_bot",
+            ...     visibility="shared",
+            ...     sharing_groups=["support", "orders"]
+            ... )
         """
+        # Validate agent_id in multi-agent mode
+        is_valid, error_msg = self._multi_agent_manager.validate_agent_id(agent_id, for_write=True)
+        if not is_valid:
+            raise ValueError(error_msg)
         message_dict = {
             'user_id': user_id,
             'thread_id': thread_id,
@@ -443,6 +509,10 @@ class MindcoreClient:
             logger.error(f"Message validation failed: {error_msg}")
             raise ValueError(f"Invalid message: {error_msg}")
 
+        # Resolve visibility and sharing groups for multi-agent mode
+        resolved_visibility = visibility or self._multi_agent_manager.get_default_visibility(agent_id)
+        resolved_groups = sharing_groups or self._multi_agent_manager.get_default_sharing_groups(agent_id)
+
         # Create message with empty metadata (no LLM call)
         message = Message(
             message_id=message_dict.get('message_id') or generate_message_id(),
@@ -452,6 +522,9 @@ class MindcoreClient:
             role=MessageRole(role),
             raw_text=text,
             metadata=MessageMetadata(),  # Empty metadata
+            agent_id=agent_id,
+            visibility=resolved_visibility,
+            sharing_groups=resolved_groups,
         )
 
         # Store in database immediately
@@ -620,7 +693,11 @@ class MindcoreClient:
         user_id: str,
         thread_id: str,
         query: str,
-        additional_context: Optional[str] = None
+        additional_context: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        agent_ids: Optional[List[str]] = None,
+        include_shared: bool = True,
+        include_public: bool = True
     ) -> AssembledContext:
         """
         Get intelligently assembled context for a query.
@@ -641,26 +718,57 @@ class MindcoreClient:
             thread_id: Thread identifier
             query: Query to find relevant context for
             additional_context: Optional additional context to provide
+            agent_id: Agent making the query (required if multi-agent mode with require_agent_id)
+            agent_ids: Optional list of specific agent IDs to include context from
+            include_shared: Include shared content from same groups (multi-agent mode)
+            include_public: Include public content from all agents (multi-agent mode)
 
         Returns:
             AssembledContext with summarized context, key points, etc.
 
         Raises:
-            ValueError: If validation fails
+            ValueError: If validation fails or agent_id required but not provided
 
         Example:
+            >>> # Single-agent mode
             >>> context = client.get_context(
             ...     user_id="user123",
             ...     thread_id="thread456",
             ...     query="What did we discuss about billing?"
             ... )
+
+            >>> # Multi-agent mode
+            >>> context = client.get_context(
+            ...     user_id="user123",
+            ...     thread_id="thread456",
+            ...     query="What did we discuss about billing?",
+            ...     agent_id="support_bot",
+            ...     include_shared=True
+            ... )
             >>> print(context.assembled_context)
         """
+        # Validate agent_id in multi-agent mode
+        is_valid, error_msg = self._multi_agent_manager.validate_agent_id(agent_id, for_write=False)
+        if not is_valid:
+            raise ValueError(error_msg)
+
         # Validate query parameters
         is_valid, error_msg = SecurityValidator.validate_query_params(user_id, thread_id, query)
         if not is_valid:
             logger.error(f"Query validation failed: {error_msg}")
             raise ValueError(f"Invalid query parameters: {error_msg}")
+
+        # Build access filter for multi-agent mode
+        access_filter = self._multi_agent_manager.get_access_filter(
+            agent_id=agent_id,
+            include_own=True,
+            include_shared=include_shared,
+            include_public=include_public
+        )
+
+        # If specific agent_ids provided, add them to filter
+        if agent_ids:
+            access_filter["specific_agent_ids"] = agent_ids
 
         agent = self._get_smart_context_agent()
         context = agent.process(
@@ -892,6 +1000,110 @@ class MindcoreClient:
         return self._retention_policy.get_context_window(
             user_id, thread_id, max_messages, min_importance=min_importance
         )
+
+    # -------------------------------------------------------------------------
+    # Multi-Agent Management
+    # -------------------------------------------------------------------------
+
+    @property
+    def multi_agent_enabled(self) -> bool:
+        """Check if multi-agent mode is enabled."""
+        return self._multi_agent_manager.is_enabled
+
+    def register_agent(
+        self,
+        agent_id: str,
+        name: str,
+        description: Optional[str] = None,
+        sharing_groups: Optional[List[str]] = None,
+        default_visibility: str = "private",
+        can_read_public: bool = True,
+        can_write_public: bool = False,
+        **metadata
+    ) -> AgentProfile:
+        """
+        Register an agent for multi-agent memory sharing.
+
+        Args:
+            agent_id: Unique agent identifier
+            name: Human-readable agent name
+            description: Optional agent description
+            sharing_groups: Groups this agent belongs to for shared memory
+            default_visibility: Default visibility for this agent's messages
+                ("private", "shared", "public")
+            can_read_public: Whether this agent can read public content
+            can_write_public: Whether this agent can create public content
+            **metadata: Additional agent metadata
+
+        Returns:
+            AgentProfile for the registered agent
+
+        Example:
+            >>> client.register_agent(
+            ...     agent_id="support_bot",
+            ...     name="Customer Support Agent",
+            ...     sharing_groups=["support", "general"],
+            ...     default_visibility="shared"
+            ... )
+        """
+        visibility_enum = AgentVisibility(default_visibility)
+        return self._multi_agent_manager.register_agent(
+            agent_id=agent_id,
+            name=name,
+            description=description,
+            sharing_groups=sharing_groups,
+            default_visibility=visibility_enum,
+            can_read_public=can_read_public,
+            can_write_public=can_write_public,
+            **metadata
+        )
+
+    def unregister_agent(self, agent_id: str) -> bool:
+        """
+        Unregister an agent.
+
+        Args:
+            agent_id: Agent identifier to unregister
+
+        Returns:
+            True if agent was unregistered, False if not found
+        """
+        return self._multi_agent_manager.unregister_agent(agent_id)
+
+    def get_agent(self, agent_id: str) -> Optional[AgentProfile]:
+        """
+        Get an agent's profile.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            AgentProfile or None if not found
+        """
+        return self._multi_agent_manager.get_agent(agent_id)
+
+    def list_agents(self) -> List[AgentProfile]:
+        """
+        List all registered agents.
+
+        Returns:
+            List of AgentProfile objects
+        """
+        return self._multi_agent_manager.list_agents()
+
+    def get_multi_agent_stats(self) -> Dict[str, Any]:
+        """
+        Get multi-agent statistics.
+
+        Returns:
+            Dictionary with multi-agent mode stats including:
+            - enabled: Whether multi-agent mode is active
+            - mode: Current sharing mode
+            - registered_agents: Number of registered agents
+            - sharing_groups: Number of sharing groups
+            - agents: List of agent details
+        """
+        return self._multi_agent_manager.get_stats()
 
     # -------------------------------------------------------------------------
     # Adaptive Preferences
@@ -1154,6 +1366,15 @@ __all__ = [
     "CacheInvalidationManager",
     "InvalidationReason",
     "get_cache_invalidation",
+
+    # Multi-Agent Support
+    "MultiAgentConfig",
+    "MultiAgentManager",
+    "MemorySharingMode",
+    "AgentVisibility",
+    "AgentProfile",
+    "get_multi_agent_manager",
+    "configure_multi_agent",
 
     # LLM Providers
     "BaseLLMProvider",
