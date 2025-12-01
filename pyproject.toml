@@ -95,6 +95,14 @@ rbac = [
 tokens = [
     "tiktoken>=0.5.0",
 ]
+# Prometheus metrics export
+metrics = [
+    "prometheus-client>=0.17.0",
+]
+# PostgreSQL support (psycopg2 - legacy driver for some tools)
+postgres = [
+    "psycopg2-binary>=2.9.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
@@ -109,6 +117,7 @@ all = [
     "mindcore[async]",
     "mindcore[vectors]",
     "mindcore[rbac]",
+    "mindcore[metrics]",
 ]
 
 [project.urls]
