@@ -9,14 +9,12 @@ Pinecone is a fully managed vector database with:
 
 Install: pip install pinecone-client
 """
+
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import uuid
 import time
 
-from .base import (
-    VectorStore, Document, SearchResult, EmbeddingFunction,
-    DistanceMetric
-)
+from .base import VectorStore, Document, SearchResult, EmbeddingFunction, DistanceMetric
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +60,7 @@ class PineconeVectorStore(VectorStore):
         namespace: str = "",
         environment: Optional[str] = None,
         text_key: str = "text",
-        index: Optional["Index"] = None
+        index: Optional["Index"] = None,
     ):
         """
         Initialize Pinecone vector store.
@@ -79,9 +77,7 @@ class PineconeVectorStore(VectorStore):
         try:
             from pinecone import Pinecone
         except ImportError:
-            raise ImportError(
-                "pinecone-client not installed. Run: pip install pinecone-client"
-            )
+            raise ImportError("pinecone-client not installed. Run: pip install pinecone-client")
 
         self.embedding = embedding
         self.namespace = namespace
@@ -98,10 +94,7 @@ class PineconeVectorStore(VectorStore):
         logger.info(f"Connected to Pinecone index '{index_name}'")
 
     def add_documents(
-        self,
-        documents: List[Document],
-        ids: Optional[List[str]] = None,
-        **kwargs: Any
+        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
     ) -> List[str]:
         """Add documents to Pinecone."""
         texts = [doc.page_content for doc in documents]
@@ -118,7 +111,7 @@ class PineconeVectorStore(VectorStore):
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
         batch_size: int = 100,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[str]:
         """Add texts to Pinecone."""
         if not texts:
@@ -147,63 +140,45 @@ class PineconeVectorStore(VectorStore):
             # Pinecone requires flat metadata values
             clean_meta = self._flatten_metadata(meta)
 
-            vectors.append({
-                "id": doc_id,
-                "values": embedding,
-                "metadata": clean_meta
-            })
+            vectors.append({"id": doc_id, "values": embedding, "metadata": clean_meta})
 
         # Upsert in batches
         for i in range(0, len(vectors), batch_size):
-            batch = vectors[i:i + batch_size]
+            batch = vectors[i : i + batch_size]
             self._index.upsert(vectors=batch, namespace=self.namespace)
 
         logger.debug(f"Added {len(texts)} texts to Pinecone")
         return ids
 
     def similarity_search(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[Document]:
         """Search for similar documents."""
         results = self.similarity_search_with_score(query, k, filter, **kwargs)
         return [r.document for r in results]
 
     def similarity_search_with_score(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[SearchResult]:
         """Search with similarity scores."""
         # Embed query
         query_embedding = self.embedding.embed_query(query)
 
-        return self._search_by_vector_with_score(
-            query_embedding, k, filter, **kwargs
-        )
+        return self._search_by_vector_with_score(query_embedding, k, filter, **kwargs)
 
     def similarity_search_by_vector(
         self,
         embedding: List[float],
         k: int = 4,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[Document]:
         """Search by embedding vector."""
         results = self._search_by_vector_with_score(embedding, k, filter, **kwargs)
         return [r.document for r in results]
 
     def _search_by_vector_with_score(
-        self,
-        embedding: List[float],
-        k: int,
-        filter: Optional[Dict[str, Any]],
-        **kwargs: Any
+        self, embedding: List[float], k: int, filter: Optional[Dict[str, Any]], **kwargs: Any
     ) -> List[SearchResult]:
         """Internal search implementation."""
         # Query Pinecone
@@ -212,7 +187,7 @@ class PineconeVectorStore(VectorStore):
             top_k=k,
             filter=filter,
             include_metadata=True,
-            namespace=self.namespace
+            namespace=self.namespace,
         )
 
         # Convert to SearchResult
@@ -223,11 +198,7 @@ class PineconeVectorStore(VectorStore):
             # Extract text from metadata
             text = metadata.pop(self.text_key, "")
 
-            doc = Document(
-                page_content=text,
-                metadata=metadata,
-                id=match["id"]
-            )
+            doc = Document(page_content=text, metadata=metadata, id=match["id"])
 
             # Pinecone returns scores (higher = more similar)
             score = match.get("score", 0.0)
@@ -240,7 +211,7 @@ class PineconeVectorStore(VectorStore):
         ids: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
         delete_all: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> bool:
         """Delete documents from Pinecone."""
         try:
@@ -268,11 +239,7 @@ class PineconeVectorStore(VectorStore):
             metadata = data.get("metadata", {})
             text = metadata.pop(self.text_key, "")
 
-            doc = Document(
-                page_content=text,
-                metadata=metadata,
-                id=doc_id
-            )
+            doc = Document(page_content=text, metadata=metadata, id=doc_id)
             documents.append(doc)
 
         return documents
@@ -285,7 +252,7 @@ class PineconeVectorStore(VectorStore):
         api_key: str,
         index_name: str,
         namespace: str = "",
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "PineconeVectorStore":
         """Create Pinecone store from documents."""
         store = cls(
@@ -293,7 +260,7 @@ class PineconeVectorStore(VectorStore):
             index_name=index_name,
             embedding=embedding,
             namespace=namespace,
-            **kwargs
+            **kwargs,
         )
         store.add_documents(documents)
         return store
@@ -307,7 +274,7 @@ class PineconeVectorStore(VectorStore):
         api_key: str = "",
         index_name: str = "",
         namespace: str = "",
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "PineconeVectorStore":
         """Create Pinecone store from texts."""
         store = cls(
@@ -315,7 +282,7 @@ class PineconeVectorStore(VectorStore):
             index_name=index_name,
             embedding=embedding,
             namespace=namespace,
-            **kwargs
+            **kwargs,
         )
         store.add_texts(texts, metadatas)
         return store
@@ -331,7 +298,7 @@ class PineconeVectorStore(VectorStore):
         cloud: str = "aws",
         region: str = "us-east-1",
         spec_type: str = "serverless",
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "PineconeVectorStore":
         """
         Create a new Pinecone index and return a vector store.
@@ -353,9 +320,7 @@ class PineconeVectorStore(VectorStore):
         try:
             from pinecone import Pinecone, ServerlessSpec, PodSpec
         except ImportError:
-            raise ImportError(
-                "pinecone-client not installed. Run: pip install pinecone-client"
-            )
+            raise ImportError("pinecone-client not installed. Run: pip install pinecone-client")
 
         # Auto-detect dimension from embedding
         if dimension is None:
@@ -374,12 +339,7 @@ class PineconeVectorStore(VectorStore):
             else:
                 spec = PodSpec(environment=region)
 
-            pc.create_index(
-                name=index_name,
-                dimension=dimension,
-                metric=metric,
-                spec=spec
-            )
+            pc.create_index(name=index_name, dimension=dimension, metric=metric, spec=spec)
 
             # Wait for index to be ready
             while not pc.describe_index(index_name).status.ready:
@@ -387,12 +347,7 @@ class PineconeVectorStore(VectorStore):
 
             logger.info(f"Created Pinecone index '{index_name}'")
 
-        return cls(
-            api_key=api_key,
-            index_name=index_name,
-            embedding=embedding,
-            **kwargs
-        )
+        return cls(api_key=api_key, index_name=index_name, embedding=embedding, **kwargs)
 
     def _flatten_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Flatten metadata for Pinecone (no nested dicts/lists)."""

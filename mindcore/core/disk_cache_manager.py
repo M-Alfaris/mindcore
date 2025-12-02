@@ -6,6 +6,7 @@ Uses diskcache (SQLite-backed) for:
 - Overflow to disk when memory is full
 - Multi-process safe access
 """
+
 import json
 import tempfile
 from typing import List, Dict, Optional, Any
@@ -38,7 +39,7 @@ class DiskCacheManager:
         max_size: int = 50,
         ttl_seconds: Optional[int] = None,
         cache_dir: Optional[str] = None,
-        size_limit: int = 100 * 1024 * 1024  # 100MB default
+        size_limit: int = 100 * 1024 * 1024,  # 100MB default
     ):
         """
         Initialize disk cache manager.
@@ -64,7 +65,7 @@ class DiskCacheManager:
             str(self._cache_dir),
             shards=4,  # Multiple shards for concurrency
             size_limit=size_limit,
-            eviction_policy='least-recently-used'
+            eviction_policy="least-recently-used",
         )
 
         logger.info(
@@ -83,38 +84,42 @@ class DiskCacheManager:
     def _message_to_dict(self, message: Message) -> Dict[str, Any]:
         """Convert Message to serializable dict."""
         return {
-            'message_id': message.message_id,
-            'user_id': message.user_id,
-            'thread_id': message.thread_id,
-            'session_id': message.session_id,
-            'role': message.role.value if isinstance(message.role, MessageRole) else message.role,
-            'raw_text': message.raw_text,
-            'metadata': message.metadata.to_dict() if hasattr(message.metadata, 'to_dict') else message.metadata,
-            'created_at': message.created_at.isoformat() if message.created_at else None
+            "message_id": message.message_id,
+            "user_id": message.user_id,
+            "thread_id": message.thread_id,
+            "session_id": message.session_id,
+            "role": message.role.value if isinstance(message.role, MessageRole) else message.role,
+            "raw_text": message.raw_text,
+            "metadata": (
+                message.metadata.to_dict()
+                if hasattr(message.metadata, "to_dict")
+                else message.metadata
+            ),
+            "created_at": message.created_at.isoformat() if message.created_at else None,
         }
 
     def _dict_to_message(self, data: Dict[str, Any]) -> Message:
         """Convert dict back to Message object."""
         created_at = None
-        if data.get('created_at'):
+        if data.get("created_at"):
             try:
-                created_at = datetime.fromisoformat(data['created_at'].replace('Z', '+00:00'))
+                created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 created_at = datetime.now(timezone.utc)
 
-        metadata = data.get('metadata', {})
+        metadata = data.get("metadata", {})
         if isinstance(metadata, dict):
             metadata = MessageMetadata(**metadata)
 
         return Message(
-            message_id=data['message_id'],
-            user_id=data['user_id'],
-            thread_id=data['thread_id'],
-            session_id=data['session_id'],
-            role=MessageRole(data['role']) if data.get('role') else MessageRole.USER,
-            raw_text=data['raw_text'],
+            message_id=data["message_id"],
+            user_id=data["user_id"],
+            thread_id=data["thread_id"],
+            session_id=data["session_id"],
+            role=MessageRole(data["role"]) if data.get("role") else MessageRole.USER,
+            raw_text=data["raw_text"],
             metadata=metadata,
-            created_at=created_at
+            created_at=created_at,
         )
 
     def add_message(self, message: Message) -> None:
@@ -146,8 +151,8 @@ class DiskCacheManager:
         thread_messages.append(message.message_id)
         if len(thread_messages) > self.max_size:
             # Remove oldest messages
-            removed = thread_messages[:-self.max_size]
-            thread_messages = thread_messages[-self.max_size:]
+            removed = thread_messages[: -self.max_size]
+            thread_messages = thread_messages[-self.max_size :]
             # Clean up removed message data
             for mid in removed:
                 old_key = self._get_key(message.user_id, message.thread_id, mid)
@@ -179,10 +184,7 @@ class DiskCacheManager:
         return True
 
     def get_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: Optional[int] = None
+        self, user_id: str, thread_id: str, limit: Optional[int] = None
     ) -> List[Message]:
         """
         Get recent messages from cache in chronological order.
@@ -215,7 +217,9 @@ class DiskCacheManager:
             if limit and len(messages) >= limit:
                 break
 
-        logger.debug(f"Retrieved {len(messages)} messages from disk cache for {user_id}/{thread_id}")
+        logger.debug(
+            f"Retrieved {len(messages)} messages from disk cache for {user_id}/{thread_id}"
+        )
         return messages
 
     def clear_thread(self, user_id: str, thread_id: str) -> None:
@@ -243,11 +247,7 @@ class DiskCacheManager:
         self._cache.clear()
         logger.info("Cleared entire disk cache")
 
-    def get_session_metadata(
-        self,
-        user_id: str,
-        thread_id: str
-    ) -> Dict[str, Any]:
+    def get_session_metadata(self, user_id: str, thread_id: str) -> Dict[str, Any]:
         """
         Aggregate metadata from all cached messages in the current session.
 
@@ -265,20 +265,20 @@ class DiskCacheManager:
         intents = set()
 
         for message in messages:
-            if hasattr(message, 'metadata') and message.metadata:
+            if hasattr(message, "metadata") and message.metadata:
                 meta = message.metadata
-                if hasattr(meta, 'topics') and meta.topics:
+                if hasattr(meta, "topics") and meta.topics:
                     topics.update(meta.topics)
-                if hasattr(meta, 'categories') and meta.categories:
+                if hasattr(meta, "categories") and meta.categories:
                     categories.update(meta.categories)
-                if hasattr(meta, 'intent') and meta.intent:
+                if hasattr(meta, "intent") and meta.intent:
                     intents.add(meta.intent)
 
         return {
-            'topics': list(topics),
-            'categories': list(categories),
-            'intents': list(intents),
-            'message_count': len(messages)
+            "topics": list(topics),
+            "categories": list(categories),
+            "intents": list(intents),
+            "message_count": len(messages),
         }
 
     def get_stats(self) -> Dict[str, Any]:
@@ -294,7 +294,7 @@ class DiskCacheManager:
             "volume": self._cache.volume(),
             "size_limit": self._cache.size_limit,
             "max_size_per_thread": self.max_size,
-            "ttl_seconds": self.ttl_seconds
+            "ttl_seconds": self.ttl_seconds,
         }
 
     def close(self) -> None:

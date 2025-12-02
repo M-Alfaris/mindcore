@@ -1,6 +1,7 @@
 """
 Tests for Context Assembler Agent.
 """
+
 import pytest
 from unittest.mock import Mock, patch
 from mindcore.agents import ContextAssemblerAgent
@@ -19,17 +20,14 @@ class TestContextAssemblerAgent:
             "key_points": [
                 "Focus on memory management",
                 "Use structured prompts",
-                "Implement error handling"
+                "Implement error handling",
             ],
             "relevant_message_ids": ["msg_1", "msg_2", "msg_3"],
             "metadata": {
                 "topics": ["AI", "development"],
-                "sentiment": {
-                    "overall": "positive",
-                    "trend": "stable"
-                },
-                "importance": 0.8
-            }
+                "sentiment": {"overall": "positive", "trend": "stable"},
+                "importance": 0.8,
+            },
         }
 
     @pytest.fixture
@@ -57,10 +55,7 @@ class TestContextAssemblerAgent:
                 session_id="session_789",
                 role="user" if i % 2 == 0 else "assistant",
                 raw_text=f"Message content {i}",
-                metadata=MessageMetadata(
-                    topics=["AI", "development"],
-                    importance=0.5 + (i * 0.1)
-                )
+                metadata=MessageMetadata(topics=["AI", "development"], importance=0.5 + (i * 0.1)),
             )
             messages.append(msg)
         return messages
@@ -78,9 +73,7 @@ class TestContextAssemblerAgent:
 
         # Mock LLM response
         mock_provider.generate.return_value = LLMResponse(
-            content=json.dumps(mock_context_response),
-            model="mock",
-            provider="mock"
+            content=json.dumps(mock_context_response), model="mock", provider="mock"
         )
 
         query = "What have we discussed about AI?"
@@ -114,15 +107,15 @@ class TestContextAssemblerAgent:
         assert "msg_0" in formatted
         assert "Message content" in formatted
 
-    def test_assemble_for_prompt(self, agent, mock_provider, sample_messages, mock_context_response):
+    def test_assemble_for_prompt(
+        self, agent, mock_provider, sample_messages, mock_context_response
+    ):
         """Test assembling context for prompt injection."""
         import json
 
         # Mock LLM response
         mock_provider.generate.return_value = LLMResponse(
-            content=json.dumps(mock_context_response),
-            model="mock",
-            provider="mock"
+            content=json.dumps(mock_context_response), model="mock", provider="mock"
         )
 
         query = "AI development"

@@ -20,6 +20,7 @@ Configuration via environment variables:
     MINDCORE_TIMEZONE       - IANA timezone (default: UTC)
     MINDCORE_LOG_LEVEL      - Log level (default: INFO)
 """
+
 import os
 from typing import List, Optional
 from contextlib import asynccontextmanager
@@ -79,10 +80,7 @@ def get_mindcore_client():
     # LLM provider
     llm_provider = os.getenv("MINDCORE_LLM_PROVIDER", "auto")
 
-    logger.info(
-        f"Initializing Mindcore client "
-        f"(sqlite={use_sqlite}, llm={llm_provider})"
-    )
+    logger.info(f"Initializing Mindcore client " f"(sqlite={use_sqlite}, llm={llm_provider})")
 
     _mindcore_client = MindcoreClient(
         use_sqlite=use_sqlite,
@@ -188,9 +186,9 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
                 "context": "/context",
                 "health": "/health",
                 "health_full": "/health/full",
-                "dashboard": "/api/dashboard"
+                "dashboard": "/api/dashboard",
             },
-            "status": "running"
+            "status": "running",
         }
 
     # Health check endpoint - lightweight, no initialization
@@ -202,11 +200,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
         Returns service status without initializing Mindcore.
         Use /health/full for detailed status including database.
         """
-        return {
-            "status": "healthy",
-            "service": "mindcore-api",
-            "version": "0.2.0"
-        }
+        return {"status": "healthy", "service": "mindcore-api", "version": "0.2.0"}
 
     @app.get("/health/full")
     async def health_full():
@@ -221,7 +215,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
             "status": "healthy",
             "service": "mindcore-api",
             "version": "0.2.0",
-            "components": {}
+            "components": {},
         }
 
         # Check Mindcore initialization
@@ -230,15 +224,12 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
                 _mindcore_client = get_mindcore_client()
             except Exception as e:
                 result["status"] = "unhealthy"
-                result["components"]["mindcore"] = {
-                    "status": "error",
-                    "error": str(e)
-                }
+                result["components"]["mindcore"] = {"status": "error", "error": str(e)}
                 return JSONResponse(status_code=503, content=result)
 
         # Check database
         try:
-            if hasattr(_mindcore_client.db, 'health_check'):
+            if hasattr(_mindcore_client.db, "health_check"):
                 db_health = _mindcore_client.db.health_check()
             else:
                 # Fallback for SQLite or older db managers
@@ -251,35 +242,23 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
             result["components"]["database"] = db_health
         except Exception as e:
             result["status"] = "degraded"
-            result["components"]["database"] = {
-                "status": "error",
-                "error": str(e)
-            }
+            result["components"]["database"] = {"status": "error", "error": str(e)}
 
         # Check cache
         try:
             cache_stats = _mindcore_client.cache.get_stats()
-            result["components"]["cache"] = {
-                "status": "healthy",
-                **cache_stats
-            }
+            result["components"]["cache"] = {"status": "healthy", **cache_stats}
         except Exception as e:
-            result["components"]["cache"] = {
-                "status": "error",
-                "error": str(e)
-            }
+            result["components"]["cache"] = {"status": "error", "error": str(e)}
 
         # Check LLM provider
         try:
             result["components"]["llm"] = {
                 "status": "healthy",
-                "provider": _mindcore_client.provider_name
+                "provider": _mindcore_client.provider_name,
             }
         except Exception as e:
-            result["components"]["llm"] = {
-                "status": "error",
-                "error": str(e)
-            }
+            result["components"]["llm"] = {"status": "error", "error": str(e)}
 
         # Overall status
         if any(c.get("status") == "error" for c in result["components"].values()):
@@ -300,8 +279,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
 
         if _mindcore_client is None:
             return JSONResponse(
-                status_code=503,
-                content={"ready": False, "reason": "not_initialized"}
+                status_code=503, content={"ready": False, "reason": "not_initialized"}
             )
 
         return {"ready": True}
@@ -321,20 +299,14 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
         """Global exception handler."""
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
         return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "type": type(exc).__name__}
+            status_code=500, content={"error": "Internal server error", "type": type(exc).__name__}
         )
 
     logger.info("FastAPI application created")
     return app
 
 
-def run_server(
-    host: str = None,
-    port: int = None,
-    debug: bool = False,
-    workers: int = None
-):
+def run_server(host: str = None, port: int = None, debug: bool = False, workers: int = None):
     """
     Run the FastAPI server.
 

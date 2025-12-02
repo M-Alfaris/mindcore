@@ -31,6 +31,7 @@ Example (Full Configuration):
     ...     connectors=ConnectorRegistry(),
     ... )
 """
+
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from enum import Enum
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 
 class ContextLayerTier(str, Enum):
     """Context layer configuration tiers."""
+
     BASIC = "basic"  # Messages + cache only
     STANDARD = "standard"  # + external connectors
     ADVANCED = "advanced"  # + vector store
@@ -60,6 +62,7 @@ class ContextLayerConfig:
 
     Specifies which components are enabled and their settings.
     """
+
     # Core components (always required)
     database_url: Optional[str] = None
     use_sqlite: bool = True
@@ -97,7 +100,7 @@ class ContextLayerConfig:
             cache_enabled=True,
             cache_type="disk",
             vector_store_enabled=False,
-            connectors_enabled=False
+            connectors_enabled=False,
         )
 
     @classmethod
@@ -109,9 +112,7 @@ class ContextLayerConfig:
 
     @classmethod
     def advanced(
-        cls,
-        sqlite_path: str = "mindcore.db",
-        vector_store_type: str = "chroma"
+        cls, sqlite_path: str = "mindcore.db", vector_store_type: str = "chroma"
     ) -> "ContextLayerConfig":
         """Create advanced configuration (+ vector store)."""
         config = cls.standard(sqlite_path)
@@ -121,9 +122,7 @@ class ContextLayerConfig:
 
     @classmethod
     def full(
-        cls,
-        sqlite_path: str = "mindcore.db",
-        vector_store_type: str = "chroma"
+        cls, sqlite_path: str = "mindcore.db", vector_store_type: str = "chroma"
     ) -> "ContextLayerConfig":
         """Create full configuration (all features)."""
         return cls.advanced(sqlite_path, vector_store_type)
@@ -168,7 +167,7 @@ class ContextLayer:
         cache: Optional[Any] = None,
         vector_store: Optional["VectorStore"] = None,
         embedding: Optional["EmbeddingFunction"] = None,
-        connectors: Optional["ConnectorRegistry"] = None
+        connectors: Optional["ConnectorRegistry"] = None,
     ):
         """
         Initialize context layer.
@@ -208,33 +207,36 @@ class ContextLayer:
         """Create database manager based on config."""
         if self.config.use_sqlite:
             from .core import SQLiteManager
+
             return SQLiteManager(self.config.sqlite_path)
         else:
             from .core import DatabaseManager
+
             return DatabaseManager({"url": self.config.database_url})
 
     def _create_cache(self):
         """Create cache manager based on config."""
         if self.config.cache_type == "disk":
             from .core import DiskCacheManager
+
             return DiskCacheManager(
                 max_size=self.config.cache_max_size,
                 ttl_seconds=self.config.cache_ttl,
-                cache_dir=self.config.cache_dir
+                cache_dir=self.config.cache_dir,
             )
         else:
             from .core import CacheManager
+
             return CacheManager(
-                max_size=self.config.cache_max_size,
-                ttl_seconds=self.config.cache_ttl
+                max_size=self.config.cache_max_size, ttl_seconds=self.config.cache_ttl
             )
 
     def _create_embedding(self):
         """Create embedding function based on config."""
         from .vectorstores import create_embeddings
+
         return create_embeddings(
-            provider=self.config.embedding_provider,
-            **self.config.embedding_config
+            provider=self.config.embedding_provider, **self.config.embedding_config
         )
 
     def _create_vector_store(self):
@@ -244,40 +246,53 @@ class ContextLayer:
 
         if vs_type == "memory":
             from .vectorstores import InMemoryVectorStore
+
             return InMemoryVectorStore(embedding=self._embedding)
 
         elif vs_type == "chroma":
             from .vectorstores import get_chroma_store
+
             ChromaVectorStore = get_chroma_store()
             return ChromaVectorStore(
                 embedding=self._embedding,
                 collection_name=vs_config.get("collection_name", "mindcore"),
                 persist_directory=vs_config.get("persist_directory"),
-                **{k: v for k, v in vs_config.items()
-                   if k not in ("collection_name", "persist_directory")}
+                **{
+                    k: v
+                    for k, v in vs_config.items()
+                    if k not in ("collection_name", "persist_directory")
+                },
             )
 
         elif vs_type == "pinecone":
             from .vectorstores import get_pinecone_store
+
             PineconeVectorStore = get_pinecone_store()
             return PineconeVectorStore(
                 embedding=self._embedding,
                 api_key=vs_config.get("api_key"),
                 index_name=vs_config.get("index_name"),
                 namespace=vs_config.get("namespace", ""),
-                **{k: v for k, v in vs_config.items()
-                   if k not in ("api_key", "index_name", "namespace")}
+                **{
+                    k: v
+                    for k, v in vs_config.items()
+                    if k not in ("api_key", "index_name", "namespace")
+                },
             )
 
         elif vs_type == "pgvector":
             from .vectorstores import get_pgvector_store
+
             PGVectorStore = get_pgvector_store()
             return PGVectorStore(
                 embedding=self._embedding,
                 connection_string=vs_config.get("connection_string"),
                 collection_name=vs_config.get("collection_name", "mindcore_vectors"),
-                **{k: v for k, v in vs_config.items()
-                   if k not in ("connection_string", "collection_name")}
+                **{
+                    k: v
+                    for k, v in vs_config.items()
+                    if k not in ("connection_string", "collection_name")
+                },
             )
 
         else:
@@ -287,6 +302,7 @@ class ContextLayer:
     def _create_connectors(self):
         """Create connector registry based on config."""
         from .connectors import ConnectorRegistry
+
         return ConnectorRegistry()
 
     def _log_configuration(self):
@@ -322,11 +338,7 @@ class ContextLayer:
         return cls(config=config)
 
     @classmethod
-    def with_connectors(
-        cls,
-        sqlite_path: str = "mindcore.db",
-        **kwargs
-    ) -> "ContextLayer":
+    def with_connectors(cls, sqlite_path: str = "mindcore.db", **kwargs) -> "ContextLayer":
         """
         Create context layer with external connectors enabled.
 
@@ -349,7 +361,7 @@ class ContextLayer:
         vector_store_type: str = "chroma",
         sqlite_path: str = "mindcore.db",
         embedding_provider: str = "openai",
-        **kwargs
+        **kwargs,
     ) -> "ContextLayer":
         """
         Create context layer with vector store for semantic search.
@@ -380,10 +392,7 @@ class ContextLayer:
 
     @classmethod
     def full(
-        cls,
-        vector_store_type: str = "chroma",
-        sqlite_path: str = "mindcore.db",
-        **kwargs
+        cls, vector_store_type: str = "chroma", sqlite_path: str = "mindcore.db", **kwargs
     ) -> "ContextLayer":
         """
         Create fully-featured context layer with all components.
@@ -434,12 +443,7 @@ class ContextLayer:
         """Check if connectors are available."""
         return self._connectors is not None
 
-    def get_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: int = 20
-    ) -> List[Any]:
+    def get_recent_messages(self, user_id: str, thread_id: str, limit: int = 20) -> List[Any]:
         """
         Get recent messages from cache or database.
 
@@ -466,7 +470,7 @@ class ContextLayer:
         query: str,
         thread_id: Optional[str] = None,
         limit: int = 10,
-        use_vector_search: bool = True
+        use_vector_search: bool = True,
     ) -> List[Any]:
         """
         Search messages using available methods.
@@ -490,25 +494,14 @@ class ContextLayer:
             if thread_id:
                 filter_dict["thread_id"] = thread_id
 
-            results = self._vector_store.similarity_search(
-                query=query,
-                k=limit,
-                filter=filter_dict
-            )
+            results = self._vector_store.similarity_search(query=query, k=limit, filter=filter_dict)
             return results
 
         # Fall back to database metadata search
-        return self._database.search_by_relevance(
-            user_id=user_id,
-            thread_id=thread_id,
-            limit=limit
-        )
+        return self._database.search_by_relevance(user_id=user_id, thread_id=thread_id, limit=limit)
 
     async def get_external_context(
-        self,
-        user_id: str,
-        topics: List[str],
-        context: Dict[str, Any]
+        self, user_id: str, topics: List[str], context: Dict[str, Any]
     ) -> List[Any]:
         """
         Get context from external connectors.
@@ -524,11 +517,7 @@ class ContextLayer:
         if not self._connectors:
             return []
 
-        return await self._connectors.lookup(
-            user_id=user_id,
-            topics=topics,
-            context=context
-        )
+        return await self._connectors.lookup(user_id=user_id, topics=topics, context=context)
 
     async def get_context(
         self,
@@ -538,7 +527,7 @@ class ContextLayer:
         max_messages: int = 20,
         max_vector_results: int = 5,
         topics: Optional[List[str]] = None,
-        include_external: bool = True
+        include_external: bool = True,
     ) -> Dict[str, Any]:
         """
         Get assembled context from all available sources.
@@ -575,15 +564,13 @@ class ContextLayer:
                 "user_id": user_id,
                 "thread_id": thread_id,
                 "query": query,
-                "sources_used": []
-            }
+                "sources_used": [],
+            },
         }
 
         # Get recent messages
         if thread_id:
-            context["recent_messages"] = self.get_recent_messages(
-                user_id, thread_id, max_messages
-            )
+            context["recent_messages"] = self.get_recent_messages(user_id, thread_id, max_messages)
             context["metadata"]["sources_used"].append("messages")
 
         # Get semantic matches from vector store
@@ -593,16 +580,14 @@ class ContextLayer:
                 query=query,
                 thread_id=thread_id,
                 limit=max_vector_results,
-                use_vector_search=True
+                use_vector_search=True,
             )
             context["metadata"]["sources_used"].append("vector_store")
 
         # Get external data from connectors
         if self._connectors and include_external and topics:
             external_results = await self.get_external_context(
-                user_id=user_id,
-                topics=topics,
-                context={"query": query, "thread_id": thread_id}
+                user_id=user_id, topics=topics, context={"query": query, "thread_id": thread_id}
             )
             context["external_data"] = external_results
             context["metadata"]["sources_used"].append("connectors")
@@ -613,7 +598,7 @@ class ContextLayer:
         self,
         texts: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None
+        ids: Optional[List[str]] = None,
     ) -> Optional[List[str]]:
         """
         Add texts to the vector store.
@@ -652,9 +637,7 @@ class ContextLayer:
         Returns:
             Dictionary mapping component names to health status
         """
-        status = {
-            "database": True  # Assume healthy if we got this far
-        }
+        status = {"database": True}  # Assume healthy if we got this far
 
         if self._cache:
             status["cache"] = True  # In-memory/disk cache is always "healthy"
@@ -670,13 +653,13 @@ class ContextLayer:
 
     def close(self) -> None:
         """Close all connections and cleanup resources."""
-        if hasattr(self._database, 'close'):
+        if hasattr(self._database, "close"):
             self._database.close()
 
-        if hasattr(self._cache, 'close'):
+        if hasattr(self._cache, "close"):
             self._cache.close()
 
-        if hasattr(self._vector_store, 'close'):
+        if hasattr(self._vector_store, "close"):
             self._vector_store.close()
 
         logger.info("ContextLayer closed")

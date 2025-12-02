@@ -4,6 +4,7 @@ Cost analysis and efficiency benchmarking for Mindcore.
 This module proves that using Mindcore's lightweight AI agents for memory management
 saves significantly more tokens and costs than traditional approaches.
 """
+
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,11 +18,11 @@ logger = get_logger(__name__)
 # OpenAI pricing (as of 2024) - prices per 1M tokens
 PRICING = {
     "gpt-4o-mini": {
-        "input": 0.150,   # $0.15 per 1M input tokens
+        "input": 0.150,  # $0.15 per 1M input tokens
         "output": 0.600,  # $0.60 per 1M output tokens
     },
     "gpt-4o": {
-        "input": 2.50,    # $2.50 per 1M input tokens
+        "input": 2.50,  # $2.50 per 1M input tokens
         "output": 10.00,  # $10.00 per 1M output tokens
     },
     "gpt-4-turbo": {
@@ -34,6 +35,7 @@ PRICING = {
 @dataclass
 class CostMetrics:
     """Cost and efficiency metrics."""
+
     total_input_tokens: int
     total_output_tokens: int
     total_cost: float
@@ -65,9 +67,7 @@ class CostAnalyzer:
         self.enrichment_pricing = PRICING.get(enrichment_model, PRICING["gpt-4o-mini"])
 
     def estimate_traditional_cost(
-        self,
-        conversation_history: List[str],
-        num_requests: int = 10
+        self, conversation_history: List[str], num_requests: int = 10
     ) -> Dict[str, Any]:
         """
         Estimate cost of traditional approach (sending full history every time).
@@ -109,7 +109,7 @@ class CostAnalyzer:
         self,
         conversation_history: List[str],
         num_requests: int = 10,
-        avg_context_size_tokens: int = 1500
+        avg_context_size_tokens: int = 1500,
     ) -> Dict[str, Any]:
         """
         Estimate cost of Mindcore approach.
@@ -127,17 +127,25 @@ class CostAnalyzer:
         enrichment_input_tokens = sum(estimate_tokens(msg) for msg in conversation_history)
         enrichment_output_tokens = num_messages * 150  # ~150 tokens metadata per message
 
-        enrichment_input_cost = (enrichment_input_tokens / 1_000_000) * self.enrichment_pricing["input"]
-        enrichment_output_cost = (enrichment_output_tokens / 1_000_000) * self.enrichment_pricing["output"]
+        enrichment_input_cost = (enrichment_input_tokens / 1_000_000) * self.enrichment_pricing[
+            "input"
+        ]
+        enrichment_output_cost = (enrichment_output_tokens / 1_000_000) * self.enrichment_pricing[
+            "output"
+        ]
         enrichment_cost = enrichment_input_cost + enrichment_output_cost
 
         # Cost 2: Context assembly for each request
         # Context assembler reviews messages and summarizes
-        context_input_tokens = num_requests * min(5000, enrichment_input_tokens)  # Reviews up to 5k tokens
+        context_input_tokens = num_requests * min(
+            5000, enrichment_input_tokens
+        )  # Reviews up to 5k tokens
         context_output_tokens = num_requests * avg_context_size_tokens
 
         context_input_cost = (context_input_tokens / 1_000_000) * self.enrichment_pricing["input"]
-        context_output_cost = (context_output_tokens / 1_000_000) * self.enrichment_pricing["output"]
+        context_output_cost = (context_output_tokens / 1_000_000) * self.enrichment_pricing[
+            "output"
+        ]
         context_cost = context_input_cost + context_output_cost
 
         # Cost 3: Main LLM calls with assembled context (not full history)
@@ -167,9 +175,7 @@ class CostAnalyzer:
         }
 
     def compare_approaches(
-        self,
-        conversation_history: List[str],
-        num_requests: int = 10
+        self, conversation_history: List[str], num_requests: int = 10
     ) -> Dict[str, Any]:
         """
         Compare traditional vs Mindcore approach.
@@ -195,15 +201,12 @@ class CostAnalyzer:
                 "tokens_saved": tokens_saved,
                 "cost_saved": cost_saved,
                 "cost_saved_percentage": efficiency_improvement,
-                "tokens_saved_percentage": (tokens_saved / traditional["total_tokens"]) * 100
+                "tokens_saved_percentage": (tokens_saved / traditional["total_tokens"]) * 100,
             },
-            "verdict": "Mindcore saves money" if cost_saved > 0 else "Traditional is cheaper"
+            "verdict": "Mindcore saves money" if cost_saved > 0 else "Traditional is cheaper",
         }
 
-    def generate_benchmark_report(
-        self,
-        scenarios: List[Dict[str, Any]]
-    ) -> str:
+    def generate_benchmark_report(self, scenarios: List[Dict[str, Any]]) -> str:
         """
         Generate comprehensive benchmark report.
 
@@ -261,12 +264,16 @@ class CostAnalyzer:
             # Savings
             savings = comparison["savings"]
             report_lines.append("SAVINGS:")
-            report_lines.append(f"  Tokens saved: {savings['tokens_saved']:,} ({savings['tokens_saved_percentage']:.1f}%)")
-            report_lines.append(f"  Cost saved: ${savings['cost_saved']:.4f} ({savings['cost_saved_percentage']:.1f}%)")
+            report_lines.append(
+                f"  Tokens saved: {savings['tokens_saved']:,} ({savings['tokens_saved_percentage']:.1f}%)"
+            )
+            report_lines.append(
+                f"  Cost saved: ${savings['cost_saved']:.4f} ({savings['cost_saved_percentage']:.1f}%)"
+            )
             report_lines.append(f"  Verdict: {comparison['verdict']}")
 
-            total_saved += savings['cost_saved']
-            total_traditional_cost += trad['total_cost']
+            total_saved += savings["cost_saved"]
+            total_traditional_cost += trad["total_cost"]
 
         # Summary
         report_lines.append(f"\n{'=' * 80}")
@@ -310,19 +317,19 @@ def run_cost_benchmark() -> str:
                 "Can you show an example?",
                 "Sure: with open('file.txt') as f: data = f.read()",
                 "Thanks!",
-                "You're welcome!"
+                "You're welcome!",
             ],
-            "num_requests": 5
+            "num_requests": 5,
         },
         {
             "name": "Medium Conversation (50 messages)",
             "conversation_history": ["Message content here"] * 50,
-            "num_requests": 10
+            "num_requests": 10,
         },
         {
             "name": "Long Conversation (200 messages)",
             "conversation_history": ["Detailed technical discussion content"] * 200,
-            "num_requests": 20
+            "num_requests": 20,
         },
     ]
 

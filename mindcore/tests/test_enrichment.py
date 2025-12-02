@@ -1,6 +1,7 @@
 """
 Tests for Enrichment Agent.
 """
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from mindcore.agents import EnrichmentAgent
@@ -18,14 +19,11 @@ class TestEnrichmentAgent:
             "topics": ["help", "question"],  # Use valid vocabulary topics
             "categories": ["question", "technical"],
             "importance": 0.8,
-            "sentiment": {
-                "overall": "neutral",
-                "score": 0.5
-            },
+            "sentiment": {"overall": "neutral", "score": 0.5},
             "intent": "ask_question",
             "tags": ["AI", "ML", "question"],
             "entities": ["GPT", "OpenAI"],
-            "key_phrases": ["best practices", "AI agents"]
+            "key_phrases": ["best practices", "AI agents"],
         }
 
     @pytest.fixture
@@ -54,9 +52,7 @@ class TestEnrichmentAgent:
 
         # Mock LLM response
         mock_provider.generate.return_value = LLMResponse(
-            content=json.dumps(mock_openai_response),
-            model="mock",
-            provider="mock"
+            content=json.dumps(mock_openai_response), model="mock", provider="mock"
         )
 
         # Process message
@@ -65,7 +61,7 @@ class TestEnrichmentAgent:
             "thread_id": "thread_456",
             "session_id": "session_789",
             "role": "user",
-            "text": "What are best practices for AI agents?"
+            "text": "What are best practices for AI agents?",
         }
 
         message = agent.process(message_dict)
@@ -77,7 +73,11 @@ class TestEnrichmentAgent:
         assert message.raw_text == message_dict["text"]
         assert isinstance(message.metadata, MessageMetadata)
         # Topics are normalized to controlled vocabulary
-        assert "help" in message.metadata.topics or "question" in message.metadata.topics or len(message.metadata.topics) > 0
+        assert (
+            "help" in message.metadata.topics
+            or "question" in message.metadata.topics
+            or len(message.metadata.topics) > 0
+        )
         assert message.metadata.importance == 0.8
 
     def test_process_handles_api_failure(self, agent, mock_provider):
@@ -90,7 +90,7 @@ class TestEnrichmentAgent:
             "thread_id": "thread_456",
             "session_id": "session_789",
             "role": "user",
-            "text": "Test message"
+            "text": "Test message",
         }
 
         # Should return message with default metadata
@@ -109,13 +109,14 @@ class TestEnrichmentAgent:
                 "thread_id": "thread_456",
                 "session_id": "session_789",
                 "role": "user",
-                "text": f"Message {i}"
+                "text": f"Message {i}",
             }
             for i in range(3)
         ]
 
-        with patch.object(agent, 'process') as mock_process:
+        with patch.object(agent, "process") as mock_process:
             from mindcore.core.schemas import Message, MessageMetadata
+
             mock_process.return_value = Message(
                 message_id="msg_123",
                 user_id="user_123",
@@ -123,7 +124,7 @@ class TestEnrichmentAgent:
                 session_id="session_789",
                 role="user",
                 raw_text="test",
-                metadata=MessageMetadata()
+                metadata=MessageMetadata(),
             )
 
             enriched = agent.enrich_batch(messages)

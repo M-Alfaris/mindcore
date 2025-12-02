@@ -1,6 +1,7 @@
 """
 Core modules for Mindcore framework.
 """
+
 from .config_loader import ConfigLoader
 from .db_manager import DatabaseManager, DatabaseConnectionError
 from .sqlite_manager import SQLiteManager
@@ -80,22 +81,29 @@ from .prometheus_metrics import (
     is_prometheus_available,
 )
 
+
 # Async database managers (lazy import to avoid requiring async deps)
 def get_async_sqlite_manager():
     """Get AsyncSQLiteManager class (requires aiosqlite)."""
     from .async_db import AsyncSQLiteManager
+
     return AsyncSQLiteManager
+
 
 def get_async_database_manager():
     """Get AsyncDatabaseManager class (requires asyncpg)."""
     from .async_db import AsyncDatabaseManager
+
     return AsyncDatabaseManager
+
 
 # Access Control (lazy imports for optional Casbin)
 def get_access_control_manager():
     """Get AccessControlManager class."""
     from .access_control import AccessControlManager
+
     return AccessControlManager
+
 
 def get_casbin_access_control():
     """
@@ -106,7 +114,9 @@ def get_casbin_access_control():
         acm = CasbinACM.with_rbac()  # Built-in RBAC model
     """
     from .access_control import CasbinAccessControlManager
+
     return CasbinAccessControlManager
+
 
 __all__ = [
     "ConfigLoader",

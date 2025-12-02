@@ -1,6 +1,7 @@
 """
 Ingest route for message ingestion.
 """
+
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
@@ -15,24 +16,27 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 class IngestMessageRequest(BaseModel):
     """Request model for message ingestion."""
+
     user_id: str = Field(..., description="User identifier")
     thread_id: str = Field(..., description="Thread identifier")
     session_id: str = Field(..., description="Session identifier")
     role: str = Field(..., description="Message role (user, assistant, system, tool)")
     text: str = Field(..., description="Message text content")
-    message_id: Optional[str] = Field(None, description="Optional message ID (auto-generated if not provided)")
+    message_id: Optional[str] = Field(
+        None, description="Optional message ID (auto-generated if not provided)"
+    )
 
 
 class IngestMessageResponse(BaseModel):
     """Response model for message ingestion."""
+
     success: bool
     message_id: str
     message: str
 
 
 async def check_rate_limit(
-    request: Request,
-    x_user_id: Optional[str] = Header(None, alias="X-User-ID")
+    request: Request, x_user_id: Optional[str] = Header(None, alias="X-User-ID")
 ) -> str:
     """
     Dependency to check rate limit.
@@ -59,7 +63,7 @@ async def check_rate_limit(
         raise HTTPException(
             status_code=429,
             detail=f"Rate limit exceeded. Please wait before making more requests.",
-            headers={"X-RateLimit-Remaining": str(remaining)}
+            headers={"X-RateLimit-Remaining": str(remaining)},
         )
 
     return identifier
@@ -67,8 +71,7 @@ async def check_rate_limit(
 
 @router.post("", response_model=IngestMessageResponse)
 async def ingest_message(
-    request: IngestMessageRequest,
-    rate_limit_id: str = Depends(check_rate_limit)
+    request: IngestMessageRequest, rate_limit_id: str = Depends(check_rate_limit)
 ):
     """
     Ingest a new message for enrichment and storage.
@@ -100,7 +103,7 @@ async def ingest_message(
         return IngestMessageResponse(
             success=True,
             message_id=message.message_id,
-            message=f"Message ingested and enriched successfully"
+            message=f"Message ingested and enriched successfully",
         )
 
     except ValueError as e:
@@ -114,8 +117,7 @@ async def ingest_message(
 
 @router.post("/batch", response_model=Dict[str, Any])
 async def ingest_batch(
-    messages: list[IngestMessageRequest],
-    rate_limit_id: str = Depends(check_rate_limit)
+    messages: list[IngestMessageRequest], rate_limit_id: str = Depends(check_rate_limit)
 ):
     """
     Ingest multiple messages in batch.
@@ -151,7 +153,7 @@ async def ingest_batch(
             "ingested": len(ingested),
             "failed": len(failed),
             "message_ids": ingested,
-            "errors": failed if failed else None
+            "errors": failed if failed else None,
         }
 
     except Exception as e:

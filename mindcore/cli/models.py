@@ -5,6 +5,7 @@ Provides curated list of models optimized for Mindcore's use cases:
 - Metadata enrichment (fast, accurate JSON extraction)
 - Context assembly (summarization, key point extraction)
 """
+
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -12,6 +13,7 @@ from typing import Dict, List, Optional
 @dataclass
 class ModelInfo:
     """Information about a downloadable model."""
+
     name: str
     description: str
     size_gb: float
@@ -111,6 +113,7 @@ def list_available_models() -> List[str]:
 def get_default_models_dir() -> str:
     """Get the default directory for storing models."""
     from pathlib import Path
+
     return str(Path.home() / ".mindcore" / "models")
 
 

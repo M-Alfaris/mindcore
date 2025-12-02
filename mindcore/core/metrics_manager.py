@@ -38,6 +38,7 @@ Usage:
     # Get performance stats
     stats = metrics.get_performance_stats(time_range="24h")
 """
+
 import json
 import sqlite3
 import threading
@@ -81,11 +82,9 @@ class MetricsManager:
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
-        if not hasattr(self._local, 'connection') or self._local.connection is None:
+        if not hasattr(self._local, "connection") or self._local.connection is None:
             self._local.connection = sqlite3.connect(
-                self.db_path,
-                check_same_thread=False,
-                timeout=30.0
+                self.db_path, check_same_thread=False, timeout=30.0
             )
             self._local.connection.row_factory = sqlite3.Row
         return self._local.connection
@@ -233,7 +232,7 @@ class MetricsManager:
         user_id: Optional[str] = None,
         thread_id: Optional[str] = None,
         message_id: Optional[str] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> bool:
         """
         Record an LLM API call metric.
@@ -265,7 +264,7 @@ class MetricsManager:
             user_id=user_id,
             thread_id=thread_id,
             message_id=message_id,
-            metadata=metadata
+            metadata=metadata,
         )
 
     def record_enrichment(
@@ -273,7 +272,7 @@ class MetricsManager:
         message_id: str,
         total_time_ms: int,
         success: bool = True,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> bool:
         """Record message enrichment timing."""
         return self._record_metric(
@@ -282,7 +281,7 @@ class MetricsManager:
             total_time_ms=total_time_ms,
             success=success,
             message_id=message_id,
-            metadata=metadata
+            metadata=metadata,
         )
 
     def record_retrieval(
@@ -291,7 +290,7 @@ class MetricsManager:
         total_time_ms: int,
         messages_retrieved: int = 0,
         cache_hit: bool = False,
-        success: bool = True
+        success: bool = True,
     ) -> bool:
         """Record context retrieval timing."""
         return self._record_metric(
@@ -300,7 +299,7 @@ class MetricsManager:
             total_time_ms=total_time_ms,
             success=success,
             thread_id=thread_id,
-            metadata={"messages_retrieved": messages_retrieved, "cache_hit": cache_hit}
+            metadata={"messages_retrieved": messages_retrieved, "cache_hit": cache_hit},
         )
 
     def _record_metric(
@@ -316,7 +315,7 @@ class MetricsManager:
         user_id: Optional[str] = None,
         thread_id: Optional[str] = None,
         message_id: Optional[str] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> bool:
         """Internal method to record a performance metric."""
         insert_sql = """
@@ -329,20 +328,23 @@ class MetricsManager:
 
         try:
             with self.get_connection() as conn:
-                conn.execute(insert_sql, (
-                    metric_type,
-                    operation,
-                    model,
-                    prompt_tokens,
-                    completion_tokens,
-                    total_time_ms,
-                    1 if success else 0,
-                    error_message,
-                    user_id,
-                    thread_id,
-                    message_id,
-                    json.dumps(metadata or {})
-                ))
+                conn.execute(
+                    insert_sql,
+                    (
+                        metric_type,
+                        operation,
+                        model,
+                        prompt_tokens,
+                        completion_tokens,
+                        total_time_ms,
+                        1 if success else 0,
+                        error_message,
+                        user_id,
+                        thread_id,
+                        message_id,
+                        json.dumps(metadata or {}),
+                    ),
+                )
                 conn.commit()
                 return True
         except Exception as e:
@@ -364,7 +366,7 @@ class MetricsManager:
         success: bool = True,
         error_message: Optional[str] = None,
         input_data: Optional[Dict] = None,
-        output_data: Optional[str] = None
+        output_data: Optional[str] = None,
     ) -> bool:
         """
         Record a tool call execution.
@@ -385,6 +387,7 @@ class MetricsManager:
             True if recorded successfully
         """
         import uuid
+
         tool_call_id = tool_call_id or str(uuid.uuid4())
 
         insert_sql = """
@@ -396,18 +399,21 @@ class MetricsManager:
 
         try:
             with self.get_connection() as conn:
-                conn.execute(insert_sql, (
-                    tool_call_id,
-                    tool_name,
-                    message_id,
-                    thread_id,
-                    user_id,
-                    execution_time_ms,
-                    1 if success else 0,
-                    error_message,
-                    json.dumps(input_data) if input_data else None,
-                    output_data[:1000] if output_data else None  # Truncate output
-                ))
+                conn.execute(
+                    insert_sql,
+                    (
+                        tool_call_id,
+                        tool_name,
+                        message_id,
+                        thread_id,
+                        user_id,
+                        execution_time_ms,
+                        1 if success else 0,
+                        error_message,
+                        json.dumps(input_data) if input_data else None,
+                        output_data[:1000] if output_data else None,  # Truncate output
+                    ),
+                )
                 conn.commit()
                 return True
         except Exception as e:
@@ -419,9 +425,7 @@ class MetricsManager:
     # =========================================================================
 
     def get_performance_stats(
-        self,
-        time_range: str = "24h",
-        metric_type: Optional[str] = None
+        self, time_range: str = "24h", metric_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get performance statistics for the dashboard.
@@ -503,24 +507,24 @@ class MetricsManager:
                 dist_row = dist_cursor.fetchone()
 
                 return {
-                    "total_llm_calls": row['total_calls'] or 0,
-                    "avg_response_time_ms": int(row['avg_time_ms'] or 0),
-                    "max_response_time_ms": row['max_time_ms'] or 0,
-                    "min_response_time_ms": row['min_time_ms'] or 0,
-                    "p95_response_time_ms": p95_row['total_time_ms'] if p95_row else 0,
-                    "total_prompt_tokens": row['total_prompt_tokens'] or 0,
-                    "total_completion_tokens": row['total_completion_tokens'] or 0,
-                    "error_count": row['error_count'] or 0,
+                    "total_llm_calls": row["total_calls"] or 0,
+                    "avg_response_time_ms": int(row["avg_time_ms"] or 0),
+                    "max_response_time_ms": row["max_time_ms"] or 0,
+                    "min_response_time_ms": row["min_time_ms"] or 0,
+                    "p95_response_time_ms": p95_row["total_time_ms"] if p95_row else 0,
+                    "total_prompt_tokens": row["total_prompt_tokens"] or 0,
+                    "total_completion_tokens": row["total_completion_tokens"] or 0,
+                    "error_count": row["error_count"] or 0,
                     "success_rate": round(
-                        (1 - (row['error_count'] or 0) / max(row['total_calls'] or 1, 1)) * 100, 1
+                        (1 - (row["error_count"] or 0) / max(row["total_calls"] or 1, 1)) * 100, 1
                     ),
                     "latency_distribution": [
-                        dist_row['bucket_0'] or 0,
-                        dist_row['bucket_1'] or 0,
-                        dist_row['bucket_2'] or 0,
-                        dist_row['bucket_3'] or 0,
-                        dist_row['bucket_4'] or 0
-                    ]
+                        dist_row["bucket_0"] or 0,
+                        dist_row["bucket_1"] or 0,
+                        dist_row["bucket_2"] or 0,
+                        dist_row["bucket_3"] or 0,
+                        dist_row["bucket_4"] or 0,
+                    ],
                 }
         except Exception as e:
             logger.error(f"Failed to get performance stats: {e}")
@@ -528,7 +532,7 @@ class MetricsManager:
                 "total_llm_calls": 0,
                 "avg_response_time_ms": 0,
                 "p95_response_time_ms": 0,
-                "latency_distribution": [0, 0, 0, 0, 0]
+                "latency_distribution": [0, 0, 0, 0, 0],
             }
 
     def get_tool_stats(self, time_range: str = "24h") -> Dict[str, Any]:
@@ -572,19 +576,23 @@ class MetricsManager:
                 total_success = 0
 
                 for row in rows:
-                    total_calls += row['call_count']
-                    total_success += row['success_count']
-                    tools.append({
-                        "name": row['tool_name'],
-                        "call_count": row['call_count'],
-                        "success_rate": round(row['success_count'] / row['call_count'] * 100, 1),
-                        "avg_time_ms": int(row['avg_time_ms'] or 0)
-                    })
+                    total_calls += row["call_count"]
+                    total_success += row["success_count"]
+                    tools.append(
+                        {
+                            "name": row["tool_name"],
+                            "call_count": row["call_count"],
+                            "success_rate": round(
+                                row["success_count"] / row["call_count"] * 100, 1
+                            ),
+                            "avg_time_ms": int(row["avg_time_ms"] or 0),
+                        }
+                    )
 
                 return {
                     "total_calls": total_calls,
                     "success_rate": round(total_success / max(total_calls, 1) * 100, 1),
-                    "tools": tools
+                    "tools": tools,
                 }
         except Exception as e:
             logger.error(f"Failed to get tool stats: {e}")
@@ -600,17 +608,17 @@ class MetricsManager:
             with self.get_connection() as conn:
                 cursor = conn.execute(
                     "SELECT setting_value, setting_type FROM dashboard_settings WHERE setting_key = ?",
-                    (key,)
+                    (key,),
                 )
                 row = cursor.fetchone()
                 if row:
-                    value = row['setting_value']
-                    setting_type = row['setting_type']
-                    if setting_type == 'number':
+                    value = row["setting_value"]
+                    setting_type = row["setting_type"]
+                    if setting_type == "number":
                         return int(value)
-                    elif setting_type == 'boolean':
-                        return value.lower() == 'true'
-                    elif setting_type == 'json':
+                    elif setting_type == "boolean":
+                        return value.lower() == "true"
+                    elif setting_type == "json":
                         return json.loads(value)
                     return value
                 return default
@@ -624,16 +632,16 @@ class MetricsManager:
             with self.get_connection() as conn:
                 # Determine type
                 if isinstance(value, bool):
-                    setting_type = 'boolean'
-                    str_value = 'true' if value else 'false'
+                    setting_type = "boolean"
+                    str_value = "true" if value else "false"
                 elif isinstance(value, (int, float)):
-                    setting_type = 'number'
+                    setting_type = "number"
                     str_value = str(value)
                 elif isinstance(value, dict):
-                    setting_type = 'json'
+                    setting_type = "json"
                     str_value = json.dumps(value)
                 else:
-                    setting_type = 'string'
+                    setting_type = "string"
                     str_value = str(value)
 
                 sql = """
@@ -657,17 +665,17 @@ class MetricsManager:
                 )
                 settings = {}
                 for row in cursor.fetchall():
-                    value = row['setting_value']
-                    if row['setting_type'] == 'number':
+                    value = row["setting_value"]
+                    if row["setting_type"] == "number":
                         value = int(value)
-                    elif row['setting_type'] == 'boolean':
-                        value = value.lower() == 'true'
-                    elif row['setting_type'] == 'json':
+                    elif row["setting_type"] == "boolean":
+                        value = value.lower() == "true"
+                    elif row["setting_type"] == "json":
                         value = json.loads(value)
-                    settings[row['setting_key']] = {
-                        'value': value,
-                        'type': row['setting_type'],
-                        'description': row['description']
+                    settings[row["setting_key"]] = {
+                        "value": value,
+                        "type": row["setting_type"],
+                        "description": row["description"],
                     }
                 return settings
         except Exception as e:
@@ -689,7 +697,7 @@ class MetricsManager:
             Number of records deleted
         """
         if days is None:
-            days = self.get_setting('metrics_retention_days', 30)
+            days = self.get_setting("metrics_retention_days", 30)
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -697,15 +705,13 @@ class MetricsManager:
             with self.get_connection() as conn:
                 # Delete old performance metrics
                 cursor = conn.execute(
-                    "DELETE FROM performance_metrics WHERE created_at < ?",
-                    (cutoff.isoformat(),)
+                    "DELETE FROM performance_metrics WHERE created_at < ?", (cutoff.isoformat(),)
                 )
                 perf_deleted = cursor.rowcount
 
                 # Delete old tool calls
                 cursor = conn.execute(
-                    "DELETE FROM tool_calls WHERE created_at < ?",
-                    (cutoff.isoformat(),)
+                    "DELETE FROM tool_calls WHERE created_at < ?", (cutoff.isoformat(),)
                 )
                 tool_deleted = cursor.rowcount
 
@@ -720,7 +726,7 @@ class MetricsManager:
 
     def close(self) -> None:
         """Close database connection."""
-        if hasattr(self._local, 'connection') and self._local.connection:
+        if hasattr(self._local, "connection") and self._local.connection:
             self._local.connection.close()
             self._local.connection = None
             logger.info("MetricsManager connection closed")

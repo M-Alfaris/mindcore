@@ -1,6 +1,7 @@
 """
 Base adapter class for framework integrations.
 """
+
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from ..core.schemas import Message, AssembledContext
@@ -56,11 +57,7 @@ class BaseAdapter(ABC):
         pass
 
     def ingest_conversation(
-        self,
-        messages: List[Any],
-        user_id: str,
-        thread_id: str,
-        session_id: str
+        self, messages: List[Any], user_id: str, thread_id: str, session_id: str
     ) -> List[Message]:
         """
         Ingest a conversation history.
@@ -82,9 +79,9 @@ class BaseAdapter(ABC):
                 msg_dict = self.format_message_for_ingestion(msg)
 
                 # Add IDs
-                msg_dict['user_id'] = user_id
-                msg_dict['thread_id'] = thread_id
-                msg_dict['session_id'] = session_id
+                msg_dict["user_id"] = user_id
+                msg_dict["thread_id"] = thread_id
+                msg_dict["session_id"] = session_id
 
                 # Ingest
                 enriched_msg = self.mindcore.ingest_message(msg_dict)
@@ -98,11 +95,7 @@ class BaseAdapter(ABC):
         return enriched_messages
 
     def get_enhanced_context(
-        self,
-        user_id: str,
-        thread_id: str,
-        query: str,
-        max_messages: int = 50
+        self, user_id: str, thread_id: str, query: str, max_messages: int = 50
     ) -> AssembledContext:
         """
         Get assembled context.

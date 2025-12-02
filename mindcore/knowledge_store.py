@@ -59,6 +59,7 @@ Growing to Multi-Agent:
     ...     sharing_groups=["support-team"]
     ... )
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -72,6 +73,7 @@ logger = get_logger(__name__)
 
 class StoreMode(str, Enum):
     """Operation mode for the knowledge store."""
+
     SIMPLE = "simple"  # Single agent, no access control
     MULTI_AGENT = "multi_agent"  # Multiple agents with access control
 
@@ -83,6 +85,7 @@ class AgentConfig:
 
     In simple mode, this is auto-generated with defaults.
     """
+
     agent_id: str
     name: str
     organization_id: str
@@ -98,7 +101,7 @@ class AgentConfig:
             "organization_id": self.organization_id,
             "groups": self.groups,
             "roles": self.roles,
-            "is_default": self.is_default
+            "is_default": self.is_default,
         }
 
 
@@ -109,6 +112,7 @@ class KnowledgeItem:
 
     Can be a message, document, fact, or any other knowledge type.
     """
+
     item_id: str
     item_type: str  # "message", "document", "fact", "summary"
     content: str
@@ -142,7 +146,7 @@ class KnowledgeItem:
             "visibility": self.visibility,
             "sharing_groups": self.sharing_groups,
             "metadata": self.metadata,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -177,25 +181,21 @@ class KnowledgeStore:
         database_path: str = "mindcore.db",
         use_postgresql: bool = False,
         postgresql_url: Optional[str] = None,
-
         # Multi-agent settings
         multi_agent: bool = False,
         organization_id: str = "default",
-
         # Vector store settings (optional)
         enable_vector_search: bool = False,
         vector_store_type: str = "memory",  # "memory", "chroma", "pinecone"
         vector_store_config: Optional[Dict[str, Any]] = None,
         embedding_provider: str = "openai",
         embedding_config: Optional[Dict[str, Any]] = None,
-
         # Cache settings
         enable_cache: bool = True,
         cache_type: str = "disk",  # "memory", "disk"
-
         # LLM settings (for enrichment)
         enable_enrichment: bool = True,
-        llm_provider: str = "auto"
+        llm_provider: str = "auto",
     ):
         """
         Initialize the knowledge store.
@@ -259,9 +259,11 @@ class KnowledgeStore:
         """Initialize database connection."""
         if use_pg and pg_url:
             from .core import DatabaseManager
+
             return DatabaseManager({"url": pg_url})
         else:
             from .core import SQLiteManager
+
             return SQLiteManager(path)
 
     def _init_cache(self, enabled: bool, cache_type: str):
@@ -270,14 +272,17 @@ class KnowledgeStore:
             return None
         if cache_type == "disk":
             from .core import DiskCacheManager
+
             return DiskCacheManager()
         else:
             from .core import CacheManager
+
             return CacheManager()
 
     def _init_embedding(self, provider: str, config: Dict[str, Any]):
         """Initialize embedding function."""
         from .vectorstores import create_embeddings
+
         return create_embeddings(provider=provider, **config)
 
     def _init_vector_store(self, store_type: str, config: Dict[str, Any]):
@@ -288,19 +293,21 @@ class KnowledgeStore:
             return InMemoryVectorStore(embedding=self._embedding)
         elif store_type == "chroma":
             from .vectorstores import get_chroma_store
+
             ChromaVectorStore = get_chroma_store()
             return ChromaVectorStore(
                 embedding=self._embedding,
                 collection_name=config.get("collection_name", "mindcore"),
-                persist_directory=config.get("persist_directory")
+                persist_directory=config.get("persist_directory"),
             )
         elif store_type == "pinecone":
             from .vectorstores import get_pinecone_store
+
             PineconeVectorStore = get_pinecone_store()
             return PineconeVectorStore(
                 embedding=self._embedding,
                 api_key=config.get("api_key"),
-                index_name=config.get("index_name", "mindcore")
+                index_name=config.get("index_name", "mindcore"),
             )
         else:
             return InMemoryVectorStore(embedding=self._embedding)
@@ -308,6 +315,7 @@ class KnowledgeStore:
     def _init_access_control(self):
         """Initialize access control manager."""
         from .core.access_control import AccessControlManager
+
         return AccessControlManager(database=self._db)
 
     def _init_enrichment(self, llm_provider: str):
@@ -330,7 +338,7 @@ class KnowledgeStore:
             organization_id=self._organization_id,
             groups=["default"],
             roles=["default"],
-            is_default=True
+            is_default=True,
         )
 
     # =========================================================================
@@ -342,7 +350,7 @@ class KnowledgeStore:
         name: str,
         groups: Optional[List[str]] = None,
         roles: Optional[List[str]] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ) -> AgentConfig:
         """
         Register a new agent.
@@ -372,7 +380,7 @@ class KnowledgeStore:
             name=name,
             owner_id=self._organization_id,
             groups=groups or [],
-            roles=roles or []
+            roles=roles or [],
         )
 
         config = AgentConfig(
@@ -381,7 +389,7 @@ class KnowledgeStore:
             organization_id=self._organization_id,
             groups=registration.groups,
             roles=registration.roles,
-            api_key=api_key
+            api_key=api_key,
         )
 
         logger.info(f"Registered agent: {name} ({agent_id})")
@@ -400,7 +408,7 @@ class KnowledgeStore:
                     name=agent.name,
                     organization_id=agent.owner_id,
                     groups=agent.groups,
-                    roles=agent.roles
+                    roles=agent.roles,
                 )
         return None
 
@@ -420,7 +428,7 @@ class KnowledgeStore:
         visibility: str = "private",
         sharing_groups: Optional[List[str]] = None,
         # Additional metadata
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> KnowledgeItem:
         """
         Add a message to the knowledge store.
@@ -463,23 +471,21 @@ class KnowledgeStore:
             agent_id=agent_id,
             visibility=visibility,
             sharing_groups=sharing_groups or [],
-            metadata={
-                "role": role,
-                "session_id": session_id,
-                **(metadata or {})
-            }
+            metadata={"role": role, "session_id": session_id, **(metadata or {})},
         )
 
         # Enrich metadata if enabled
         if self._enrichment_agent and self._enable_enrichment:
             try:
-                enriched = self._enrichment_agent.process({
-                    "user_id": user_id,
-                    "thread_id": thread_id,
-                    "session_id": session_id,
-                    "role": role,
-                    "text": text
-                })
+                enriched = self._enrichment_agent.process(
+                    {
+                        "user_id": user_id,
+                        "thread_id": thread_id,
+                        "session_id": session_id,
+                        "role": role,
+                        "text": text,
+                    }
+                )
                 item.metadata["enrichment"] = enriched.metadata.to_dict()
             except Exception as e:
                 logger.warning(f"Enrichment failed: {e}")
@@ -498,10 +504,11 @@ class KnowledgeStore:
         # Create access policy in multi-agent mode
         if self._mode == StoreMode.MULTI_AGENT and self._access_control:
             from .core.access_control import KnowledgeVisibility
+
             vis_map = {
                 "private": KnowledgeVisibility.PRIVATE,
                 "shared": KnowledgeVisibility.SHARED,
-                "public": KnowledgeVisibility.PUBLIC
+                "public": KnowledgeVisibility.PUBLIC,
             }
             self._access_control.create_policy(
                 resource_id=item_id,
@@ -509,7 +516,7 @@ class KnowledgeStore:
                 owner_id=agent_id,
                 owner_org=self._organization_id,
                 visibility=vis_map.get(visibility, KnowledgeVisibility.PRIVATE),
-                sharing_groups=sharing_groups or []
+                sharing_groups=sharing_groups or [],
             )
 
         logger.debug(f"Added message: {item_id} (visibility={visibility})")
@@ -523,7 +530,7 @@ class KnowledgeStore:
         agent_id: Optional[str] = None,
         visibility: str = "public",
         sharing_groups: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> KnowledgeItem:
         """
         Add a document/knowledge base article.
@@ -556,11 +563,7 @@ class KnowledgeStore:
             agent_id=agent_id,
             visibility=visibility,
             sharing_groups=sharing_groups or [],
-            metadata={
-                "title": title,
-                "source": source,
-                **(metadata or {})
-            }
+            metadata={"title": title, "source": source, **(metadata or {})},
         )
 
         self._store_item(item)
@@ -583,7 +586,7 @@ class KnowledgeStore:
         max_messages: int = 20,
         max_semantic_results: int = 5,
         include_shared: bool = True,
-        include_public: bool = True
+        include_public: bool = True,
     ) -> Dict[str, Any]:
         """
         Get relevant context for a query.
@@ -621,8 +624,8 @@ class KnowledgeStore:
                 "user_id": user_id,
                 "thread_id": thread_id,
                 "query": query,
-                "agent_id": agent_id
-            }
+                "agent_id": agent_id,
+            },
         }
 
         # Get recent messages
@@ -634,8 +637,7 @@ class KnowledgeStore:
         # Semantic search
         if self._vector_store:
             context["semantic_matches"] = self._semantic_search(
-                query, agent_id, max_semantic_results,
-                include_shared, include_public
+                query, agent_id, max_semantic_results, include_shared, include_public
             )
 
         return context
@@ -646,7 +648,7 @@ class KnowledgeStore:
         agent_id: Optional[str] = None,
         item_type: Optional[str] = None,
         k: int = 10,
-        filter_metadata: Optional[Dict[str, Any]] = None
+        filter_metadata: Optional[Dict[str, Any]] = None,
     ) -> List[KnowledgeItem]:
         """
         Search the knowledge store.
@@ -674,15 +676,16 @@ class KnowledgeStore:
         else:
             return self._metadata_search(query, agent_id, item_type, k, filter_metadata)
 
-    def get_message(self, message_id: str, agent_id: Optional[str] = None) -> Optional[KnowledgeItem]:
+    def get_message(
+        self, message_id: str, agent_id: Optional[str] = None
+    ) -> Optional[KnowledgeItem]:
         """Get a specific message by ID."""
         # Access control check in multi-agent mode
         if self._mode == StoreMode.MULTI_AGENT and self._access_control:
             from .core.access_control import Permission
+
             if not self._access_control.can_access(
-                agent_id or self._default_agent.agent_id,
-                message_id,
-                Permission.READ
+                agent_id or self._default_agent.agent_id, message_id, Permission.READ
             ):
                 logger.warning(f"Access denied to message {message_id}")
                 return None
@@ -698,7 +701,7 @@ class KnowledgeStore:
         item_id: str,
         target_agent_id: str,
         sharing_agent_id: Optional[str] = None,
-        can_reshare: bool = False
+        can_reshare: bool = False,
     ) -> bool:
         """
         Share a knowledge item with another agent.
@@ -731,14 +734,11 @@ class KnowledgeStore:
             resource_id=item_id,
             target_agent_id=target_agent_id,
             sharing_agent_id=sharing_agent_id or self._default_agent.agent_id,
-            permissions=permissions
+            permissions=permissions,
         )
 
     def share_with_group(
-        self,
-        item_id: str,
-        group_name: str,
-        sharing_agent_id: Optional[str] = None
+        self, item_id: str, group_name: str, sharing_agent_id: Optional[str] = None
     ) -> bool:
         """
         Share a knowledge item with a group.
@@ -760,7 +760,7 @@ class KnowledgeStore:
         return self._access_control.share_with_group(
             resource_id=item_id,
             group_name=group_name,
-            sharing_agent_id=sharing_agent_id or self._default_agent.agent_id
+            sharing_agent_id=sharing_agent_id or self._default_agent.agent_id,
         )
 
     # =========================================================================
@@ -781,10 +781,8 @@ class KnowledgeStore:
                 session_id=item.metadata.get("session_id", item.thread_id or ""),
                 role=MessageRole(role),
                 raw_text=item.content,
-                metadata=MessageMetadata(
-                    **(item.metadata.get("enrichment", {}))
-                ),
-                created_at=item.created_at
+                metadata=MessageMetadata(**(item.metadata.get("enrichment", {}))),
+                created_at=item.created_at,
             )
             self._db.insert_message(message)
 
@@ -799,7 +797,7 @@ class KnowledgeStore:
                 user_id=message.user_id,
                 thread_id=message.thread_id,
                 metadata=message.metadata.to_dict() if message.metadata else {},
-                created_at=message.created_at
+                created_at=message.created_at,
             )
         return None
 
@@ -819,9 +817,9 @@ class KnowledgeStore:
                 "thread_id": item.thread_id,
                 "agent_id": item.agent_id,
                 "visibility": item.visibility,
-                **item.metadata
+                **item.metadata,
             },
-            id=item.item_id
+            id=item.item_id,
         )
 
         self._vector_store.add_documents([doc])
@@ -840,16 +838,12 @@ class KnowledgeStore:
             session_id=item.metadata.get("session_id", ""),
             role=MessageRole(item.metadata.get("role", "user")),
             raw_text=item.content,
-            created_at=item.created_at
+            created_at=item.created_at,
         )
         self._cache.add_message(message)
 
     def _get_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        agent_id: str,
-        limit: int
+        self, user_id: str, thread_id: str, agent_id: str, limit: int
     ) -> List[KnowledgeItem]:
         """Get recent messages for a thread."""
         # Try cache first
@@ -864,7 +858,7 @@ class KnowledgeStore:
                         user_id=m.user_id,
                         thread_id=m.thread_id,
                         metadata={"role": m.role.value},
-                        created_at=m.created_at
+                        created_at=m.created_at,
                     )
                     for m in messages
                 ]
@@ -879,7 +873,7 @@ class KnowledgeStore:
                 user_id=m.user_id,
                 thread_id=m.thread_id,
                 metadata={"role": m.role.value},
-                created_at=m.created_at
+                created_at=m.created_at,
             )
             for m in messages
         ]
@@ -890,7 +884,7 @@ class KnowledgeStore:
         agent_id: str,
         k: int,
         include_shared: bool = True,
-        include_public: bool = True
+        include_public: bool = True,
     ) -> List[KnowledgeItem]:
         """Perform semantic search."""
         if not self._vector_store:
@@ -904,20 +898,23 @@ class KnowledgeStore:
             # Access control in multi-agent mode
             if self._mode == StoreMode.MULTI_AGENT and self._access_control:
                 from .core.access_control import Permission
+
                 item_id = doc.metadata.get("item_id", doc.id)
                 if not self._access_control.can_access(agent_id, item_id, Permission.READ):
                     continue
 
-            items.append(KnowledgeItem(
-                item_id=doc.metadata.get("item_id", doc.id or ""),
-                item_type=doc.metadata.get("item_type", "unknown"),
-                content=doc.page_content,
-                user_id=doc.metadata.get("user_id"),
-                thread_id=doc.metadata.get("thread_id"),
-                agent_id=doc.metadata.get("agent_id"),
-                visibility=doc.metadata.get("visibility", "private"),
-                metadata=doc.metadata
-            ))
+            items.append(
+                KnowledgeItem(
+                    item_id=doc.metadata.get("item_id", doc.id or ""),
+                    item_type=doc.metadata.get("item_type", "unknown"),
+                    content=doc.page_content,
+                    user_id=doc.metadata.get("user_id"),
+                    thread_id=doc.metadata.get("thread_id"),
+                    agent_id=doc.metadata.get("agent_id"),
+                    visibility=doc.metadata.get("visibility", "private"),
+                    metadata=doc.metadata,
+                )
+            )
 
             if len(items) >= k:
                 break
@@ -930,7 +927,7 @@ class KnowledgeStore:
         agent_id: str,
         item_type: Optional[str],
         k: int,
-        filter_metadata: Optional[Dict[str, Any]]
+        filter_metadata: Optional[Dict[str, Any]],
     ) -> List[KnowledgeItem]:
         """Search by metadata (fallback when no vector store)."""
         # This would use database text search
@@ -968,7 +965,7 @@ class KnowledgeStore:
             "cache": self._cache is not None,
             "vector_store": self._vector_store is not None,
             "enrichment": self._enrichment_agent is not None,
-            "access_control": self._access_control is not None
+            "access_control": self._access_control is not None,
         }
 
         if self._vector_store:
@@ -978,11 +975,11 @@ class KnowledgeStore:
 
     def close(self) -> None:
         """Close all connections."""
-        if self._db and hasattr(self._db, 'close'):
+        if self._db and hasattr(self._db, "close"):
             self._db.close()
-        if self._cache and hasattr(self._cache, 'close'):
+        if self._cache and hasattr(self._cache, "close"):
             self._cache.close()
-        if self._vector_store and hasattr(self._vector_store, 'close'):
+        if self._vector_store and hasattr(self._vector_store, "close"):
             self._vector_store.close()
 
         logger.info("KnowledgeStore closed")

@@ -3,6 +3,7 @@ Orders Connector - Read-only access to order/purchase systems.
 
 Provides context about user orders, deliveries, and purchase history.
 """
+
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
@@ -71,7 +72,7 @@ class OrdersConnector(BaseConnector):
         lookup_fn: Optional[callable] = None,
         # General config
         max_results: int = 10,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         """
         Initialize orders connector.
@@ -99,11 +100,7 @@ class OrdersConnector(BaseConnector):
         # Register topics with VocabularyManager
         super().__init__()
 
-    async def lookup(
-        self,
-        user_id: str,
-        context: Dict[str, Any]
-    ) -> ConnectorResult:
+    async def lookup(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """
         Fetch orders for a user.
 
@@ -118,11 +115,7 @@ class OrdersConnector(BaseConnector):
             # Use custom function if provided
             if self.lookup_fn:
                 data = await self.lookup_fn(user_id, context)
-                return ConnectorResult(
-                    data=data,
-                    source=self.name,
-                    cache_ttl=self.cache_ttl
-                )
+                return ConnectorResult(data=data, source=self.name, cache_ttl=self.cache_ttl)
 
             # Use API if configured
             if self.api_url:
@@ -137,11 +130,7 @@ class OrdersConnector(BaseConnector):
 
         except Exception as e:
             logger.error(f"Orders lookup failed for user {user_id}: {e}")
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=str(e)
-            )
+            return ConnectorResult(data={}, source=self.name, error=str(e))
 
     async def _lookup_via_api(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """Lookup orders via REST API."""
@@ -165,34 +154,28 @@ class OrdersConnector(BaseConnector):
                     self.api_url,
                     params=params,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
                         return ConnectorResult(
                             data={"orders": data.get("orders", []), "count": data.get("count", 0)},
                             source=self.name,
-                            cache_ttl=self.cache_ttl
+                            cache_ttl=self.cache_ttl,
                         )
                     else:
                         return ConnectorResult(
                             data={},
                             source=self.name,
-                            error=f"API returned status {response.status}"
+                            error=f"API returned status {response.status}",
                         )
 
         except ImportError:
             return ConnectorResult(
-                data={},
-                source=self.name,
-                error="aiohttp not installed. Run: pip install aiohttp"
+                data={}, source=self.name, error="aiohttp not installed. Run: pip install aiohttp"
             )
         except Exception as e:
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=f"API error: {str(e)}"
-            )
+            return ConnectorResult(data={}, source=self.name, error=f"API error: {str(e)}")
 
     async def _lookup_via_db(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """Lookup orders via database."""
@@ -231,21 +214,15 @@ class OrdersConnector(BaseConnector):
             return ConnectorResult(
                 data={"orders": orders, "count": len(orders)},
                 source=self.name,
-                cache_ttl=self.cache_ttl
+                cache_ttl=self.cache_ttl,
             )
 
         except ImportError:
             return ConnectorResult(
-                data={},
-                source=self.name,
-                error="asyncpg not installed. Run: pip install asyncpg"
+                data={}, source=self.name, error="asyncpg not installed. Run: pip install asyncpg"
             )
         except Exception as e:
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=f"Database error: {str(e)}"
-            )
+            return ConnectorResult(data={}, source=self.name, error=f"Database error: {str(e)}")
 
     async def _lookup_mock(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """
@@ -265,7 +242,7 @@ class OrdersConnector(BaseConnector):
                 "total": 99.99,
                 "items": ["Product A", "Product B"],
                 "created_at": (now - timedelta(days=5)).isoformat(),
-                "tracking_number": "1Z999AA10123456784"
+                "tracking_number": "1Z999AA10123456784",
             },
             {
                 "order_id": "ORD-12344",
@@ -273,8 +250,8 @@ class OrdersConnector(BaseConnector):
                 "total": 49.99,
                 "items": ["Product C"],
                 "created_at": (now - timedelta(days=2)).isoformat(),
-                "tracking_number": "1Z999AA10123456785"
-            }
+                "tracking_number": "1Z999AA10123456785",
+            },
         ]
 
         # Filter by order_id if provided
@@ -285,10 +262,10 @@ class OrdersConnector(BaseConnector):
             data={
                 "orders": mock_orders,
                 "count": len(mock_orders),
-                "note": "This is mock data. Configure a backend for production."
+                "note": "This is mock data. Configure a backend for production.",
             },
             source=self.name,
-            cache_ttl=60  # Shorter TTL for mock data
+            cache_ttl=60,  # Shorter TTL for mock data
         )
 
     def extract_entities(self, text: str) -> Dict[str, Any]:
@@ -310,10 +287,10 @@ class OrdersConnector(BaseConnector):
 
         # Extract order IDs
         order_patterns = [
-            r'#(\d{4,})',  # #12345
-            r'ORD-?(\d+)',  # ORD-12345 or ORD12345
-            r'order[:\s#]*(\d{4,})',  # order 12345, order: 12345
-            r'order\s+number[:\s]*(\d+)',  # order number 12345
+            r"#(\d{4,})",  # #12345
+            r"ORD-?(\d+)",  # ORD-12345 or ORD12345
+            r"order[:\s#]*(\d{4,})",  # order 12345, order: 12345
+            r"order\s+number[:\s]*(\d+)",  # order number 12345
         ]
 
         for pattern in order_patterns:
@@ -324,8 +301,8 @@ class OrdersConnector(BaseConnector):
 
         # Extract tracking numbers (common carriers)
         tracking_patterns = [
-            r'1Z[0-9A-Z]{16}',  # UPS
-            r'\d{12,22}',  # FedEx, USPS (generic)
+            r"1Z[0-9A-Z]{16}",  # UPS
+            r"\d{12,22}",  # FedEx, USPS (generic)
         ]
 
         for pattern in tracking_patterns:
@@ -348,8 +325,11 @@ class OrdersConnector(BaseConnector):
         if self.api_url:
             try:
                 import aiohttp
+
                 async with aiohttp.ClientSession() as session:
-                    async with session.head(self.api_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    async with session.head(
+                        self.api_url, timeout=aiohttp.ClientTimeout(total=5)
+                    ) as resp:
                         return resp.status < 500
             except Exception:
                 return False
@@ -357,6 +337,7 @@ class OrdersConnector(BaseConnector):
         if self.db_url:
             try:
                 import asyncpg
+
                 conn = await asyncpg.connect(self.db_url, timeout=5)
                 await conn.close()
                 return True

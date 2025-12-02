@@ -55,6 +55,7 @@ Example:
     ...     permission="read"
     ... )
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set
@@ -70,6 +71,7 @@ logger = get_logger(__name__)
 
 class Permission(str, Enum):
     """Permission types for access control."""
+
     READ = "read"  # Can read/retrieve the resource
     WRITE = "write"  # Can modify the resource
     DELETE = "delete"  # Can delete the resource
@@ -84,6 +86,7 @@ class AgentRegistration:
 
     Each agent must be registered to access the knowledge system.
     """
+
     agent_id: str  # Unique identifier for this agent
     name: str  # Human-readable name
     owner_id: str  # Organization or user that owns this agent
@@ -120,7 +123,7 @@ class AgentRegistration:
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
 
@@ -131,6 +134,7 @@ class AccessControlEntry:
 
     Grants specific permissions to a principal (agent or group).
     """
+
     principal_id: str  # Agent ID or group name (prefixed with "group:")
     principal_type: str  # "agent" or "group"
     permissions: Set[Permission] = field(default_factory=set)
@@ -162,7 +166,7 @@ class AccessControlEntry:
             "permissions": [p.value for p in self.permissions],
             "granted_by": self.granted_by,
             "granted_at": self.granted_at.isoformat() if self.granted_at else None,
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
         }
 
 
@@ -173,6 +177,7 @@ class KnowledgeAccessPolicy:
 
     Combines visibility with fine-grained ACL.
     """
+
     resource_id: str  # ID of the resource (message_id, document_id, etc.)
     resource_type: str  # "message", "document", "summary", "vector"
     owner_id: str  # Agent that created this resource
@@ -203,7 +208,7 @@ class KnowledgeAccessPolicy:
         principal_type: str,
         permissions: Set[Permission],
         granted_by: str,
-        expires_at: Optional[datetime] = None
+        expires_at: Optional[datetime] = None,
     ) -> None:
         """Add an ACL entry for a principal."""
         # Remove existing entry for this principal
@@ -214,7 +219,7 @@ class KnowledgeAccessPolicy:
             principal_type=principal_type,
             permissions=permissions,
             granted_by=granted_by,
-            expires_at=expires_at
+            expires_at=expires_at,
         )
         self.acl.append(entry)
         self.modified_at = datetime.now(timezone.utc)
@@ -245,13 +250,14 @@ class KnowledgeAccessPolicy:
             "acl": [e.to_dict() for e in self.acl],
             "sharing_groups": self.sharing_groups,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "modified_at": self.modified_at.isoformat() if self.modified_at else None
+            "modified_at": self.modified_at.isoformat() if self.modified_at else None,
         }
 
 
 @dataclass
 class AccessAuditLog:
     """Audit log entry for access attempts."""
+
     log_id: str
     timestamp: datetime
     agent_id: str
@@ -272,7 +278,7 @@ class AccessAuditLog:
             "action": self.action,
             "success": self.success,
             "denial_reason": self.denial_reason,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
 
@@ -291,7 +297,7 @@ class AccessControlManager:
         self,
         database: Any = None,
         enable_audit_logging: bool = True,
-        default_visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE
+        default_visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE,
     ):
         """
         Initialize access control manager.
@@ -322,7 +328,7 @@ class AccessControlManager:
         owner_id: str,
         groups: Optional[List[str]] = None,
         roles: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> tuple[AgentRegistration, str]:
         """
         Register a new agent.
@@ -349,7 +355,7 @@ class AccessControlManager:
             groups=groups or [],
             roles=roles or [],
             api_key_hash=api_key_hash,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
         self._agents[agent_id] = agent
@@ -441,7 +447,7 @@ class AccessControlManager:
         owner_id: str,
         owner_org: str,
         visibility: Optional[KnowledgeVisibility] = None,
-        sharing_groups: Optional[List[str]] = None
+        sharing_groups: Optional[List[str]] = None,
     ) -> KnowledgeAccessPolicy:
         """
         Create an access policy for a resource.
@@ -463,7 +469,7 @@ class AccessControlManager:
             owner_id=owner_id,
             owner_org=owner_org,
             visibility=visibility or self._default_visibility,
-            sharing_groups=sharing_groups or []
+            sharing_groups=sharing_groups or [],
         )
 
         self._policies[resource_id] = policy
@@ -484,10 +490,7 @@ class AccessControlManager:
         return policy
 
     def update_visibility(
-        self,
-        resource_id: str,
-        visibility: KnowledgeVisibility,
-        requesting_agent_id: str
+        self, resource_id: str, visibility: KnowledgeVisibility, requesting_agent_id: str
     ) -> bool:
         """
         Update visibility of a resource.
@@ -501,8 +504,12 @@ class AccessControlManager:
         # Check permission
         if not self._can_modify_policy(requesting_agent_id, policy):
             self._log_access(
-                requesting_agent_id, resource_id, policy.resource_type,
-                "update_visibility", False, "Permission denied"
+                requesting_agent_id,
+                resource_id,
+                policy.resource_type,
+                "update_visibility",
+                False,
+                "Permission denied",
             )
             return False
 
@@ -521,7 +528,7 @@ class AccessControlManager:
         principal_type: str,
         permissions: Set[Permission],
         granting_agent_id: str,
-        expires_at: Optional[datetime] = None
+        expires_at: Optional[datetime] = None,
     ) -> bool:
         """
         Grant access to a resource.
@@ -544,8 +551,12 @@ class AccessControlManager:
         # Check if granting agent has SHARE or ADMIN permission
         if not self.can_access(granting_agent_id, resource_id, Permission.SHARE):
             self._log_access(
-                granting_agent_id, resource_id, policy.resource_type,
-                "grant_access", False, "No share permission"
+                granting_agent_id,
+                resource_id,
+                policy.resource_type,
+                "grant_access",
+                False,
+                "No share permission",
             )
             return False
 
@@ -554,7 +565,7 @@ class AccessControlManager:
             principal_type=principal_type,
             permissions=permissions,
             granted_by=granting_agent_id,
-            expires_at=expires_at
+            expires_at=expires_at,
         )
 
         if self._db:
@@ -566,12 +577,7 @@ class AccessControlManager:
         )
         return True
 
-    def revoke_access(
-        self,
-        resource_id: str,
-        principal_id: str,
-        revoking_agent_id: str
-    ) -> bool:
+    def revoke_access(self, resource_id: str, principal_id: str, revoking_agent_id: str) -> bool:
         """Revoke access from a principal."""
         policy = self.get_policy(resource_id)
         if not policy:
@@ -592,10 +598,7 @@ class AccessControlManager:
     # =========================================================================
 
     def can_access(
-        self,
-        agent_id: str,
-        resource_id: str,
-        permission: Permission = Permission.READ
+        self, agent_id: str, resource_id: str, permission: Permission = Permission.READ
     ) -> bool:
         """
         Check if an agent can access a resource with given permission.
@@ -613,47 +616,50 @@ class AccessControlManager:
 
         if not agent or not policy:
             self._log_access(
-                agent_id, resource_id, "unknown",
-                permission.value, False, "Agent or policy not found"
+                agent_id,
+                resource_id,
+                "unknown",
+                permission.value,
+                False,
+                "Agent or policy not found",
             )
             return False
 
         if not agent.is_active:
             self._log_access(
-                agent_id, resource_id, policy.resource_type,
-                permission.value, False, "Agent inactive"
+                agent_id,
+                resource_id,
+                policy.resource_type,
+                permission.value,
+                False,
+                "Agent inactive",
             )
             return False
 
         # Check if owner (owners have all permissions)
         if policy.owner_id == agent_id:
-            self._log_access(
-                agent_id, resource_id, policy.resource_type,
-                permission.value, True
-            )
+            self._log_access(agent_id, resource_id, policy.resource_type, permission.value, True)
             return True
 
         # Check visibility-based access
         allowed = self._check_visibility_access(agent, policy, permission)
 
         if allowed:
-            self._log_access(
-                agent_id, resource_id, policy.resource_type,
-                permission.value, True
-            )
+            self._log_access(agent_id, resource_id, policy.resource_type, permission.value, True)
         else:
             self._log_access(
-                agent_id, resource_id, policy.resource_type,
-                permission.value, False, "Access denied by policy"
+                agent_id,
+                resource_id,
+                policy.resource_type,
+                permission.value,
+                False,
+                "Access denied by policy",
             )
 
         return allowed
 
     def _check_visibility_access(
-        self,
-        agent: AgentRegistration,
-        policy: KnowledgeAccessPolicy,
-        permission: Permission
+        self, agent: AgentRegistration, policy: KnowledgeAccessPolicy, permission: Permission
     ) -> bool:
         """Check access based on visibility and ACL."""
 
@@ -665,8 +671,7 @@ class AccessControlManager:
         # SHARED: Check if agent is in sharing groups
         if policy.visibility == KnowledgeVisibility.SHARED:
             # Same organization gets read access
-            if (agent.owner_id == policy.owner_org and
-                    permission == Permission.READ):
+            if agent.owner_id == policy.owner_org and permission == Permission.READ:
                 return True
 
             # Check sharing groups
@@ -692,10 +697,7 @@ class AccessControlManager:
         return False
 
     def _check_acl_access(
-        self,
-        agent: AgentRegistration,
-        policy: KnowledgeAccessPolicy,
-        permission: Permission
+        self, agent: AgentRegistration, policy: KnowledgeAccessPolicy, permission: Permission
     ) -> bool:
         """Check ACL for specific permission."""
         # Check direct agent ACL
@@ -733,7 +735,7 @@ class AccessControlManager:
         resource_id: str,
         target_agent_id: str,
         sharing_agent_id: str,
-        permissions: Optional[Set[Permission]] = None
+        permissions: Optional[Set[Permission]] = None,
     ) -> bool:
         """
         Share a resource with another agent.
@@ -755,7 +757,7 @@ class AccessControlManager:
             principal_id=target_agent_id,
             principal_type="agent",
             permissions=permissions,
-            granting_agent_id=sharing_agent_id
+            granting_agent_id=sharing_agent_id,
         )
 
     def share_with_group(
@@ -763,7 +765,7 @@ class AccessControlManager:
         resource_id: str,
         group_name: str,
         sharing_agent_id: str,
-        permissions: Optional[Set[Permission]] = None
+        permissions: Optional[Set[Permission]] = None,
     ) -> bool:
         """
         Share a resource with a group.
@@ -785,14 +787,14 @@ class AccessControlManager:
             principal_id=f"group:{group_name}",
             principal_type="group",
             permissions=permissions,
-            granting_agent_id=sharing_agent_id
+            granting_agent_id=sharing_agent_id,
         )
 
     def get_accessible_resources(
         self,
         agent_id: str,
         resource_type: Optional[str] = None,
-        permission: Permission = Permission.READ
+        permission: Permission = Permission.READ,
     ) -> List[str]:
         """
         Get all resources an agent can access.
@@ -827,7 +829,7 @@ class AccessControlManager:
         resource_type: str,
         action: str,
         success: bool,
-        denial_reason: Optional[str] = None
+        denial_reason: Optional[str] = None,
     ) -> None:
         """Log an access attempt."""
         if not self._audit_enabled:
@@ -841,7 +843,7 @@ class AccessControlManager:
             resource_type=resource_type,
             action=action,
             success=success,
-            denial_reason=denial_reason
+            denial_reason=denial_reason,
         )
 
         if self._db:
@@ -859,7 +861,7 @@ class AccessControlManager:
         resource_id: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
-        limit: int = 100
+        limit: int = 100,
     ) -> List[AccessAuditLog]:
         """Get audit logs with optional filters."""
         # Would query database in real implementation
@@ -881,17 +883,20 @@ class AccessControlManager:
         try:
             # Use JSON storage for agent data
             agent_data = agent.to_dict()
-            agent_data['api_key_hash'] = agent.api_key_hash
+            agent_data["api_key_hash"] = agent.api_key_hash
 
-            if hasattr(self._db, 'execute'):
+            if hasattr(self._db, "execute"):
                 # SQLite/PostgreSQL with raw execute
-                self._db.execute("""
+                self._db.execute(
+                    """
                     INSERT OR REPLACE INTO agents (agent_id, data, created_at)
                     VALUES (?, ?, ?)
-                """, (agent.agent_id, str(agent_data), agent.created_at))
-            elif hasattr(self._db, 'upsert_json'):
+                """,
+                    (agent.agent_id, str(agent_data), agent.created_at),
+                )
+            elif hasattr(self._db, "upsert_json"):
                 # If db manager has JSON helper
-                self._db.upsert_json('agents', agent.agent_id, agent_data)
+                self._db.upsert_json("agents", agent.agent_id, agent_data)
             else:
                 logger.warning("Database doesn't support agent persistence")
         except Exception as e:
@@ -903,26 +908,24 @@ class AccessControlManager:
             return None
 
         try:
-            if hasattr(self._db, 'execute'):
-                result = self._db.execute(
-                    "SELECT data FROM agents WHERE agent_id = ?",
-                    (agent_id,)
-                )
+            if hasattr(self._db, "execute"):
+                result = self._db.execute("SELECT data FROM agents WHERE agent_id = ?", (agent_id,))
                 if result:
                     import ast
+
                     data = ast.literal_eval(result[0][0])
                     return AgentRegistration(
-                        agent_id=data['agent_id'],
-                        name=data['name'],
-                        owner_id=data['owner_id'],
-                        groups=data.get('groups', []),
-                        roles=data.get('roles', []),
-                        api_key_hash=data.get('api_key_hash'),
-                        is_active=data.get('is_active', True),
-                        metadata=data.get('metadata', {})
+                        agent_id=data["agent_id"],
+                        name=data["name"],
+                        owner_id=data["owner_id"],
+                        groups=data.get("groups", []),
+                        roles=data.get("roles", []),
+                        api_key_hash=data.get("api_key_hash"),
+                        is_active=data.get("is_active", True),
+                        metadata=data.get("metadata", {}),
                     )
-            elif hasattr(self._db, 'get_json'):
-                data = self._db.get_json('agents', agent_id)
+            elif hasattr(self._db, "get_json"):
+                data = self._db.get_json("agents", agent_id)
                 if data:
                     return AgentRegistration(**data)
         except Exception as e:
@@ -938,13 +941,16 @@ class AccessControlManager:
         try:
             policy_data = policy.to_dict()
 
-            if hasattr(self._db, 'execute'):
-                self._db.execute("""
+            if hasattr(self._db, "execute"):
+                self._db.execute(
+                    """
                     INSERT OR REPLACE INTO access_policies (resource_id, data, modified_at)
                     VALUES (?, ?, ?)
-                """, (policy.resource_id, str(policy_data), policy.modified_at))
-            elif hasattr(self._db, 'upsert_json'):
-                self._db.upsert_json('access_policies', policy.resource_id, policy_data)
+                """,
+                    (policy.resource_id, str(policy_data), policy.modified_at),
+                )
+            elif hasattr(self._db, "upsert_json"):
+                self._db.upsert_json("access_policies", policy.resource_id, policy_data)
         except Exception as e:
             logger.error(f"Failed to persist policy {policy.resource_id}: {e}")
 
@@ -954,28 +960,28 @@ class AccessControlManager:
             return None
 
         try:
-            if hasattr(self._db, 'execute'):
+            if hasattr(self._db, "execute"):
                 result = self._db.execute(
-                    "SELECT data FROM access_policies WHERE resource_id = ?",
-                    (resource_id,)
+                    "SELECT data FROM access_policies WHERE resource_id = ?", (resource_id,)
                 )
                 if result:
                     import ast
+
                     data = ast.literal_eval(result[0][0])
                     return KnowledgeAccessPolicy(
-                        resource_id=data['resource_id'],
-                        resource_type=data['resource_type'],
-                        owner_id=data['owner_id'],
-                        owner_org=data['owner_org'],
-                        visibility=KnowledgeVisibility(data['visibility']),
-                        sharing_groups=data.get('sharing_groups', []),
-                        acl=[AccessControlEntry(**e) for e in data.get('acl', [])]
+                        resource_id=data["resource_id"],
+                        resource_type=data["resource_type"],
+                        owner_id=data["owner_id"],
+                        owner_org=data["owner_org"],
+                        visibility=KnowledgeVisibility(data["visibility"]),
+                        sharing_groups=data.get("sharing_groups", []),
+                        acl=[AccessControlEntry(**e) for e in data.get("acl", [])],
                     )
-            elif hasattr(self._db, 'get_json'):
-                data = self._db.get_json('access_policies', resource_id)
+            elif hasattr(self._db, "get_json"):
+                data = self._db.get_json("access_policies", resource_id)
                 if data:
-                    data['visibility'] = KnowledgeVisibility(data['visibility'])
-                    data['acl'] = [AccessControlEntry(**e) for e in data.get('acl', [])]
+                    data["visibility"] = KnowledgeVisibility(data["visibility"])
+                    data["acl"] = [AccessControlEntry(**e) for e in data.get("acl", [])]
                     return KnowledgeAccessPolicy(**data)
         except Exception as e:
             logger.error(f"Failed to load policy {resource_id}: {e}")
@@ -988,11 +994,21 @@ class AccessControlManager:
             return
 
         try:
-            if hasattr(self._db, 'execute'):
-                self._db.execute("""
+            if hasattr(self._db, "execute"):
+                self._db.execute(
+                    """
                     INSERT INTO audit_logs (log_id, timestamp, agent_id, resource_id, action, success)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (log.log_id, log.timestamp, log.agent_id, log.resource_id, log.action, log.success))
+                """,
+                    (
+                        log.log_id,
+                        log.timestamp,
+                        log.agent_id,
+                        log.resource_id,
+                        log.action,
+                        log.success,
+                    ),
+                )
         except Exception as e:
             logger.debug(f"Failed to persist audit log: {e}")  # Debug level - non-critical
 
@@ -1000,6 +1016,7 @@ class AccessControlManager:
 # =============================================================================
 # Casbin Integration (Optional - requires: pip install casbin)
 # =============================================================================
+
 
 class CasbinAccessControlManager(AccessControlManager):
     """
@@ -1042,7 +1059,7 @@ class CasbinAccessControlManager(AccessControlManager):
         policy_path: Optional[str] = None,
         model_text: Optional[str] = None,
         enable_audit_logging: bool = True,
-        default_visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE
+        default_visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE,
     ):
         """
         Initialize Casbin-powered access control.
@@ -1060,9 +1077,7 @@ class CasbinAccessControlManager(AccessControlManager):
         try:
             import casbin
         except ImportError:
-            raise ImportError(
-                "Casbin not installed. Run: pip install casbin>=1.50.0"
-            )
+            raise ImportError("Casbin not installed. Run: pip install casbin>=1.50.0")
 
         self._casbin = casbin
         self._enforcer = None
@@ -1072,7 +1087,8 @@ class CasbinAccessControlManager(AccessControlManager):
         elif model_text:
             # Create enforcer from string model
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
                 f.write(model_text)
                 temp_model_path = f.name
             self._enforcer = casbin.Enforcer(temp_model_path)
@@ -1081,9 +1097,7 @@ class CasbinAccessControlManager(AccessControlManager):
 
     @classmethod
     def with_rbac(
-        cls,
-        database: Any = None,
-        enable_audit_logging: bool = True
+        cls, database: Any = None, enable_audit_logging: bool = True
     ) -> "CasbinAccessControlManager":
         """
         Create manager with built-in RBAC model.
@@ -1110,16 +1124,12 @@ e = some(where (p.eft == allow))
 m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
 """
         return cls(
-            database=database,
-            model_text=rbac_model,
-            enable_audit_logging=enable_audit_logging
+            database=database, model_text=rbac_model, enable_audit_logging=enable_audit_logging
         )
 
     @classmethod
     def with_rbac_domains(
-        cls,
-        database: Any = None,
-        enable_audit_logging: bool = True
+        cls, database: Any = None, enable_audit_logging: bool = True
     ) -> "CasbinAccessControlManager":
         """
         Create manager with RBAC + domains (multi-tenant).
@@ -1145,7 +1155,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
         return cls(
             database=database,
             model_text=rbac_domains_model,
-            enable_audit_logging=enable_audit_logging
+            enable_audit_logging=enable_audit_logging,
         )
 
     def add_policy(self, *args) -> bool:
@@ -1180,7 +1190,9 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
             return self._enforcer.add_grouping_policy(agent_id, role, domain)
         return self._enforcer.add_grouping_policy(agent_id, role)
 
-    def remove_role_from_agent(self, agent_id: str, role: str, domain: Optional[str] = None) -> bool:
+    def remove_role_from_agent(
+        self, agent_id: str, role: str, domain: Optional[str] = None
+    ) -> bool:
         """Remove a role from an agent."""
         if not self._enforcer:
             return False
@@ -1223,7 +1235,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
         agent_id: str,
         resource_id: str,
         permission: Permission = Permission.READ,
-        domain: Optional[str] = None
+        domain: Optional[str] = None,
     ) -> bool:
         """
         Check access using both Casbin and parent's visibility-based checks.
@@ -1235,17 +1247,11 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
         if self._enforcer:
             if domain:
                 if self.enforce(agent_id, domain, resource_id, permission.value):
-                    self._log_access(
-                        agent_id, resource_id, "resource",
-                        permission.value, True
-                    )
+                    self._log_access(agent_id, resource_id, "resource", permission.value, True)
                     return True
             else:
                 if self.enforce(agent_id, resource_id, permission.value):
-                    self._log_access(
-                        agent_id, resource_id, "resource",
-                        permission.value, True
-                    )
+                    self._log_access(agent_id, resource_id, "resource", permission.value, True)
                     return True
 
         # Fall back to parent's visibility-based checks

@@ -9,13 +9,11 @@ Chroma is an open-source embedding database with:
 
 Install: pip install chromadb
 """
+
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import uuid
 
-from .base import (
-    VectorStore, Document, SearchResult, EmbeddingFunction,
-    DistanceMetric
-)
+from .base import VectorStore, Document, SearchResult, EmbeddingFunction, DistanceMetric
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,7 +58,7 @@ class ChromaVectorStore(VectorStore):
         port: Optional[int] = None,
         distance_fn: DistanceMetric = DistanceMetric.COSINE,
         collection_metadata: Optional[Dict[str, Any]] = None,
-        client: Optional["chromadb.ClientAPI"] = None
+        client: Optional["chromadb.ClientAPI"] = None,
     ):
         """
         Initialize Chroma vector store.
@@ -79,9 +77,7 @@ class ChromaVectorStore(VectorStore):
             import chromadb
             from chromadb.config import Settings
         except ImportError:
-            raise ImportError(
-                "chromadb not installed. Run: pip install chromadb"
-            )
+            raise ImportError("chromadb not installed. Run: pip install chromadb")
 
         self.collection_name = collection_name
         self.embedding = embedding
@@ -93,7 +89,7 @@ class ChromaVectorStore(VectorStore):
             DistanceMetric.COSINE: "cosine",
             DistanceMetric.EUCLIDEAN: "l2",
             DistanceMetric.DOT_PRODUCT: "ip",
-            DistanceMetric.INNER_PRODUCT: "ip"
+            DistanceMetric.INNER_PRODUCT: "ip",
         }
         chroma_distance = distance_map.get(distance_fn, "cosine")
 
@@ -118,17 +114,13 @@ class ChromaVectorStore(VectorStore):
         metadata["hnsw:space"] = chroma_distance
 
         self._collection = self._client.get_or_create_collection(
-            name=collection_name,
-            metadata=metadata
+            name=collection_name, metadata=metadata
         )
 
         logger.info(f"Chroma collection '{collection_name}' initialized")
 
     def add_documents(
-        self,
-        documents: List[Document],
-        ids: Optional[List[str]] = None,
-        **kwargs: Any
+        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
     ) -> List[str]:
         """Add documents to Chroma."""
         texts = [doc.page_content for doc in documents]
@@ -145,7 +137,7 @@ class ChromaVectorStore(VectorStore):
         texts: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[str]:
         """Add texts to Chroma."""
         if not texts:
@@ -166,39 +158,27 @@ class ChromaVectorStore(VectorStore):
         clean_metadatas = []
         for meta in metadatas:
             clean_meta = {
-                k: v for k, v in meta.items()
-                if v is not None and not isinstance(v, (list, dict))
+                k: v for k, v in meta.items() if v is not None and not isinstance(v, (list, dict))
             }
             clean_metadatas.append(clean_meta)
 
         # Add to collection
         self._collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=clean_metadatas
+            ids=ids, embeddings=embeddings, documents=texts, metadatas=clean_metadatas
         )
 
         logger.debug(f"Added {len(texts)} texts to Chroma collection")
         return ids
 
     def similarity_search(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[Document]:
         """Search for similar documents."""
         results = self.similarity_search_with_score(query, k, filter, **kwargs)
         return [r.document for r in results]
 
     def similarity_search_with_score(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[SearchResult]:
         """Search with similarity scores."""
         # Embed query
@@ -212,7 +192,7 @@ class ChromaVectorStore(VectorStore):
             query_embeddings=[query_embedding],
             n_results=k,
             where=where,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"],
         )
 
         # Convert to SearchResult
@@ -227,7 +207,7 @@ class ChromaVectorStore(VectorStore):
                 doc = Document(
                     page_content=results["documents"][0][i] if results["documents"] else "",
                     metadata=results["metadatas"][0][i] if results["metadatas"] else {},
-                    id=doc_id
+                    id=doc_id,
                 )
                 search_results.append(SearchResult(document=doc, score=score))
 
@@ -238,7 +218,7 @@ class ChromaVectorStore(VectorStore):
         embedding: List[float],
         k: int = 4,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[Document]:
         """Search by embedding vector."""
         where = self._convert_filter(filter) if filter else None
@@ -247,7 +227,7 @@ class ChromaVectorStore(VectorStore):
             query_embeddings=[embedding],
             n_results=k,
             where=where,
-            include=["documents", "metadatas"]
+            include=["documents", "metadatas"],
         )
 
         documents = []
@@ -256,7 +236,7 @@ class ChromaVectorStore(VectorStore):
                 doc = Document(
                     page_content=results["documents"][0][i] if results["documents"] else "",
                     metadata=results["metadatas"][0][i] if results["metadatas"] else {},
-                    id=doc_id
+                    id=doc_id,
                 )
                 documents.append(doc)
 
@@ -266,7 +246,7 @@ class ChromaVectorStore(VectorStore):
         self,
         ids: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> bool:
         """Delete documents from Chroma."""
         try:
@@ -286,10 +266,7 @@ class ChromaVectorStore(VectorStore):
 
     def get_by_ids(self, ids: List[str]) -> List[Document]:
         """Get documents by IDs."""
-        results = self._collection.get(
-            ids=ids,
-            include=["documents", "metadatas"]
-        )
+        results = self._collection.get(ids=ids, include=["documents", "metadatas"])
 
         documents = []
         if results and results["ids"]:
@@ -297,7 +274,7 @@ class ChromaVectorStore(VectorStore):
                 doc = Document(
                     page_content=results["documents"][i] if results["documents"] else "",
                     metadata=results["metadatas"][i] if results["metadatas"] else {},
-                    id=doc_id
+                    id=doc_id,
                 )
                 documents.append(doc)
 
@@ -310,14 +287,14 @@ class ChromaVectorStore(VectorStore):
         embedding: EmbeddingFunction,
         collection_name: str = "mindcore_docs",
         persist_directory: Optional[str] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "ChromaVectorStore":
         """Create Chroma store from documents."""
         store = cls(
             collection_name=collection_name,
             embedding=embedding,
             persist_directory=persist_directory,
-            **kwargs
+            **kwargs,
         )
         store.add_documents(documents)
         return store
@@ -330,14 +307,14 @@ class ChromaVectorStore(VectorStore):
         metadatas: Optional[List[Dict[str, Any]]] = None,
         collection_name: str = "mindcore_docs",
         persist_directory: Optional[str] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "ChromaVectorStore":
         """Create Chroma store from texts."""
         store = cls(
             collection_name=collection_name,
             embedding=embedding,
             persist_directory=persist_directory,
-            **kwargs
+            **kwargs,
         )
         store.add_texts(texts, metadatas)
         return store

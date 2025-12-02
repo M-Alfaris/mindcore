@@ -4,17 +4,13 @@ Summarization Agent for compressing threads into summaries.
 Generates concise summaries from conversation threads, extracting
 key facts, topics, entities, and sentiment for efficient retrieval.
 """
+
 import uuid
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from .base_agent import BaseAgent
-from ..core.schemas import (
-    Message,
-    ThreadSummary,
-    MetadataSchema,
-    DEFAULT_METADATA_SCHEMA
-)
+from ..core.schemas import Message, ThreadSummary, MetadataSchema, DEFAULT_METADATA_SCHEMA
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -79,7 +75,7 @@ class SummarizationAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.2,
         max_tokens: int = 1500,
-        metadata_schema: Optional[MetadataSchema] = None
+        metadata_schema: Optional[MetadataSchema] = None,
     ):
         """
         Initialize summarization agent.
@@ -98,7 +94,7 @@ class SummarizationAgent(BaseAgent):
         messages: List[Message],
         thread_id: str,
         user_id: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> ThreadSummary:
         """
         Process messages and generate a thread summary.
@@ -119,7 +115,7 @@ class SummarizationAgent(BaseAgent):
         messages: List[Message],
         thread_id: str,
         user_id: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> ThreadSummary:
         """
         Generate a summary from a list of messages.
@@ -148,8 +144,7 @@ class SummarizationAgent(BaseAgent):
 
         # Sort messages by time
         sorted_messages = sorted(
-            messages,
-            key=lambda m: m.created_at or datetime.min.replace(tzinfo=timezone.utc)
+            messages, key=lambda m: m.created_at or datetime.min.replace(tzinfo=timezone.utc)
         )
 
         # Format messages for the prompt
@@ -160,28 +155,25 @@ class SummarizationAgent(BaseAgent):
 
         # Build the prompt
         prompt = SUMMARIZATION_PROMPT.format(
-            schema_list=schema_list,
-            message_count=len(messages),
-            messages=formatted_messages
+            schema_list=schema_list, message_count=len(messages), messages=formatted_messages
         )
 
         # Call LLM
         try:
             llm_messages = [
-                {"role": "system", "content": "You are a conversation summarization assistant. Always respond with valid JSON."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a conversation summarization assistant. Always respond with valid JSON.",
+                },
+                {"role": "user", "content": prompt},
             ]
 
             response = self._call_llm(llm_messages, json_mode=True)
             data = self._parse_json_response(response)
 
             # Validate and filter topics/categories
-            topics = self.metadata_schema.validate_topics(
-                data.get("topics", [])
-            )
-            categories = self.metadata_schema.validate_categories(
-                data.get("categories", [])
-            )
+            topics = self.metadata_schema.validate_topics(data.get("topics", []))
+            categories = self.metadata_schema.validate_categories(data.get("categories", []))
 
             # Get time bounds
             first_msg = sorted_messages[0]
@@ -202,7 +194,7 @@ class SummarizationAgent(BaseAgent):
                 first_message_at=first_msg.created_at,
                 last_message_at=last_msg.created_at,
                 entities=data.get("entities", {}),
-                messages_deleted=False
+                messages_deleted=False,
             )
 
             logger.info(
@@ -214,9 +206,7 @@ class SummarizationAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Failed to generate summary for thread {thread_id}: {e}")
             # Return a minimal summary on error
-            return self._create_fallback_summary(
-                messages, thread_id, user_id, session_id, str(e)
-            )
+            return self._create_fallback_summary(messages, thread_id, user_id, session_id, str(e))
 
     def _format_messages(self, messages: List[Message]) -> str:
         """Format messages for the LLM prompt."""
@@ -235,17 +225,12 @@ class SummarizationAgent(BaseAgent):
 
             meta_str = f" [{'; '.join(meta_hints)}]" if meta_hints else ""
 
-            formatted.append(
-                f"[{msg.role.value}]{timestamp}{meta_str}: {msg.raw_text[:1000]}"
-            )
+            formatted.append(f"[{msg.role.value}]{timestamp}{meta_str}: {msg.raw_text[:1000]}")
 
         return "\n".join(formatted)
 
     def _create_empty_summary(
-        self,
-        thread_id: str,
-        user_id: str,
-        session_id: Optional[str]
+        self, thread_id: str, user_id: str, session_id: Optional[str]
     ) -> ThreadSummary:
         """Create an empty summary for threads with no messages."""
         return ThreadSummary(
@@ -259,7 +244,7 @@ class SummarizationAgent(BaseAgent):
             categories=[],
             overall_sentiment="neutral",
             message_count=0,
-            messages_deleted=False
+            messages_deleted=False,
         )
 
     def _create_fallback_summary(
@@ -268,7 +253,7 @@ class SummarizationAgent(BaseAgent):
         thread_id: str,
         user_id: str,
         session_id: Optional[str],
-        error: str
+        error: str,
     ) -> ThreadSummary:
         """Create a fallback summary when LLM fails."""
         # Aggregate topics from message metadata
@@ -288,8 +273,7 @@ class SummarizationAgent(BaseAgent):
         summary = f"Conversation with {len(messages)} messages. Started with: {first_text}..."
 
         sorted_msgs = sorted(
-            messages,
-            key=lambda m: m.created_at or datetime.min.replace(tzinfo=timezone.utc)
+            messages, key=lambda m: m.created_at or datetime.min.replace(tzinfo=timezone.utc)
         )
 
         return ThreadSummary(
@@ -306,13 +290,11 @@ class SummarizationAgent(BaseAgent):
             first_message_at=sorted_msgs[0].created_at if sorted_msgs else None,
             last_message_at=sorted_msgs[-1].created_at if sorted_msgs else None,
             entities={},
-            messages_deleted=False
+            messages_deleted=False,
         )
 
     def summarize_multiple_threads(
-        self,
-        threads_data: List[dict],
-        db_manager
+        self, threads_data: List[dict], db_manager
     ) -> List[ThreadSummary]:
         """
         Summarize multiple threads.
@@ -326,21 +308,19 @@ class SummarizationAgent(BaseAgent):
         """
         summaries = []
         for thread_info in threads_data:
-            thread_id = thread_info['thread_id']
-            user_id = thread_info['user_id']
+            thread_id = thread_info["thread_id"]
+            user_id = thread_info["user_id"]
 
             # Fetch messages
             messages = db_manager.fetch_recent_messages(
                 user_id=user_id,
                 thread_id=thread_id,
-                limit=200  # Get more messages for summarization
+                limit=200,  # Get more messages for summarization
             )
 
             if messages:
                 summary = self.summarize_thread(
-                    messages=messages,
-                    thread_id=thread_id,
-                    user_id=user_id
+                    messages=messages, thread_id=thread_id, user_id=user_id
                 )
                 summaries.append(summary)
 

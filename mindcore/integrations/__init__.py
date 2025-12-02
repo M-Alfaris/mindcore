@@ -13,6 +13,7 @@ Usage:
     client = MindcoreClient()
     integration = LangChainIntegration(client)
 """
+
 from .langchain_adapter import LangChainAdapter as LangChainIntegration
 from .llamaindex_adapter import LlamaIndexAdapter as LlamaIndexIntegration
 from .base_adapter import BaseAdapter as BaseIntegration

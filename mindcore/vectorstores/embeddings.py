@@ -7,6 +7,7 @@ Provides adapters for various embedding providers:
 - Ollama (local, with many model options)
 - Custom (bring your own embedding function)
 """
+
 from typing import List, Optional, Callable, Any
 import os
 
@@ -48,7 +49,7 @@ class OpenAIEmbeddings(EmbeddingFunction):
         model: str = "text-embedding-3-small",
         base_url: Optional[str] = None,
         dimensions: Optional[int] = None,
-        batch_size: int = 100
+        batch_size: int = 100,
     ):
         """
         Initialize OpenAI embeddings.
@@ -63,15 +64,11 @@ class OpenAIEmbeddings(EmbeddingFunction):
         try:
             from openai import OpenAI
         except ImportError:
-            raise ImportError(
-                "openai not installed. Run: pip install openai"
-            )
+            raise ImportError("openai not installed. Run: pip install openai")
 
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if not self._api_key:
-            raise ValueError(
-                "OpenAI API key required. Set OPENAI_API_KEY or pass api_key."
-            )
+            raise ValueError("OpenAI API key required. Set OPENAI_API_KEY or pass api_key.")
 
         self._model = model
         self._batch_size = batch_size
@@ -101,15 +98,12 @@ class OpenAIEmbeddings(EmbeddingFunction):
 
         # Process in batches
         for i in range(0, len(texts), self._batch_size):
-            batch = texts[i:i + self._batch_size]
+            batch = texts[i : i + self._batch_size]
 
             # Clean texts (OpenAI doesn't like empty strings)
             batch = [t.replace("\n", " ").strip() or " " for t in batch]
 
-            response = self._client.embeddings.create(
-                input=batch,
-                model=self._model
-            )
+            response = self._client.embeddings.create(input=batch, model=self._model)
 
             batch_embeddings = [item.embedding for item in response.data]
             all_embeddings.extend(batch_embeddings)
@@ -151,7 +145,7 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
         model_name: str = "all-MiniLM-L6-v2",
         device: Optional[str] = None,
         normalize_embeddings: bool = True,
-        batch_size: int = 32
+        batch_size: int = 32,
     ):
         """
         Initialize sentence-transformers embeddings.
@@ -191,7 +185,7 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
             texts,
             batch_size=self._batch_size,
             normalize_embeddings=self._normalize,
-            show_progress_bar=False
+            show_progress_bar=False,
         )
 
         return embeddings.tolist()
@@ -199,9 +193,7 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
     def embed_query(self, text: str) -> List[float]:
         """Embed a single query."""
         embedding = self._model.encode(
-            text,
-            normalize_embeddings=self._normalize,
-            show_progress_bar=False
+            text, normalize_embeddings=self._normalize, show_progress_bar=False
         )
         return embedding.tolist()
 
@@ -235,7 +227,7 @@ class OllamaEmbeddings(EmbeddingFunction):
         self,
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434",
-        dimensions: Optional[int] = None
+        dimensions: Optional[int] = None,
     ):
         """
         Initialize Ollama embeddings.
@@ -248,9 +240,7 @@ class OllamaEmbeddings(EmbeddingFunction):
         try:
             import httpx
         except ImportError:
-            raise ImportError(
-                "httpx not installed. Run: pip install httpx"
-            )
+            raise ImportError("httpx not installed. Run: pip install httpx")
 
         self._model = model
         self._base_url = base_url.rstrip("/")
@@ -264,15 +254,12 @@ class OllamaEmbeddings(EmbeddingFunction):
             test_embedding = self._embed_single("test")
             self._dimensions = len(test_embedding)
 
-        logger.info(
-            f"Ollama embeddings initialized: {model} ({self._dimensions} dimensions)"
-        )
+        logger.info(f"Ollama embeddings initialized: {model} ({self._dimensions} dimensions)")
 
     def _embed_single(self, text: str) -> List[float]:
         """Embed a single text using Ollama API."""
         response = self._client.post(
-            f"{self._base_url}/api/embeddings",
-            json={"model": self._model, "prompt": text}
+            f"{self._base_url}/api/embeddings", json={"model": self._model, "prompt": text}
         )
         response.raise_for_status()
         return response.json()["embedding"]
@@ -321,7 +308,7 @@ class CustomEmbeddings(EmbeddingFunction):
         self,
         embed_fn: Callable[[List[str]], List[List[float]]],
         dimension: int,
-        query_embed_fn: Optional[Callable[[str], List[float]]] = None
+        query_embed_fn: Optional[Callable[[str], List[float]]] = None,
     ):
         """
         Initialize custom embeddings.
@@ -354,10 +341,7 @@ class CustomEmbeddings(EmbeddingFunction):
 
 
 # Factory function for creating embeddings
-def create_embeddings(
-    provider: str = "openai",
-    **kwargs: Any
-) -> EmbeddingFunction:
+def create_embeddings(provider: str = "openai", **kwargs: Any) -> EmbeddingFunction:
     """
     Factory function to create embedding functions.
 
@@ -389,8 +373,7 @@ def create_embeddings(
     provider_lower = provider.lower()
     if provider_lower not in providers:
         raise ValueError(
-            f"Unknown embedding provider: {provider}. "
-            f"Available: {list(providers.keys())}"
+            f"Unknown embedding provider: {provider}. " f"Available: {list(providers.keys())}"
         )
 
     return providers[provider_lower](**kwargs)

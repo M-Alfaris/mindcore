@@ -24,6 +24,7 @@ Usage:
     # Get all topics (including custom)
     all_topics = vocab.get_topics()
 """
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional, Any, Callable, Literal
 from enum import Enum
@@ -38,14 +39,16 @@ logger = get_logger(__name__)
 
 class VocabularySource(str, Enum):
     """Source of vocabulary entries."""
-    CORE = "core"           # Built-in Mindcore vocabulary
-    CONNECTOR = "connector" # Registered by connectors
-    USER = "user"           # User-defined extensions
-    EXTERNAL = "external"   # Loaded from external system
+
+    CORE = "core"  # Built-in Mindcore vocabulary
+    CONNECTOR = "connector"  # Registered by connectors
+    USER = "user"  # User-defined extensions
+    EXTERNAL = "external"  # Loaded from external system
 
 
 class Intent(str, Enum):
     """Predefined message intents."""
+
     ASK_QUESTION = "ask_question"
     REQUEST_ACTION = "request_action"
     PROVIDE_INFO = "provide_info"
@@ -64,6 +67,7 @@ class Intent(str, Enum):
 
 class Sentiment(str, Enum):
     """Predefined sentiment values."""
+
     POSITIVE = "positive"
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
@@ -76,6 +80,7 @@ class Sentiment(str, Enum):
 
 class CommunicationStyle(str, Enum):
     """User communication style preferences."""
+
     FORMAL = "formal"
     CASUAL = "casual"
     TECHNICAL = "technical"
@@ -88,6 +93,7 @@ class CommunicationStyle(str, Enum):
 
 class EntityType(str, Enum):
     """Predefined entity types for extraction."""
+
     ORDER_ID = "order_id"
     INVOICE_ID = "invoice_id"
     TRACKING_NUMBER = "tracking_number"
@@ -109,6 +115,7 @@ class EntityType(str, Enum):
 @dataclass
 class VocabularyEntry:
     """A vocabulary entry with metadata."""
+
     value: str
     source: VocabularySource
     description: Optional[str] = None
@@ -154,34 +161,68 @@ class VocabularyManager:
     # Core topics - general purpose, always available
     CORE_TOPICS = [
         # General conversation
-        "greeting", "farewell", "thanks", "help", "feedback",
+        "greeting",
+        "farewell",
+        "thanks",
+        "help",
+        "feedback",
         # Support
-        "issue", "bug", "error", "problem", "complaint",
+        "issue",
+        "bug",
+        "error",
+        "problem",
+        "complaint",
         # Billing & Orders (aligned with connectors)
-        "billing", "payment", "refund", "cancellation",
-        "orders", "order", "purchase", "delivery", "shipping", "tracking",
-        "invoice", "subscription", "charge", "receipt",
+        "billing",
+        "payment",
+        "refund",
+        "cancellation",
+        "orders",
+        "order",
+        "purchase",
+        "delivery",
+        "shipping",
+        "tracking",
+        "invoice",
+        "subscription",
+        "charge",
+        "receipt",
         # Product
-        "feature", "product", "service", "pricing", "demo",
+        "feature",
+        "product",
+        "service",
+        "pricing",
+        "demo",
         # Technical
-        "api", "integration", "setup", "configuration", "documentation",
+        "api",
+        "integration",
+        "setup",
+        "configuration",
+        "documentation",
         # Account
-        "account", "login", "password", "settings", "profile", "security",
+        "account",
+        "login",
+        "password",
+        "settings",
+        "profile",
+        "security",
         # General
-        "general", "other", "unknown",
+        "general",
+        "other",
+        "unknown",
     ]
 
     # Core categories - high-level classification
     CORE_CATEGORIES = [
-        "support",      # Customer support inquiries
-        "billing",      # Payment, refunds, subscriptions
-        "orders",       # Order management, delivery, tracking
-        "technical",    # API, integrations, bugs
-        "account",      # User account management
-        "product",      # Product features, demos
-        "feedback",     # User feedback, suggestions
-        "general",      # General conversation
-        "urgent",       # High priority issues
+        "support",  # Customer support inquiries
+        "billing",  # Payment, refunds, subscriptions
+        "orders",  # Order management, delivery, tracking
+        "technical",  # API, integrations, bugs
+        "account",  # User account management
+        "product",  # Product features, demos
+        "feedback",  # User feedback, suggestions
+        "general",  # General conversation
+        "urgent",  # High priority issues
     ]
 
     def __init__(self):
@@ -212,9 +253,7 @@ class VocabularyManager:
         # Register core topics
         for topic in self.CORE_TOPICS:
             self._topics[topic] = VocabularyEntry(
-                value=topic,
-                source=VocabularySource.CORE,
-                description=f"Core topic: {topic}"
+                value=topic, source=VocabularySource.CORE, description=f"Core topic: {topic}"
             )
 
         # Register core categories
@@ -222,25 +261,27 @@ class VocabularyManager:
             self._categories[category] = VocabularyEntry(
                 value=category,
                 source=VocabularySource.CORE,
-                description=f"Core category: {category}"
+                description=f"Core category: {category}",
             )
 
         # Set up common aliases/mappings
-        self._topic_mappings.update({
-            "order": "orders",
-            "ship": "shipping",
-            "deliver": "delivery",
-            "pay": "payment",
-            "bill": "billing",
-            "subscribe": "subscription",
-            "cancel": "cancellation",
-            "return": "refund",
-            "pwd": "password",
-            "auth": "login",
-            "config": "configuration",
-            "docs": "documentation",
-            "doc": "documentation",
-        })
+        self._topic_mappings.update(
+            {
+                "order": "orders",
+                "ship": "shipping",
+                "deliver": "delivery",
+                "pay": "payment",
+                "bill": "billing",
+                "subscribe": "subscription",
+                "cancel": "cancellation",
+                "return": "refund",
+                "pwd": "password",
+                "auth": "login",
+                "config": "configuration",
+                "docs": "documentation",
+                "doc": "documentation",
+            }
+        )
 
     # -------------------------------------------------------------------------
     # Topic Management
@@ -261,8 +302,7 @@ class VocabularyManager:
             if include_sources is None:
                 return list(self._topics.keys())
             return [
-                entry.value for entry in self._topics.values()
-                if entry.source in include_sources
+                entry.value for entry in self._topics.values() if entry.source in include_sources
             ]
 
     def is_valid_topic(self, topic: str) -> bool:
@@ -317,10 +357,7 @@ class VocabularyManager:
         return valid
 
     def register_topics(
-        self,
-        topics: List[str],
-        source: str = "user",
-        descriptions: Optional[Dict[str, str]] = None
+        self, topics: List[str], source: str = "user", descriptions: Optional[Dict[str, str]] = None
     ) -> None:
         """
         Register new topics.
@@ -343,7 +380,7 @@ class VocabularyManager:
                     self._topics[normalized] = VocabularyEntry(
                         value=normalized,
                         source=vocab_source,
-                        description=descriptions.get(topic) if descriptions else None
+                        description=descriptions.get(topic) if descriptions else None,
                     )
                     logger.debug(f"Registered topic '{normalized}' from {source}")
 
@@ -380,7 +417,8 @@ class VocabularyManager:
             if include_sources is None:
                 return list(self._categories.keys())
             return [
-                entry.value for entry in self._categories.values()
+                entry.value
+                for entry in self._categories.values()
                 if entry.source in include_sources
             ]
 
@@ -417,7 +455,7 @@ class VocabularyManager:
         self,
         categories: List[str],
         source: str = "user",
-        descriptions: Optional[Dict[str, str]] = None
+        descriptions: Optional[Dict[str, str]] = None,
     ) -> None:
         """Register new categories."""
         with self._lock:
@@ -433,7 +471,7 @@ class VocabularyManager:
                     self._categories[normalized] = VocabularyEntry(
                         value=normalized,
                         source=vocab_source,
-                        description=descriptions.get(category) if descriptions else None
+                        description=descriptions.get(category) if descriptions else None,
                     )
                     logger.debug(f"Registered category '{normalized}' from {source}")
 
@@ -460,13 +498,11 @@ class VocabularyManager:
                     self._topics[normalized] = VocabularyEntry(
                         value=normalized,
                         source=VocabularySource.CONNECTOR,
-                        description=f"Topic from {connector_name} connector"
+                        description=f"Topic from {connector_name} connector",
                     )
 
             # Register connector -> topics mapping
-            self._connector_topics[connector_name] = set(
-                t.lower().strip() for t in topics
-            )
+            self._connector_topics[connector_name] = set(t.lower().strip() for t in topics)
             logger.info(f"Registered connector '{connector_name}' with topics: {topics}")
 
     def get_connector_for_topics(self, topics: List[str]) -> List[str]:
@@ -581,30 +617,20 @@ class VocabularyManager:
         return {
             "topics": {
                 "type": "array",
-                "items": {
-                    "type": "string",
-                    "enum": self.get_topics()
-                },
-                "description": "Topics from the predefined vocabulary"
+                "items": {"type": "string", "enum": self.get_topics()},
+                "description": "Topics from the predefined vocabulary",
             },
             "categories": {
                 "type": "array",
-                "items": {
-                    "type": "string",
-                    "enum": self.get_categories()
-                },
-                "description": "Categories from the predefined vocabulary"
+                "items": {"type": "string", "enum": self.get_categories()},
+                "description": "Categories from the predefined vocabulary",
             },
-            "intent": {
-                "type": "string",
-                "enum": self.get_intents(),
-                "description": "User intent"
-            },
+            "intent": {"type": "string", "enum": self.get_intents(), "description": "User intent"},
             "sentiment": {
                 "type": "string",
                 "enum": self.get_sentiments(),
-                "description": "Message sentiment"
-            }
+                "description": "Message sentiment",
+            },
         }
 
     # -------------------------------------------------------------------------
@@ -631,7 +657,7 @@ class VocabularyManager:
             return
 
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 data = json.load(f)
 
             # Load topics
@@ -702,10 +728,7 @@ class VocabularyManager:
                 "category_mappings": len(self._category_mappings),
                 "registered_connectors": list(self._connector_topics.keys()),
                 "topics_by_source": {
-                    source.value: len([
-                        e for e in self._topics.values()
-                        if e.source == source
-                    ])
+                    source.value: len([e for e in self._topics.values() if e.source == source])
                     for source in VocabularySource
                 },
             }

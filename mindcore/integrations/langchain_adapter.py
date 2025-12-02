@@ -10,6 +10,7 @@ Compatible with:
 - langchain >= 0.1.0
 - langchain-core >= 0.1.0
 """
+
 from typing import Dict, Any, List, Optional
 from .base_adapter import BaseAdapter
 from ..core.schemas import AssembledContext
@@ -23,11 +24,13 @@ _LANGCHAIN_CORE_AVAILABLE = False
 
 try:
     import langchain_core
+
     _LANGCHAIN_CORE_AVAILABLE = True
     _LANGCHAIN_AVAILABLE = True
 except ImportError:
     try:
         import langchain
+
         _LANGCHAIN_AVAILABLE = True
     except ImportError:
         pass
@@ -95,20 +98,17 @@ class LangChainAdapter(BaseAdapter):
         message_type = type(framework_message).__name__
 
         role_mapping = {
-            'HumanMessage': 'user',
-            'AIMessage': 'assistant',
-            'SystemMessage': 'system',
-            'ChatMessage': 'user',
-            'FunctionMessage': 'tool',
-            'ToolMessage': 'tool',
+            "HumanMessage": "user",
+            "AIMessage": "assistant",
+            "SystemMessage": "system",
+            "ChatMessage": "user",
+            "FunctionMessage": "tool",
+            "ToolMessage": "tool",
         }
 
-        role = role_mapping.get(message_type, 'user')
+        role = role_mapping.get(message_type, "user")
 
-        return {
-            'role': role,
-            'text': framework_message.content
-        }
+        return {"role": role, "text": framework_message.content}
 
     def inject_context_into_prompt(self, context: AssembledContext, existing_prompt: str) -> str:
         """
@@ -143,11 +143,7 @@ class LangChainAdapter(BaseAdapter):
         return enhanced
 
     def ingest_langchain_conversation(
-        self,
-        messages: List[Any],
-        user_id: str,
-        thread_id: str,
-        session_id: str
+        self, messages: List[Any], user_id: str, thread_id: str, session_id: str
     ) -> List:
         """
         Ingest LangChain conversation messages.
@@ -205,14 +201,18 @@ class LangChainAdapter(BaseAdapter):
                         for generation in response.generations:
                             for output in generation:
                                 # Handle both text and message content
-                                content = getattr(output, 'text', None) or getattr(output, 'content', str(output))
-                                self.adapter.mindcore.ingest_message({
-                                    'user_id': self.user_id,
-                                    'thread_id': self.thread_id,
-                                    'session_id': self.session_id,
-                                    'role': 'assistant',
-                                    'text': content
-                                })
+                                content = getattr(output, "text", None) or getattr(
+                                    output, "content", str(output)
+                                )
+                                self.adapter.mindcore.ingest_message(
+                                    {
+                                        "user_id": self.user_id,
+                                        "thread_id": self.thread_id,
+                                        "session_id": self.session_id,
+                                        "role": "assistant",
+                                        "text": content,
+                                    }
+                                )
                     except Exception as e:
                         logger.error(f"Mindcore callback error in on_llm_end: {e}")
 
@@ -222,11 +222,13 @@ class LangChainAdapter(BaseAdapter):
                         for msg_list in messages:
                             for msg in msg_list:
                                 msg_dict = self.adapter.format_message_for_ingestion(msg)
-                                msg_dict.update({
-                                    'user_id': self.user_id,
-                                    'thread_id': self.thread_id,
-                                    'session_id': self.session_id
-                                })
+                                msg_dict.update(
+                                    {
+                                        "user_id": self.user_id,
+                                        "thread_id": self.thread_id,
+                                        "session_id": self.session_id,
+                                    }
+                                )
                                 self.adapter.mindcore.ingest_message(msg_dict)
                     except Exception as e:
                         logger.error(f"Mindcore callback error in on_chat_model_start: {e}")
@@ -285,9 +287,9 @@ class LangChainAdapter(BaseAdapter):
                     # Convert to LangChain format
                     lc_messages = []
                     for msg in msgs:
-                        if msg.role.value == 'user':
+                        if msg.role.value == "user":
                             lc_messages.append(HumanMessage(content=msg.raw_text))
-                        elif msg.role.value == 'assistant':
+                        elif msg.role.value == "assistant":
                             lc_messages.append(AIMessage(content=msg.raw_text))
 
                     return lc_messages
@@ -295,11 +297,13 @@ class LangChainAdapter(BaseAdapter):
                 def add_message(self, message):
                     """Add message to Mindcore."""
                     msg_dict = self.adapter.format_message_for_ingestion(message)
-                    msg_dict.update({
-                        'user_id': self.user_id,
-                        'thread_id': self.thread_id,
-                        'session_id': self.session_id
-                    })
+                    msg_dict.update(
+                        {
+                            "user_id": self.user_id,
+                            "thread_id": self.thread_id,
+                            "session_id": self.session_id,
+                        }
+                    )
                     self.adapter.mindcore.ingest_message(msg_dict)
 
                 def clear(self):

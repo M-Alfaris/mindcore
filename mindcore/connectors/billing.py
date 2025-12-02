@@ -3,6 +3,7 @@ Billing Connector - Read-only access to billing/payment systems.
 
 Provides context about invoices, payments, subscriptions, and charges.
 """
+
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
@@ -67,7 +68,7 @@ class BillingConnector(BaseConnector):
         lookup_fn: Optional[callable] = None,
         # General config
         max_results: int = 10,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         """
         Initialize billing connector.
@@ -94,11 +95,7 @@ class BillingConnector(BaseConnector):
         # Register topics with VocabularyManager
         super().__init__()
 
-    async def lookup(
-        self,
-        user_id: str,
-        context: Dict[str, Any]
-    ) -> ConnectorResult:
+    async def lookup(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """
         Fetch billing information for a user.
 
@@ -113,11 +110,7 @@ class BillingConnector(BaseConnector):
             # Use custom function if provided
             if self.lookup_fn:
                 data = await self.lookup_fn(user_id, context)
-                return ConnectorResult(
-                    data=data,
-                    source=self.name,
-                    cache_ttl=self.cache_ttl
-                )
+                return ConnectorResult(data=data, source=self.name, cache_ttl=self.cache_ttl)
 
             # Use Stripe if configured
             if self.stripe_api_key:
@@ -136,27 +129,20 @@ class BillingConnector(BaseConnector):
 
         except Exception as e:
             logger.error(f"Billing lookup failed for user {user_id}: {e}")
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=str(e)
-            )
+            return ConnectorResult(data={}, source=self.name, error=str(e))
 
     async def _lookup_via_stripe(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """Lookup billing via Stripe API."""
         try:
             import stripe
+
             stripe.api_key = self.stripe_api_key
 
             # Note: In production, you'd map user_id to Stripe customer ID
             # This assumes user_id IS the Stripe customer ID or you have a mapping
             customer_id = context.get("stripe_customer_id", user_id)
 
-            data = {
-                "invoices": [],
-                "subscriptions": [],
-                "charges": []
-            }
+            data = {"invoices": [], "subscriptions": [], "charges": []}
 
             # Get recent invoices (read-only)
             invoices = stripe.Invoice.list(customer=customer_id, limit=self.max_results)
@@ -166,7 +152,9 @@ class BillingConnector(BaseConnector):
                     "amount": inv.amount_due / 100,  # Convert from cents
                     "status": inv.status,
                     "created": datetime.fromtimestamp(inv.created).isoformat(),
-                    "due_date": datetime.fromtimestamp(inv.due_date).isoformat() if inv.due_date else None
+                    "due_date": (
+                        datetime.fromtimestamp(inv.due_date).isoformat() if inv.due_date else None
+                    ),
                 }
                 for inv in invoices.data
             ]
@@ -179,29 +167,21 @@ class BillingConnector(BaseConnector):
                     "status": sub.status,
                     "plan": sub.plan.nickname if sub.plan else "Unknown",
                     "amount": sub.plan.amount / 100 if sub.plan else 0,
-                    "current_period_end": datetime.fromtimestamp(sub.current_period_end).isoformat()
+                    "current_period_end": datetime.fromtimestamp(
+                        sub.current_period_end
+                    ).isoformat(),
                 }
                 for sub in subscriptions.data
             ]
 
-            return ConnectorResult(
-                data=data,
-                source=self.name,
-                cache_ttl=self.cache_ttl
-            )
+            return ConnectorResult(data=data, source=self.name, cache_ttl=self.cache_ttl)
 
         except ImportError:
             return ConnectorResult(
-                data={},
-                source=self.name,
-                error="stripe not installed. Run: pip install stripe"
+                data={}, source=self.name, error="stripe not installed. Run: pip install stripe"
             )
         except Exception as e:
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=f"Stripe error: {str(e)}"
-            )
+            return ConnectorResult(data={}, source=self.name, error=f"Stripe error: {str(e)}")
 
     async def _lookup_via_api(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """Lookup billing via custom REST API."""
@@ -223,34 +203,26 @@ class BillingConnector(BaseConnector):
                     self.api_url,
                     params=params,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
                         return ConnectorResult(
-                            data=data,
-                            source=self.name,
-                            cache_ttl=self.cache_ttl
+                            data=data, source=self.name, cache_ttl=self.cache_ttl
                         )
                     else:
                         return ConnectorResult(
                             data={},
                             source=self.name,
-                            error=f"API returned status {response.status}"
+                            error=f"API returned status {response.status}",
                         )
 
         except ImportError:
             return ConnectorResult(
-                data={},
-                source=self.name,
-                error="aiohttp not installed. Run: pip install aiohttp"
+                data={}, source=self.name, error="aiohttp not installed. Run: pip install aiohttp"
             )
         except Exception as e:
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=f"API error: {str(e)}"
-            )
+            return ConnectorResult(data={}, source=self.name, error=f"API error: {str(e)}")
 
     async def _lookup_via_db(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """Lookup billing via database."""
@@ -277,21 +249,15 @@ class BillingConnector(BaseConnector):
             return ConnectorResult(
                 data={"invoices": invoices, "count": len(invoices)},
                 source=self.name,
-                cache_ttl=self.cache_ttl
+                cache_ttl=self.cache_ttl,
             )
 
         except ImportError:
             return ConnectorResult(
-                data={},
-                source=self.name,
-                error="asyncpg not installed. Run: pip install asyncpg"
+                data={}, source=self.name, error="asyncpg not installed. Run: pip install asyncpg"
             )
         except Exception as e:
-            return ConnectorResult(
-                data={},
-                source=self.name,
-                error=f"Database error: {str(e)}"
-            )
+            return ConnectorResult(data={}, source=self.name, error=f"Database error: {str(e)}")
 
     async def _lookup_mock(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """Return mock data for demonstration."""
@@ -306,15 +272,15 @@ class BillingConnector(BaseConnector):
                     "amount": 99.00,
                     "status": "paid",
                     "created_at": (now - timedelta(days=30)).isoformat(),
-                    "paid_at": (now - timedelta(days=28)).isoformat()
+                    "paid_at": (now - timedelta(days=28)).isoformat(),
                 },
                 {
                     "invoice_id": "INV-2024-002",
                     "amount": 99.00,
                     "status": "pending",
                     "created_at": now.isoformat(),
-                    "due_date": (now + timedelta(days=30)).isoformat()
-                }
+                    "due_date": (now + timedelta(days=30)).isoformat(),
+                },
             ],
             "subscriptions": [
                 {
@@ -322,7 +288,7 @@ class BillingConnector(BaseConnector):
                     "plan": "Pro Monthly",
                     "status": "active",
                     "amount": 99.00,
-                    "next_billing": (now + timedelta(days=15)).isoformat()
+                    "next_billing": (now + timedelta(days=15)).isoformat(),
                 }
             ],
             "payment_methods": [
@@ -331,23 +297,20 @@ class BillingConnector(BaseConnector):
                     "last4": "4242",
                     "brand": "Visa",
                     "exp_month": 12,
-                    "exp_year": 2025
+                    "exp_year": 2025,
                 }
             ],
-            "note": "This is mock data. Configure a backend for production."
+            "note": "This is mock data. Configure a backend for production.",
         }
 
         # Filter by invoice_id if provided
         if context.get("invoice_id"):
             mock_data["invoices"] = [
-                i for i in mock_data["invoices"]
-                if i["invoice_id"] == context["invoice_id"]
+                i for i in mock_data["invoices"] if i["invoice_id"] == context["invoice_id"]
             ]
 
         return ConnectorResult(
-            data=mock_data,
-            source=self.name,
-            cache_ttl=60  # Shorter TTL for mock data
+            data=mock_data, source=self.name, cache_ttl=60  # Shorter TTL for mock data
         )
 
     def extract_entities(self, text: str) -> Dict[str, Any]:
@@ -370,9 +333,9 @@ class BillingConnector(BaseConnector):
 
         # Extract invoice numbers
         invoice_patterns = [
-            r'INV-?(\d+)',  # INV-123 or INV123
-            r'invoice[:\s#]*(\d+)',  # invoice 123
-            r'receipt[:\s#]*(\d+)',  # receipt 123
+            r"INV-?(\d+)",  # INV-123 or INV123
+            r"invoice[:\s#]*(\d+)",  # invoice 123
+            r"receipt[:\s#]*(\d+)",  # receipt 123
         ]
 
         for pattern in invoice_patterns:
@@ -391,7 +354,10 @@ class BillingConnector(BaseConnector):
 
         # Check for subscription-related keywords
         text_lower = text.lower()
-        if any(word in text_lower for word in ["subscription", "subscribe", "plan", "upgrade", "downgrade"]):
+        if any(
+            word in text_lower
+            for word in ["subscription", "subscribe", "plan", "upgrade", "downgrade"]
+        ):
             entities["query_type"] = "subscription"
         elif any(word in text_lower for word in ["refund", "cancel", "charge back"]):
             entities["query_type"] = "refund_inquiry"
@@ -410,6 +376,7 @@ class BillingConnector(BaseConnector):
         if self.stripe_api_key:
             try:
                 import stripe
+
                 stripe.api_key = self.stripe_api_key
                 # Simple API check
                 stripe.Account.retrieve()
@@ -420,8 +387,11 @@ class BillingConnector(BaseConnector):
         if self.api_url:
             try:
                 import aiohttp
+
                 async with aiohttp.ClientSession() as session:
-                    async with session.head(self.api_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    async with session.head(
+                        self.api_url, timeout=aiohttp.ClientTimeout(total=5)
+                    ) as resp:
                         return resp.status < 500
             except Exception:
                 return False

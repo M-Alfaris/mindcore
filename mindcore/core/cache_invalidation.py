@@ -7,6 +7,7 @@ Provides intelligent cache invalidation strategies:
 - TTL-based automatic expiration
 - Cache warming after invalidation
 """
+
 from typing import Dict, Any, Optional, List, Set, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
@@ -22,6 +23,7 @@ logger = get_logger(__name__)
 
 class InvalidationReason(str, Enum):
     """Reasons for cache invalidation."""
+
     MESSAGE_UPDATED = "message_updated"
     MESSAGE_DELETED = "message_deleted"
     METADATA_ENRICHED = "metadata_enriched"
@@ -36,6 +38,7 @@ class InvalidationReason(str, Enum):
 @dataclass
 class InvalidationEvent:
     """An event that triggered cache invalidation."""
+
     reason: InvalidationReason
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     user_id: Optional[str] = None
@@ -48,6 +51,7 @@ class InvalidationEvent:
 @dataclass
 class InvalidationStats:
     """Statistics about cache invalidation."""
+
     total_invalidations: int = 0
     by_reason: Dict[str, int] = field(default_factory=dict)
     last_invalidation: Optional[datetime] = None
@@ -81,7 +85,9 @@ class InvalidationStats:
         return {
             "total_invalidations": self.total_invalidations,
             "by_reason": self.by_reason,
-            "last_invalidation": self.last_invalidation.isoformat() if self.last_invalidation else None,
+            "last_invalidation": (
+                self.last_invalidation.isoformat() if self.last_invalidation else None
+            ),
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
             "hit_rate": round(self.hit_rate, 4),
@@ -111,11 +117,7 @@ class CacheInvalidationManager:
         ... )
     """
 
-    def __init__(
-        self,
-        enable_cascading: bool = True,
-        max_event_history: int = 1000
-    ):
+    def __init__(self, enable_cascading: bool = True, max_event_history: int = 1000):
         """
         Initialize the cache invalidation manager.
 
@@ -143,10 +145,7 @@ class CacheInvalidationManager:
         self._topic_index: Dict[str, Set[tuple]] = {}
 
     def register_cache(
-        self,
-        name: str,
-        cache: Any,
-        invalidation_callback: Optional[Callable] = None
+        self, name: str, cache: Any, invalidation_callback: Optional[Callable] = None
     ) -> None:
         """
         Register a cache for invalidation management.
@@ -180,7 +179,7 @@ class CacheInvalidationManager:
         Args:
             message: Message to index
         """
-        if not hasattr(message.metadata, 'topics') or not message.metadata.topics:
+        if not hasattr(message.metadata, "topics") or not message.metadata.topics:
             return
 
         with self._lock:
@@ -196,7 +195,7 @@ class CacheInvalidationManager:
         user_id: Optional[str] = None,
         thread_id: Optional[str] = None,
         reason: InvalidationReason = InvalidationReason.MESSAGE_UPDATED,
-        cascade: bool = True
+        cascade: bool = True,
     ) -> None:
         """
         Invalidate a specific message across all caches.
@@ -209,10 +208,7 @@ class CacheInvalidationManager:
             cascade: If True and cascading is enabled, invalidate related entries
         """
         event = InvalidationEvent(
-            reason=reason,
-            user_id=user_id,
-            thread_id=thread_id,
-            message_id=message_id
+            reason=reason, user_id=user_id, thread_id=thread_id, message_id=message_id
         )
 
         with self._lock:
@@ -221,9 +217,9 @@ class CacheInvalidationManager:
             # Invalidate in all registered caches
             for name, cache in self._caches.items():
                 try:
-                    if hasattr(cache, 'invalidate_message'):
+                    if hasattr(cache, "invalidate_message"):
                         cache.invalidate_message(message_id)
-                    elif user_id and thread_id and hasattr(cache, 'clear_thread'):
+                    elif user_id and thread_id and hasattr(cache, "clear_thread"):
                         # For simple caches, clear the whole thread
                         cache.clear_thread(user_id, thread_id)
                 except Exception as e:
@@ -235,10 +231,7 @@ class CacheInvalidationManager:
         logger.debug(f"Invalidated message {message_id} ({reason.value})")
 
     def invalidate_thread(
-        self,
-        user_id: str,
-        thread_id: str,
-        reason: InvalidationReason = InvalidationReason.MANUAL
+        self, user_id: str, thread_id: str, reason: InvalidationReason = InvalidationReason.MANUAL
     ) -> None:
         """
         Invalidate all cached data for a thread.
@@ -248,18 +241,14 @@ class CacheInvalidationManager:
             thread_id: Thread identifier
             reason: Reason for invalidation
         """
-        event = InvalidationEvent(
-            reason=reason,
-            user_id=user_id,
-            thread_id=thread_id
-        )
+        event = InvalidationEvent(reason=reason, user_id=user_id, thread_id=thread_id)
 
         with self._lock:
             self._record_event(event)
 
             for name, cache in self._caches.items():
                 try:
-                    if hasattr(cache, 'clear_thread'):
+                    if hasattr(cache, "clear_thread"):
                         cache.clear_thread(user_id, thread_id)
                 except Exception as e:
                     logger.error(f"Error invalidating thread in cache '{name}': {e}")
@@ -269,9 +258,7 @@ class CacheInvalidationManager:
         logger.debug(f"Invalidated thread {user_id}/{thread_id} ({reason.value})")
 
     def invalidate_by_topic(
-        self,
-        topic: str,
-        reason: InvalidationReason = InvalidationReason.MANUAL
+        self, topic: str, reason: InvalidationReason = InvalidationReason.MANUAL
     ) -> int:
         """
         Invalidate all cached data related to a topic.
@@ -299,9 +286,7 @@ class CacheInvalidationManager:
         return invalidated
 
     def invalidate_by_user(
-        self,
-        user_id: str,
-        reason: InvalidationReason = InvalidationReason.USER_PREFERENCES_CHANGED
+        self, user_id: str, reason: InvalidationReason = InvalidationReason.USER_PREFERENCES_CHANGED
     ) -> None:
         """
         Invalidate all cached data for a user.
@@ -310,26 +295,20 @@ class CacheInvalidationManager:
             user_id: User identifier
             reason: Reason for invalidation
         """
-        event = InvalidationEvent(
-            reason=reason,
-            user_id=user_id
-        )
+        event = InvalidationEvent(reason=reason, user_id=user_id)
 
         with self._lock:
             self._record_event(event)
 
             for name, cache in self._caches.items():
                 try:
-                    if hasattr(cache, 'clear_user'):
+                    if hasattr(cache, "clear_user"):
                         cache.clear_user(user_id)
-                    elif hasattr(cache, '_thread_caches'):
+                    elif hasattr(cache, "_thread_caches"):
                         # For caches with thread structure
-                        keys_to_remove = [
-                            k for k in cache._thread_caches.keys()
-                            if k[0] == user_id
-                        ]
+                        keys_to_remove = [k for k in cache._thread_caches.keys() if k[0] == user_id]
                         for key in keys_to_remove:
-                            if hasattr(cache, 'clear_thread'):
+                            if hasattr(cache, "clear_thread"):
                                 cache.clear_thread(key[0], key[1])
                 except Exception as e:
                     logger.error(f"Error invalidating user in cache '{name}': {e}")
@@ -338,10 +317,7 @@ class CacheInvalidationManager:
 
         logger.debug(f"Invalidated all cache for user {user_id}")
 
-    def invalidate_stale(
-        self,
-        max_age_seconds: int = 3600
-    ) -> int:
+    def invalidate_stale(self, max_age_seconds: int = 3600) -> int:
         """
         Invalidate entries older than max_age.
 
@@ -359,13 +335,10 @@ class CacheInvalidationManager:
         with self._lock:
             # For each cache with order tracking
             for name, cache in self._caches.items():
-                if hasattr(cache, '_order'):
+                if hasattr(cache, "_order"):
                     for key, order in list(cache._order.items()):
                         # Remove entries older than cutoff
-                        new_order = [
-                            (ts, mid) for ts, mid in order
-                            if ts >= cutoff
-                        ]
+                        new_order = [(ts, mid) for ts, mid in order if ts >= cutoff]
                         if len(new_order) < len(order):
                             invalidated += len(order) - len(new_order)
                             cache._order[key] = new_order
@@ -376,10 +349,7 @@ class CacheInvalidationManager:
 
         return invalidated
 
-    def notify_enrichment_complete(
-        self,
-        message: Message
-    ) -> None:
+    def notify_enrichment_complete(self, message: Message) -> None:
         """
         Notify that a message has been enriched.
 
@@ -395,7 +365,7 @@ class CacheInvalidationManager:
         with self._lock:
             for name, cache in self._caches.items():
                 try:
-                    if hasattr(cache, 'update_message'):
+                    if hasattr(cache, "update_message"):
                         cache.update_message(message)
                 except Exception as e:
                     logger.error(f"Error updating message in cache '{name}': {e}")
@@ -405,7 +375,7 @@ class CacheInvalidationManager:
             user_id=message.user_id,
             thread_id=message.thread_id,
             message_id=message.message_id,
-            topics=getattr(message.metadata, 'topics', []) or []
+            topics=getattr(message.metadata, "topics", []) or [],
         )
         self._record_event(event)
         self._trigger_callbacks(event)
@@ -422,9 +392,7 @@ class CacheInvalidationManager:
         return self._stats.to_dict()
 
     def get_event_history(
-        self,
-        limit: int = 100,
-        reason: Optional[InvalidationReason] = None
+        self, limit: int = 100, reason: Optional[InvalidationReason] = None
     ) -> List[Dict[str, Any]]:
         """
         Get recent invalidation events.
@@ -460,7 +428,7 @@ class CacheInvalidationManager:
 
         # Trim history if needed
         if len(self._event_history) > self.max_event_history:
-            self._event_history = self._event_history[-self.max_event_history:]
+            self._event_history = self._event_history[-self.max_event_history :]
 
     def _trigger_callbacks(self, event: InvalidationEvent) -> None:
         """Trigger registered callbacks for an invalidation event."""

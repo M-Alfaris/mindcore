@@ -4,6 +4,7 @@ Retrieval Query Agent.
 Uses LLM with tool calling to analyze queries and extract search parameters.
 NO keyword matching or regex - pure LLM understanding of semantic intent.
 """
+
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 
@@ -20,6 +21,7 @@ logger = get_logger(__name__)
 @dataclass
 class QueryIntent:
     """Structured query intent from LLM analysis."""
+
     topics: List[str]
     categories: List[str]
     intent: Optional[str]
@@ -55,7 +57,7 @@ class RetrievalQueryAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.2,
         max_tokens: int = 500,
-        metadata_schema: Optional[MetadataSchema] = None
+        metadata_schema: Optional[MetadataSchema] = None,
     ):
         """
         Initialize retrieval query agent.
@@ -114,11 +116,7 @@ Return ONLY valid JSON."""
         """
         return self.analyze_query(query, recent_context)
 
-    def analyze_query(
-        self,
-        query: str,
-        recent_context: Optional[str] = None
-    ) -> QueryIntent:
+    def analyze_query(self, query: str, recent_context: Optional[str] = None) -> QueryIntent:
         """
         Analyze query using LLM to extract search parameters.
 
@@ -135,20 +133,17 @@ Return ONLY valid JSON."""
         logger.debug(f"Analyzing query: {query[:100]}...")
 
         # Build messages
-        messages = [
-            {"role": "system", "content": self.system_prompt}
-        ]
+        messages = [{"role": "system", "content": self.system_prompt}]
 
         if recent_context:
-            messages.append({
-                "role": "user",
-                "content": f"Recent conversation:\n{recent_context}\n\nQuery to analyze: {query}"
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Recent conversation:\n{recent_context}\n\nQuery to analyze: {query}",
+                }
+            )
         else:
-            messages.append({
-                "role": "user",
-                "content": f"Query to analyze: {query}"
-            })
+            messages.append({"role": "user", "content": f"Query to analyze: {query}"})
 
         try:
             # Call LLM
@@ -158,9 +153,9 @@ Return ONLY valid JSON."""
             data = self._parse_json_response(response)
 
             # Validate against schema
-            raw_topics = data.get('topics', [])
-            raw_categories = data.get('categories', [])
-            raw_intent = data.get('intent')
+            raw_topics = data.get("topics", [])
+            raw_categories = data.get("categories", [])
+            raw_intent = data.get("intent")
 
             validated_topics = self.metadata_schema.validate_topics(raw_topics)
             validated_categories = self.metadata_schema.validate_categories(raw_categories)
@@ -175,10 +170,10 @@ Return ONLY valid JSON."""
                 topics=topics,
                 categories=categories,
                 intent=intent,
-                entities=data.get('entities', []),
-                time_scope=data.get('time_scope', 'all_time'),
-                search_current_thread_only=data.get('search_current_thread_only', False),
-                confidence=data.get('confidence', 'medium')
+                entities=data.get("entities", []),
+                time_scope=data.get("time_scope", "all_time"),
+                search_current_thread_only=data.get("search_current_thread_only", False),
+                confidence=data.get("confidence", "medium"),
             )
 
             logger.info(
@@ -195,7 +190,7 @@ Return ONLY valid JSON."""
                 categories=[],
                 intent=None,
                 entities=[],
-                time_scope='all_time',
+                time_scope="all_time",
                 search_current_thread_only=False,
-                confidence='low'
+                confidence="low",
             )

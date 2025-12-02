@@ -3,6 +3,7 @@ Base agent class for Mindcore AI agents.
 
 Uses the LLM provider abstraction layer for all inference.
 """
+
 import json
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, TYPE_CHECKING
@@ -17,11 +18,13 @@ logger = get_logger(__name__)
 
 class AgentInitializationError(Exception):
     """Raised when agent initialization fails."""
+
     pass
 
 
 class APICallError(Exception):
     """Raised when LLM call fails."""
+
     pass
 
 
@@ -43,10 +46,7 @@ class BaseAgent(ABC):
     """
 
     def __init__(
-        self,
-        llm_provider: "BaseLLMProvider",
-        temperature: float = 0.3,
-        max_tokens: int = 1000
+        self, llm_provider: "BaseLLMProvider", temperature: float = 0.3, max_tokens: int = 1000
     ):
         """
         Initialize base agent.
@@ -70,10 +70,7 @@ class BaseAgent(ABC):
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-        logger.info(
-            f"Initialized {self.__class__.__name__} with "
-            f"{llm_provider.name} provider"
-        )
+        logger.info(f"Initialized {self.__class__.__name__} with " f"{llm_provider.name} provider")
 
     @property
     def provider_name(self) -> str:
@@ -90,7 +87,7 @@ class BaseAgent(ABC):
         messages: list,
         json_mode: bool = False,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
     ) -> str:
         """
         Call the LLM provider.
@@ -112,10 +109,7 @@ class BaseAgent(ABC):
 
         try:
             response = self._llm_provider.generate(
-                messages=messages,
-                temperature=temp,
-                max_tokens=tokens,
-                json_mode=json_mode
+                messages=messages, temperature=temp, max_tokens=tokens, json_mode=json_mode
             )
             latency_str = f"{response.latency_ms:.0f}ms" if response.latency_ms else "N/A"
             logger.debug(
@@ -169,10 +163,10 @@ class BaseAgent(ABC):
         except json.JSONDecodeError as e:
             # Try to find JSON object in the response
             try:
-                start = response.find('{')
-                end = response.rfind('}')
+                start = response.find("{")
+                end = response.rfind("}")
                 if start != -1 and end > start:
-                    json_str = response[start:end + 1]
+                    json_str = response[start : end + 1]
                     return json.loads(json_str)
             except json.JSONDecodeError:
                 pass

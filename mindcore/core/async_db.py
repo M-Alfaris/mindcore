@@ -12,6 +12,7 @@ Usage:
         await db.insert_message(message)
         messages = await db.fetch_recent_messages(user_id, thread_id)
 """
+
 import json
 from typing import List, Dict, Any, Optional
 
@@ -131,19 +132,23 @@ class AsyncSQLiteManager:
 
         try:
             metadata_json = json.dumps(
-                message.metadata.to_dict() if isinstance(message.metadata, MessageMetadata)
+                message.metadata.to_dict()
+                if isinstance(message.metadata, MessageMetadata)
                 else message.metadata
             )
-            await self._connection.execute(insert_sql, (
-                message.message_id,
-                message.user_id,
-                message.thread_id,
-                message.session_id,
-                message.role.value,
-                message.raw_text,
-                metadata_json,
-                message.created_at.isoformat() if message.created_at else None,
-            ))
+            await self._connection.execute(
+                insert_sql,
+                (
+                    message.message_id,
+                    message.user_id,
+                    message.thread_id,
+                    message.session_id,
+                    message.role.value,
+                    message.raw_text,
+                    metadata_json,
+                    message.created_at.isoformat() if message.created_at else None,
+                ),
+            )
             await self._connection.commit()
             logger.debug(f"Message {message.message_id} inserted (async)")
             return True
@@ -152,10 +157,7 @@ class AsyncSQLiteManager:
             return False
 
     async def fetch_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: int = 50
+        self, user_id: str, thread_id: str, limit: int = 50
     ) -> List[Message]:
         """
         Fetch recent messages for a user and thread.
@@ -182,16 +184,18 @@ class AsyncSQLiteManager:
 
             messages = []
             for row in rows:
-                metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
                 message = Message(
-                    message_id=row['message_id'],
-                    user_id=row['user_id'],
-                    thread_id=row['thread_id'],
-                    session_id=row['session_id'],
-                    role=MessageRole(row['role']),
-                    raw_text=row['raw_text'],
-                    metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                    created_at=row['created_at']
+                    message_id=row["message_id"],
+                    user_id=row["user_id"],
+                    thread_id=row["thread_id"],
+                    session_id=row["session_id"],
+                    role=MessageRole(row["role"]),
+                    raw_text=row["raw_text"],
+                    metadata=(
+                        MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                    ),
+                    created_at=row["created_at"],
                 )
                 messages.append(message)
 
@@ -219,27 +223,25 @@ class AsyncSQLiteManager:
             row = await cursor.fetchone()
 
             if row:
-                metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
                 return Message(
-                    message_id=row['message_id'],
-                    user_id=row['user_id'],
-                    thread_id=row['thread_id'],
-                    session_id=row['session_id'],
-                    role=MessageRole(row['role']),
-                    raw_text=row['raw_text'],
-                    metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                    created_at=row['created_at']
+                    message_id=row["message_id"],
+                    user_id=row["user_id"],
+                    thread_id=row["thread_id"],
+                    session_id=row["session_id"],
+                    role=MessageRole(row["role"]),
+                    raw_text=row["raw_text"],
+                    metadata=(
+                        MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                    ),
+                    created_at=row["created_at"],
                 )
             return None
         except Exception as e:
             logger.error(f"Failed to get message by ID (async): {e}")
             return None
 
-    async def update_message_metadata(
-        self,
-        message_id: str,
-        metadata: MessageMetadata
-    ) -> bool:
+    async def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
         """
         Update the metadata of an existing message.
 
@@ -260,8 +262,7 @@ class AsyncSQLiteManager:
 
         try:
             metadata_json = json.dumps(
-                metadata.to_dict() if isinstance(metadata, MessageMetadata)
-                else metadata
+                metadata.to_dict() if isinstance(metadata, MessageMetadata) else metadata
             )
             cursor = await self._connection.execute(update_sql, (metadata_json, message_id))
             await self._connection.commit()
@@ -285,7 +286,7 @@ class AsyncSQLiteManager:
         min_importance: float = 0.0,
         thread_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
     ) -> List[Message]:
         """
         Search messages by relevance using metadata filters.
@@ -332,7 +333,7 @@ class AsyncSQLiteManager:
 
             messages = []
             for row in rows:
-                metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
                 metadata = MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
 
                 # Filter by topics (any match)
@@ -356,14 +357,14 @@ class AsyncSQLiteManager:
                     continue
 
                 message = Message(
-                    message_id=row['message_id'],
-                    user_id=row['user_id'],
-                    thread_id=row['thread_id'],
-                    session_id=row['session_id'],
-                    role=MessageRole(row['role']),
-                    raw_text=row['raw_text'],
+                    message_id=row["message_id"],
+                    user_id=row["user_id"],
+                    thread_id=row["thread_id"],
+                    session_id=row["session_id"],
+                    role=MessageRole(row["role"]),
+                    raw_text=row["raw_text"],
                     metadata=metadata,
-                    created_at=row['created_at']
+                    created_at=row["created_at"],
                 )
                 messages.append(message)
 
@@ -500,7 +501,8 @@ class AsyncDatabaseManager:
 
         try:
             metadata_json = json.dumps(
-                message.metadata.to_dict() if isinstance(message.metadata, MessageMetadata)
+                message.metadata.to_dict()
+                if isinstance(message.metadata, MessageMetadata)
                 else message.metadata
             )
             async with self._pool.acquire() as conn:
@@ -522,10 +524,7 @@ class AsyncDatabaseManager:
             return False
 
     async def fetch_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: int = 50
+        self, user_id: str, thread_id: str, limit: int = 50
     ) -> List[Message]:
         """
         Fetch recent messages for a user and thread.
@@ -552,17 +551,21 @@ class AsyncDatabaseManager:
 
             messages = []
             for row in rows:
-                metadata_raw = row['metadata']
-                metadata_dict = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                metadata_raw = row["metadata"]
+                metadata_dict = (
+                    json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                )
                 message = Message(
-                    message_id=row['message_id'],
-                    user_id=row['user_id'],
-                    thread_id=row['thread_id'],
-                    session_id=row['session_id'],
-                    role=MessageRole(row['role']),
-                    raw_text=row['raw_text'],
-                    metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                    created_at=row['created_at']
+                    message_id=row["message_id"],
+                    user_id=row["user_id"],
+                    thread_id=row["thread_id"],
+                    session_id=row["session_id"],
+                    role=MessageRole(row["role"]),
+                    raw_text=row["raw_text"],
+                    metadata=(
+                        MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                    ),
+                    created_at=row["created_at"],
                 )
                 messages.append(message)
 
@@ -590,28 +593,28 @@ class AsyncDatabaseManager:
                 row = await conn.fetchrow(select_sql, message_id)
 
             if row:
-                metadata_raw = row['metadata']
-                metadata_dict = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                metadata_raw = row["metadata"]
+                metadata_dict = (
+                    json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                )
                 return Message(
-                    message_id=row['message_id'],
-                    user_id=row['user_id'],
-                    thread_id=row['thread_id'],
-                    session_id=row['session_id'],
-                    role=MessageRole(row['role']),
-                    raw_text=row['raw_text'],
-                    metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                    created_at=row['created_at']
+                    message_id=row["message_id"],
+                    user_id=row["user_id"],
+                    thread_id=row["thread_id"],
+                    session_id=row["session_id"],
+                    role=MessageRole(row["role"]),
+                    raw_text=row["raw_text"],
+                    metadata=(
+                        MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                    ),
+                    created_at=row["created_at"],
                 )
             return None
         except Exception as e:
             logger.error(f"Failed to get message by ID (async): {e}")
             return None
 
-    async def update_message_metadata(
-        self,
-        message_id: str,
-        metadata: MessageMetadata
-    ) -> bool:
+    async def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
         """
         Update the metadata of an existing message.
 
@@ -632,8 +635,7 @@ class AsyncDatabaseManager:
 
         try:
             metadata_json = json.dumps(
-                metadata.to_dict() if isinstance(metadata, MessageMetadata)
-                else metadata
+                metadata.to_dict() if isinstance(metadata, MessageMetadata) else metadata
             )
             async with self._pool.acquire() as conn:
                 result = await conn.execute(update_sql, metadata_json, message_id)
@@ -658,7 +660,7 @@ class AsyncDatabaseManager:
         min_importance: float = 0.0,
         thread_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
     ) -> List[Message]:
         """
         Search messages by relevance using metadata filters.
@@ -732,17 +734,21 @@ class AsyncDatabaseManager:
 
             messages = []
             for row in rows:
-                metadata_raw = row['metadata']
-                metadata_dict = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                metadata_raw = row["metadata"]
+                metadata_dict = (
+                    json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                )
                 message = Message(
-                    message_id=row['message_id'],
-                    user_id=row['user_id'],
-                    thread_id=row['thread_id'],
-                    session_id=row['session_id'],
-                    role=MessageRole(row['role']),
-                    raw_text=row['raw_text'],
-                    metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                    created_at=row['created_at']
+                    message_id=row["message_id"],
+                    user_id=row["user_id"],
+                    thread_id=row["thread_id"],
+                    session_id=row["session_id"],
+                    role=MessageRole(row["role"]),
+                    raw_text=row["raw_text"],
+                    metadata=(
+                        MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                    ),
+                    created_at=row["created_at"],
                 )
                 messages.append(message)
 

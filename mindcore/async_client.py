@@ -24,6 +24,7 @@ Usage:
 
     asyncio.run(main())
 """
+
 from typing import Optional, Dict, Any
 import asyncio
 
@@ -77,7 +78,7 @@ class AsyncMindcoreClient:
         sqlite_path: str = "mindcore.db",
         llm_provider: Optional[str] = None,
         persistent_cache: bool = True,
-        cache_dir: Optional[str] = None
+        cache_dir: Optional[str] = None,
     ):
         """
         Initialize async Mindcore client.
@@ -144,15 +145,14 @@ class AsyncMindcoreClient:
         cache_config = self.config.get_cache_config()
         if self._persistent_cache:
             self.cache = DiskCacheManager(
-                max_size=cache_config.get('max_size', 50),
-                ttl_seconds=cache_config.get('ttl'),
-                cache_dir=self._cache_dir
+                max_size=cache_config.get("max_size", 50),
+                ttl_seconds=cache_config.get("ttl"),
+                cache_dir=self._cache_dir,
             )
             logger.info("Using persistent disk-backed cache (diskcache)")
         else:
             self.cache = CacheManager(
-                max_size=cache_config.get('max_size', 50),
-                ttl_seconds=cache_config.get('ttl')
+                max_size=cache_config.get("max_size", 50), ttl_seconds=cache_config.get("ttl")
             )
             logger.info("Using in-memory cache (cachetools)")
 
@@ -161,19 +161,19 @@ class AsyncMindcoreClient:
 
         # Get generation defaults
         llm_config = self.config.get_llm_config()
-        defaults = llm_config.get('defaults', {})
+        defaults = llm_config.get("defaults", {})
 
         # Initialize AI agents with the provider
         self.metadata_agent = MetadataAgent(
             llm_provider=self._llm_provider,
-            temperature=defaults.get('temperature', 0.3),
-            max_tokens=defaults.get('max_tokens_enrichment', 800)
+            temperature=defaults.get("temperature", 0.3),
+            max_tokens=defaults.get("max_tokens_enrichment", 800),
         )
 
         self.context_agent = ContextAgent(
             llm_provider=self._llm_provider,
-            temperature=defaults.get('temperature', 0.3),
-            max_tokens=defaults.get('max_tokens_context', 1500)
+            temperature=defaults.get("temperature", 0.3),
+            max_tokens=defaults.get("max_tokens_context", 1500),
         )
 
         # Background enrichment queue
@@ -194,34 +194,34 @@ class AsyncMindcoreClient:
         if provider_type_str:
             provider_type = get_provider_type(provider_type_str)
         else:
-            provider_type = get_provider_type(llm_config.get('provider', 'auto'))
+            provider_type = get_provider_type(llm_config.get("provider", "auto"))
 
         llama_config = {}
-        if llm_config['llama_cpp'].get('model_path'):
+        if llm_config["llama_cpp"].get("model_path"):
             llama_config = {
-                'model_path': llm_config['llama_cpp']['model_path'],
-                'n_ctx': llm_config['llama_cpp'].get('n_ctx', 4096),
-                'n_threads': llm_config['llama_cpp'].get('n_threads'),
-                'n_gpu_layers': llm_config['llama_cpp'].get('n_gpu_layers', 0),
-                'chat_format': llm_config['llama_cpp'].get('chat_format'),
-                'verbose': llm_config['llama_cpp'].get('verbose', False),
+                "model_path": llm_config["llama_cpp"]["model_path"],
+                "n_ctx": llm_config["llama_cpp"].get("n_ctx", 4096),
+                "n_threads": llm_config["llama_cpp"].get("n_threads"),
+                "n_gpu_layers": llm_config["llama_cpp"].get("n_gpu_layers", 0),
+                "chat_format": llm_config["llama_cpp"].get("chat_format"),
+                "verbose": llm_config["llama_cpp"].get("verbose", False),
             }
 
         openai_config = {}
-        if llm_config['openai'].get('api_key'):
+        if llm_config["openai"].get("api_key"):
             openai_config = {
-                'api_key': llm_config['openai']['api_key'],
-                'base_url': llm_config['openai'].get('base_url'),
-                'model': llm_config['openai'].get('model', 'gpt-4o-mini'),
-                'timeout': llm_config['openai'].get('timeout', 60),
-                'max_retries': llm_config['openai'].get('max_retries', 3),
+                "api_key": llm_config["openai"]["api_key"],
+                "base_url": llm_config["openai"].get("base_url"),
+                "model": llm_config["openai"].get("model", "gpt-4o-mini"),
+                "timeout": llm_config["openai"].get("timeout", 60),
+                "max_retries": llm_config["openai"].get("max_retries", 3),
             }
 
         try:
             return create_provider(
                 provider_type=provider_type,
                 llama_config=llama_config if llama_config else None,
-                openai_config=openai_config if openai_config else None
+                openai_config=openai_config if openai_config else None,
             )
         except ValueError as e:
             raise ValueError(
@@ -318,12 +318,12 @@ class AsyncMindcoreClient:
 
         # Create message with empty metadata (no LLM call)
         message = Message(
-            message_id=message_dict.get('message_id') or generate_message_id(),
-            user_id=message_dict['user_id'],
-            thread_id=message_dict['thread_id'],
-            session_id=message_dict['session_id'],
-            role=MessageRole(message_dict['role']),
-            raw_text=message_dict['text'],
+            message_id=message_dict.get("message_id") or generate_message_id(),
+            user_id=message_dict["user_id"],
+            thread_id=message_dict["thread_id"],
+            session_id=message_dict["session_id"],
+            role=MessageRole(message_dict["role"]),
+            raw_text=message_dict["text"],
             metadata=MessageMetadata(),  # Empty metadata
         )
 
@@ -337,12 +337,12 @@ class AsyncMindcoreClient:
 
         # Queue for background enrichment with ALL IDs preserved
         enrichment_task = {
-            'message_id': message.message_id,
-            'user_id': message.user_id,
-            'thread_id': message.thread_id,
-            'session_id': message.session_id,
-            'role': message.role.value,
-            'text': message.raw_text,
+            "message_id": message.message_id,
+            "user_id": message.user_id,
+            "thread_id": message.thread_id,
+            "session_id": message.session_id,
+            "role": message.role.value,
+            "text": message.raw_text,
         }
         await self._enrichment_queue.put(enrichment_task)
 
@@ -361,10 +361,7 @@ class AsyncMindcoreClient:
             try:
                 # Wait for task with timeout (allows graceful shutdown)
                 try:
-                    task = await asyncio.wait_for(
-                        self._enrichment_queue.get(),
-                        timeout=1.0
-                    )
+                    task = await asyncio.wait_for(self._enrichment_queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
                     # Check if queue is empty and we can exit
                     if self._enrichment_queue.empty():
@@ -374,7 +371,7 @@ class AsyncMindcoreClient:
                 if task is None:
                     continue
 
-                message_id = task.get('message_id')
+                message_id = task.get("message_id")
                 if not message_id:
                     logger.warning("Enrichment worker: task missing message_id")
                     continue
@@ -389,20 +386,21 @@ class AsyncMindcoreClient:
                 try:
                     enriched_message = await asyncio.get_event_loop().run_in_executor(
                         None,
-                        lambda t=task: self.metadata_agent.process({
-                            'message_id': t['message_id'],
-                            'user_id': t['user_id'],
-                            'thread_id': t['thread_id'],
-                            'session_id': t['session_id'],
-                            'role': t['role'],
-                            'text': t['text'],
-                        })
+                        lambda t=task: self.metadata_agent.process(
+                            {
+                                "message_id": t["message_id"],
+                                "user_id": t["user_id"],
+                                "thread_id": t["thread_id"],
+                                "session_id": t["session_id"],
+                                "role": t["role"],
+                                "text": t["text"],
+                            }
+                        ),
                     )
 
                     # Update database with enriched metadata
                     await self.db.update_message_metadata(
-                        message_id=message_id,
-                        metadata=enriched_message.metadata
+                        message_id=message_id, metadata=enriched_message.metadata
                     )
 
                     # Update cache with enriched message (preserves all IDs)
@@ -414,8 +412,7 @@ class AsyncMindcoreClient:
                     logger.error(f"Background enrichment failed for {message_id}: {e}")
                     # Mark as failed in database
                     failed_metadata = MessageMetadata(
-                        enrichment_failed=True,
-                        enrichment_error=str(e)
+                        enrichment_failed=True, enrichment_error=str(e)
                     )
                     await self.db.update_message_metadata(message_id, failed_metadata)
 
@@ -425,11 +422,7 @@ class AsyncMindcoreClient:
         logger.info("Async background enrichment worker stopped")
 
     async def get_context(
-        self,
-        user_id: str,
-        thread_id: str,
-        query: str,
-        max_messages: int = 50
+        self, user_id: str, thread_id: str, query: str, max_messages: int = 50
     ) -> AssembledContext:
         """
         Get intelligently assembled context for a query.
@@ -461,7 +454,9 @@ class AsyncMindcoreClient:
 
         # If cache doesn't have enough, fetch from database (async)
         if len(cached_messages) < max_messages:
-            db_messages = await self.db.fetch_recent_messages(user_id, thread_id, limit=max_messages)
+            db_messages = await self.db.fetch_recent_messages(
+                user_id, thread_id, limit=max_messages
+            )
 
             # Merge messages, avoiding duplicates
             message_ids = {msg.message_id for msg in cached_messages}
@@ -508,7 +503,7 @@ class AsyncMindcoreClient:
             topics: list,
             categories: list,
             intent: Optional[str],
-            limit: int
+            limit: int,
         ) -> list:
             # This runs in a thread pool executor (from get_context_smart),
             # so we can safely create a new event loop for the async DB call
@@ -519,7 +514,7 @@ class AsyncMindcoreClient:
                     categories=categories if categories else None,
                     intent=intent,
                     thread_id=thread_id,
-                    limit=limit
+                    limit=limit,
                 )
                 # Create new event loop for this thread (executor thread)
                 try:
@@ -527,6 +522,7 @@ class AsyncMindcoreClient:
                     # If we're in an async context, we need to handle differently
                     # This shouldn't happen since we run agent in executor
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as pool:
                         future = pool.submit(asyncio.run, coro)
                         return future.result(timeout=30)  # 30 second timeout
@@ -547,29 +543,25 @@ class AsyncMindcoreClient:
         tools = ContextTools(
             get_recent_messages=get_recent_messages,
             search_history=search_history,
-            get_session_metadata=get_session_metadata
+            get_session_metadata=get_session_metadata,
         )
 
         llm_config = self.config.get_llm_config()
-        defaults = llm_config.get('defaults', {})
+        defaults = llm_config.get("defaults", {})
 
         self._smart_context_agent = SmartContextAgent(
             llm_provider=self._llm_provider,
             context_tools=tools,
             temperature=0.2,  # Low for consistency
-            max_tokens=defaults.get('max_tokens_context', 1500),
-            max_tool_rounds=3
+            max_tokens=defaults.get("max_tokens_context", 1500),
+            max_tool_rounds=3,
         )
 
         logger.info("SmartContextAgent initialized with database/cache tools (async client)")
         return self._smart_context_agent
 
     async def get_context_smart(
-        self,
-        user_id: str,
-        thread_id: str,
-        query: str,
-        additional_context: Optional[str] = None
+        self, user_id: str, thread_id: str, query: str, additional_context: Optional[str] = None
     ) -> AssembledContext:
         """
         Get context using single LLM call with tool calling (optimized latency).
@@ -624,8 +616,8 @@ class AsyncMindcoreClient:
                 query=query,
                 user_id=user_id,
                 thread_id=thread_id,
-                additional_context=additional_context
-            )
+                additional_context=additional_context,
+            ),
         )
 
         logger.info(
@@ -652,7 +644,11 @@ class AsyncMindcoreClient:
         """Close all connections and cleanup resources."""
         # Stop background enrichment task
         self._connected = False
-        if hasattr(self, '_enrichment_task') and self._enrichment_task and not self._enrichment_task.done():
+        if (
+            hasattr(self, "_enrichment_task")
+            and self._enrichment_task
+            and not self._enrichment_task.done()
+        ):
             self._enrichment_task.cancel()
             try:
                 await self._enrichment_task
@@ -661,7 +657,7 @@ class AsyncMindcoreClient:
             logger.info("Background enrichment task cancelled")
 
         # Close cache (DiskCacheManager needs explicit close)
-        if hasattr(self, 'cache') and self.cache and hasattr(self.cache, 'close'):
+        if hasattr(self, "cache") and self.cache and hasattr(self.cache, "close"):
             self.cache.close()
 
         if self._llm_provider:

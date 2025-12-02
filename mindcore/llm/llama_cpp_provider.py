@@ -4,6 +4,7 @@ llama.cpp LLM Provider for Mindcore.
 Provides CPU-optimized local inference using llama-cpp-python bindings.
 Supports GGUF models for memory-efficient operation.
 """
+
 import os
 import time
 from typing import List, Dict, Optional, Any
@@ -59,7 +60,7 @@ class LlamaCppProvider(BaseLLMProvider):
         n_gpu_layers: int = 0,
         chat_format: Optional[str] = None,
         verbose: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Initialize llama.cpp provider.
@@ -129,7 +130,7 @@ class LlamaCppProvider(BaseLLMProvider):
                 "n_threads": self.n_threads,
                 "n_gpu_layers": self.n_gpu_layers,
                 "verbose": self.verbose,
-                **self._extra_kwargs
+                **self._extra_kwargs,
             }
 
             # Only set chat_format if explicitly provided
@@ -150,7 +151,7 @@ class LlamaCppProvider(BaseLLMProvider):
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
-        json_mode: bool = False
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Generate a response using llama.cpp.
@@ -210,7 +211,7 @@ class LlamaCppProvider(BaseLLMProvider):
                 metadata={
                     "prompt_tokens": usage.get("prompt_tokens"),
                     "completion_tokens": usage.get("completion_tokens"),
-                }
+                },
             )
 
         except Exception as e:

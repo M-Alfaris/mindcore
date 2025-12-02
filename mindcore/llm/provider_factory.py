@@ -4,6 +4,7 @@ LLM Provider Factory for Mindcore.
 Provides factory functions to create and configure LLM providers
 with automatic fallback support.
 """
+
 from enum import Enum
 from typing import Optional, Dict, Any, List
 
@@ -20,6 +21,7 @@ logger = get_logger(__name__)
 
 class ProviderType(Enum):
     """Available LLM provider types."""
+
     LLAMA_CPP = "llama_cpp"
     OPENAI = "openai"
     AUTO = "auto"  # Try llama.cpp first, fallback to OpenAI
@@ -42,10 +44,7 @@ class FallbackProvider(BaseLLMProvider):
     """
 
     def __init__(
-        self,
-        primary: BaseLLMProvider,
-        fallback: BaseLLMProvider,
-        fallback_on_error: bool = True
+        self, primary: BaseLLMProvider, fallback: BaseLLMProvider, fallback_on_error: bool = True
     ):
         """
         Initialize fallback provider.
@@ -61,16 +60,14 @@ class FallbackProvider(BaseLLMProvider):
         self.fallback_on_error = fallback_on_error
         self._last_used_provider: Optional[str] = None
 
-        logger.info(
-            f"FallbackProvider initialized: {primary.name} -> {fallback.name}"
-        )
+        logger.info(f"FallbackProvider initialized: {primary.name} -> {fallback.name}")
 
     def generate(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
-        json_mode: bool = False
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Generate response with automatic fallback.
@@ -99,7 +96,7 @@ class FallbackProvider(BaseLLMProvider):
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    json_mode=json_mode
+                    json_mode=json_mode,
                 )
                 self._last_used_provider = self.primary.name
                 return response
@@ -126,7 +123,7 @@ class FallbackProvider(BaseLLMProvider):
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    json_mode=json_mode
+                    json_mode=json_mode,
                 )
                 self._last_used_provider = self.fallback.name
 
@@ -199,7 +196,7 @@ class FallbackProvider(BaseLLMProvider):
 def create_provider(
     provider_type: ProviderType = ProviderType.AUTO,
     llama_config: Optional[Dict[str, Any]] = None,
-    openai_config: Optional[Dict[str, Any]] = None
+    openai_config: Optional[Dict[str, Any]] = None,
 ) -> BaseLLMProvider:
     """
     Factory function to create LLM providers.
@@ -340,7 +337,4 @@ def get_provider_type(name: str) -> ProviderType:
     }
     if name_lower in mapping:
         return mapping[name_lower]
-    raise ValueError(
-        f"Unknown provider type: {name}. "
-        f"Valid options: {list(mapping.keys())}"
-    )
+    raise ValueError(f"Unknown provider type: {name}. " f"Valid options: {list(mapping.keys())}")

@@ -4,6 +4,7 @@ Metadata Enrichment AI Agent.
 Enriches messages with intelligent metadata using LLM providers.
 Uses VocabularyManager for controlled vocabulary.
 """
+
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from .base_agent import BaseAgent
@@ -55,7 +56,7 @@ class EnrichmentAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.3,
         max_tokens: int = 800,
-        vocabulary: Optional[VocabularyManager] = None
+        vocabulary: Optional[VocabularyManager] = None,
     ):
         """
         Initialize enrichment agent.
@@ -121,15 +122,15 @@ Rules:
             Enriched Message object. Check message.metadata.enrichment_failed
             to determine if enrichment was successful.
         """
-        text = message_dict.get('text', '')
-        role = message_dict.get('role', 'user')
+        text = message_dict.get("text", "")
+        role = message_dict.get("role", "user")
 
         logger.debug(f"Enriching message ({self.provider_name}): {text[:100]}...")
 
         # Prepare messages for LLM
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"Message to analyze:\nRole: {role}\nText: {text}"}
+            {"role": "user", "content": f"Message to analyze:\nRole: {role}\nText: {text}"},
         ]
 
         metadata = None
@@ -141,10 +142,10 @@ Rules:
             metadata_dict = self._parse_json_response(response)
 
             # Validate against vocabulary (strict - no fallback to invalid values)
-            raw_topics = metadata_dict.get('topics', [])
-            raw_categories = metadata_dict.get('categories', [])
-            raw_intent = metadata_dict.get('intent')
-            raw_sentiment = metadata_dict.get('sentiment', {})
+            raw_topics = metadata_dict.get("topics", [])
+            raw_categories = metadata_dict.get("categories", [])
+            raw_intent = metadata_dict.get("intent")
+            raw_sentiment = metadata_dict.get("sentiment", {})
 
             # Validate using VocabularyManager
             validated_topics = self.vocabulary.validate_topics(raw_topics)
@@ -152,9 +153,9 @@ Rules:
             validated_intent = self.vocabulary.resolve_intent(raw_intent) if raw_intent else None
 
             # Validate sentiment
-            sentiment_overall = raw_sentiment.get('overall', 'neutral')
+            sentiment_overall = raw_sentiment.get("overall", "neutral")
             if not self.vocabulary.is_valid_sentiment(sentiment_overall):
-                sentiment_overall = 'neutral'
+                sentiment_overall = "neutral"
 
             # If no valid topics found, default to "general"
             if not validated_topics:
@@ -168,17 +169,17 @@ Rules:
             metadata = MessageMetadata(
                 topics=validated_topics,
                 categories=validated_categories,
-                importance=max(0.0, min(1.0, metadata_dict.get('importance', 0.5))),
+                importance=max(0.0, min(1.0, metadata_dict.get("importance", 0.5))),
                 sentiment={
                     "overall": sentiment_overall,
-                    "score": max(0.0, min(1.0, raw_sentiment.get('score', 0.5)))
+                    "score": max(0.0, min(1.0, raw_sentiment.get("score", 0.5))),
                 },
                 intent=validated_intent,
-                tags=metadata_dict.get('tags', []),
-                entities=metadata_dict.get('entities', []),
-                key_phrases=metadata_dict.get('key_phrases', []),
+                tags=metadata_dict.get("tags", []),
+                entities=metadata_dict.get("entities", []),
+                key_phrases=metadata_dict.get("key_phrases", []),
                 enrichment_failed=False,
-                enrichment_error=None
+                enrichment_error=None,
             )
 
             logger.info(f"Successfully enriched message with topics: {metadata.topics}")
@@ -188,20 +189,17 @@ Rules:
             logger.warning(f"Enrichment failed: {error_msg}")
 
             # Create metadata that indicates failure
-            metadata = MessageMetadata(
-                enrichment_failed=True,
-                enrichment_error=error_msg
-            )
+            metadata = MessageMetadata(enrichment_failed=True, enrichment_error=error_msg)
 
         # Create Message object
         message = Message(
-            message_id=message_dict.get('message_id') or generate_message_id(),
-            user_id=message_dict['user_id'],
-            thread_id=message_dict['thread_id'],
-            session_id=message_dict['session_id'],
+            message_id=message_dict.get("message_id") or generate_message_id(),
+            user_id=message_dict["user_id"],
+            thread_id=message_dict["thread_id"],
+            session_id=message_dict["session_id"],
             role=role,
             raw_text=text,
-            metadata=metadata
+            metadata=metadata,
         )
 
         return message

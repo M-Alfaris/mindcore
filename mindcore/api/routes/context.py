@@ -1,6 +1,7 @@
 """
 Context route for context assembly.
 """
+
 from fastapi import APIRouter, HTTPException, Query, Depends, Header, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
@@ -14,8 +15,7 @@ router = APIRouter(prefix="/context", tags=["context"])
 
 
 async def check_rate_limit(
-    request: Request,
-    x_user_id: Optional[str] = Header(None, alias="X-User-ID")
+    request: Request, x_user_id: Optional[str] = Header(None, alias="X-User-ID")
 ) -> str:
     """
     Dependency to check rate limit.
@@ -42,7 +42,7 @@ async def check_rate_limit(
         raise HTTPException(
             status_code=429,
             detail=f"Rate limit exceeded. Please wait before making more requests.",
-            headers={"X-RateLimit-Remaining": str(remaining)}
+            headers={"X-RateLimit-Remaining": str(remaining)},
         )
 
     return identifier
@@ -50,6 +50,7 @@ async def check_rate_limit(
 
 class ContextRequest(BaseModel):
     """Request model for context assembly."""
+
     user_id: str = Field(..., description="User identifier")
     thread_id: str = Field(..., description="Thread identifier")
     query: str = Field(..., description="Query or topic for context assembly")
@@ -58,6 +59,7 @@ class ContextRequest(BaseModel):
 
 class ContextResponse(BaseModel):
     """Response model for context assembly."""
+
     success: bool
     assembled_context: str
     key_points: List[str]
@@ -66,10 +68,7 @@ class ContextResponse(BaseModel):
 
 
 @router.post("", response_model=ContextResponse)
-async def get_context(
-    request: ContextRequest,
-    rate_limit_id: str = Depends(check_rate_limit)
-):
+async def get_context(request: ContextRequest, rate_limit_id: str = Depends(check_rate_limit)):
     """
     Assemble relevant context for a query.
 
@@ -95,7 +94,7 @@ async def get_context(
             user_id=request.user_id,
             thread_id=request.thread_id,
             query=request.query,
-            max_messages=request.max_messages
+            max_messages=request.max_messages,
         )
 
         return ContextResponse(
@@ -103,7 +102,7 @@ async def get_context(
             assembled_context=context.assembled_context,
             key_points=context.key_points,
             relevant_message_ids=context.relevant_message_ids,
-            metadata=context.metadata
+            metadata=context.metadata,
         )
 
     except ValueError as e:
@@ -120,7 +119,7 @@ async def get_context_query_param(
     thread_id: str,
     query: str = Query(..., description="Query or topic for context assembly"),
     max_messages: int = Query(50, description="Maximum messages to consider"),
-    rate_limit_id: str = Depends(check_rate_limit)
+    rate_limit_id: str = Depends(check_rate_limit),
 ):
     """
     Get context using query parameters (alternative GET endpoint).
@@ -142,10 +141,7 @@ async def get_context_query_param(
 
         # Get context
         context = mindcore.get_context(
-            user_id=user_id,
-            thread_id=thread_id,
-            query=query,
-            max_messages=max_messages
+            user_id=user_id, thread_id=thread_id, query=query, max_messages=max_messages
         )
 
         return ContextResponse(
@@ -153,7 +149,7 @@ async def get_context_query_param(
             assembled_context=context.assembled_context,
             key_points=context.key_points,
             relevant_message_ids=context.relevant_message_ids,
-            metadata=context.metadata
+            metadata=context.metadata,
         )
 
     except ValueError as e:
@@ -170,7 +166,7 @@ async def get_formatted_context(
     thread_id: str,
     query: str = Query(..., description="Query or topic for context assembly"),
     max_messages: int = Query(50, description="Maximum messages to consider"),
-    rate_limit_id: str = Depends(check_rate_limit)
+    rate_limit_id: str = Depends(check_rate_limit),
 ):
     """
     Get context pre-formatted for prompt injection.
@@ -194,14 +190,12 @@ async def get_formatted_context(
 
         # Get context
         context = mindcore.get_context(
-            user_id=user_id,
-            thread_id=thread_id,
-            query=query,
-            max_messages=max_messages
+            user_id=user_id, thread_id=thread_id, query=query, max_messages=max_messages
         )
 
         # Format for prompt
         from ...utils.helper import format_context_for_prompt
+
         formatted = format_context_for_prompt(context.to_dict())
 
         return {"formatted_context": formatted}

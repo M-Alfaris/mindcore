@@ -18,6 +18,7 @@ Database Storage Strategy:
     - `created_at_local` - User's timezone (for display, debugging)
     - `timezone` - IANA timezone name (e.g., "America/New_York")
 """
+
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple, Union
 import os
@@ -25,11 +26,13 @@ import os
 # Try to import zoneinfo (Python 3.9+) or pytz as fallback
 try:
     from zoneinfo import ZoneInfo
+
     _HAS_ZONEINFO = True
 except ImportError:
     _HAS_ZONEINFO = False
     try:
         import pytz
+
         _HAS_PYTZ = True
     except ImportError:
         _HAS_PYTZ = False
@@ -134,7 +137,7 @@ def to_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         # Naive datetime - assume it's in default timezone
         local_tz = get_timezone(_default_timezone)
-        if _HAS_PYTZ and hasattr(local_tz, 'localize'):
+        if _HAS_PYTZ and hasattr(local_tz, "localize"):
             dt = local_tz.localize(dt)
         else:
             dt = dt.replace(tzinfo=local_tz)
@@ -184,19 +187,19 @@ def parse_iso(iso_string: str) -> datetime:
     normalized = iso_string.strip()
 
     # Handle 'Z' suffix (Zulu time = UTC)
-    if normalized.endswith('Z'):
-        normalized = normalized[:-1] + '+00:00'
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
 
     # Handle space separator (SQLite format)
-    if ' ' in normalized and 'T' not in normalized:
-        normalized = normalized.replace(' ', 'T')
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T")
 
     try:
         dt = datetime.fromisoformat(normalized)
     except ValueError:
         # Try parsing without timezone
         try:
-            dt = datetime.fromisoformat(normalized.split('+')[0].split('-')[0])
+            dt = datetime.fromisoformat(normalized.split("+")[0].split("-")[0])
         except ValueError:
             # Last resort: return current time
             return utc_now()
@@ -223,8 +226,7 @@ def format_iso(dt: datetime, include_tz: bool = True) -> str:
 
 
 def get_dual_timestamps(
-    dt: Optional[datetime] = None,
-    tz_name: Optional[str] = None
+    dt: Optional[datetime] = None, tz_name: Optional[str] = None
 ) -> Tuple[datetime, datetime, str]:
     """
     Get both UTC and local timestamps for database storage.

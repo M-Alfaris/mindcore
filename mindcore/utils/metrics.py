@@ -7,6 +7,7 @@ Provides utilities for:
 - Tool call tracking
 - Latency monitoring
 """
+
 import time
 import functools
 from typing import Optional, Callable, Any, Dict
@@ -55,6 +56,7 @@ def timed(operation_name: Optional[str] = None):
         async def my_async_function():
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         name = operation_name or func.__name__
 
@@ -73,6 +75,7 @@ def timed(operation_name: Optional[str] = None):
             return result
 
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
@@ -115,11 +118,14 @@ def set_metrics_callback(callback: Callable[[str, Dict[str, Any]], None]):
 def _record_timing(operation_name: str, elapsed_ms: int):
     """Internal function to record timing metrics."""
     if _metrics_callback:
-        _metrics_callback("response_time", {
-            "operation": operation_name,
-            "total_time_ms": elapsed_ms,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        _metrics_callback(
+            "response_time",
+            {
+                "operation": operation_name,
+                "total_time_ms": elapsed_ms,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
 
 def record_llm_call(
@@ -128,7 +134,7 @@ def record_llm_call(
     completion_tokens: int = 0,
     latency_ms: int = 0,
     success: bool = True,
-    error: Optional[str] = None
+    error: Optional[str] = None,
 ):
     """Record an LLM API call metric.
 
@@ -141,15 +147,18 @@ def record_llm_call(
         error: Error message if failed
     """
     if _metrics_callback:
-        _metrics_callback("response_time", {
-            "operation": "llm_call",
-            "model": model,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_time_ms": latency_ms,
-            "success": success,
-            "error": error
-        })
+        _metrics_callback(
+            "response_time",
+            {
+                "operation": "llm_call",
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_time_ms": latency_ms,
+                "success": success,
+                "error": error,
+            },
+        )
 
 
 def record_tool_call(
@@ -157,7 +166,7 @@ def record_tool_call(
     execution_time_ms: int,
     success: bool = True,
     message_id: Optional[str] = None,
-    error_message: Optional[str] = None
+    error_message: Optional[str] = None,
 ):
     """Record a tool execution metric.
 
@@ -169,20 +178,23 @@ def record_tool_call(
         error_message: Error message if failed
     """
     if _metrics_callback:
-        _metrics_callback("tool_call", {
-            "tool_name": tool_name,
-            "execution_time_ms": execution_time_ms,
-            "success": success,
-            "message_id": message_id,
-            "error_message": error_message
-        })
+        _metrics_callback(
+            "tool_call",
+            {
+                "tool_name": tool_name,
+                "execution_time_ms": execution_time_ms,
+                "success": success,
+                "message_id": message_id,
+                "error_message": error_message,
+            },
+        )
 
 
 def record_enrichment(
     message_id: str,
     enrichment_time_ms: int,
     topics_extracted: int = 0,
-    intent_detected: Optional[str] = None
+    intent_detected: Optional[str] = None,
 ):
     """Record message enrichment metrics.
 
@@ -193,20 +205,20 @@ def record_enrichment(
         intent_detected: Detected intent
     """
     if _metrics_callback:
-        _metrics_callback("response_time", {
-            "operation": "enrichment",
-            "message_id": message_id,
-            "total_time_ms": enrichment_time_ms,
-            "topics_extracted": topics_extracted,
-            "intent_detected": intent_detected
-        })
+        _metrics_callback(
+            "response_time",
+            {
+                "operation": "enrichment",
+                "message_id": message_id,
+                "total_time_ms": enrichment_time_ms,
+                "topics_extracted": topics_extracted,
+                "intent_detected": intent_detected,
+            },
+        )
 
 
 def record_retrieval(
-    thread_id: str,
-    retrieval_time_ms: int,
-    messages_retrieved: int = 0,
-    cache_hit: bool = False
+    thread_id: str, retrieval_time_ms: int, messages_retrieved: int = 0, cache_hit: bool = False
 ):
     """Record context retrieval metrics.
 
@@ -217,13 +229,16 @@ def record_retrieval(
         cache_hit: Whether the result was cached
     """
     if _metrics_callback:
-        _metrics_callback("response_time", {
-            "operation": "retrieval",
-            "thread_id": thread_id,
-            "total_time_ms": retrieval_time_ms,
-            "messages_retrieved": messages_retrieved,
-            "cache_hit": cache_hit
-        })
+        _metrics_callback(
+            "response_time",
+            {
+                "operation": "retrieval",
+                "thread_id": thread_id,
+                "total_time_ms": retrieval_time_ms,
+                "messages_retrieved": messages_retrieved,
+                "cache_hit": cache_hit,
+            },
+        )
 
 
 # Initialize metrics connection with dashboard API
@@ -231,6 +246,7 @@ def _init_dashboard_metrics():
     """Initialize metrics callback to dashboard API."""
     try:
         from ..api.routes.dashboard import record_performance_metric
+
         set_metrics_callback(record_performance_metric)
     except ImportError:
         pass  # Dashboard not available

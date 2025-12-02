@@ -4,6 +4,7 @@ User Preferences Manager.
 Manages amendable user preferences separately from read-only system data.
 Provides safe methods for updating preferences through AI agent tools.
 """
+
 from typing import Any, Tuple, Optional, Union
 
 from .schemas import UserPreferences
@@ -58,12 +59,7 @@ class PreferencesManager:
         """
         return self.db.get_or_create_preferences(user_id)
 
-    def update_preference(
-        self,
-        user_id: str,
-        field: str,
-        value: Any
-    ) -> Tuple[bool, str]:
+    def update_preference(self, user_id: str, field: str, value: Any) -> Tuple[bool, str]:
         """
         Update a user preference field.
 
@@ -81,7 +77,10 @@ class PreferencesManager:
         # Check if field is amendable
         if field not in UserPreferences.AMENDABLE_FIELDS:
             logger.warning(f"Attempted to update non-amendable field: {field}")
-            return False, f"Field '{field}' is not amendable. Amendable fields are: {', '.join(UserPreferences.AMENDABLE_FIELDS)}"
+            return (
+                False,
+                f"Field '{field}' is not amendable. Amendable fields are: {', '.join(UserPreferences.AMENDABLE_FIELDS)}",
+            )
 
         # Get current preferences
         prefs = self.get_preferences(user_id)
@@ -189,12 +188,7 @@ class PreferencesManager:
                 return True, f"Removed goal: {goal}"
         return False, f"Failed to remove goal: {goal}"
 
-    def set_custom_context(
-        self,
-        user_id: str,
-        key: str,
-        value: Any
-    ) -> Tuple[bool, str]:
+    def set_custom_context(self, user_id: str, key: str, value: Any) -> Tuple[bool, str]:
         """
         Set a custom context key-value pair.
 
@@ -310,12 +304,7 @@ class AsyncPreferencesManager:
         """Get user preferences, creating default if not exists."""
         return await self.db.get_or_create_preferences(user_id)
 
-    async def update_preference(
-        self,
-        user_id: str,
-        field: str,
-        value: Any
-    ) -> Tuple[bool, str]:
+    async def update_preference(self, user_id: str, field: str, value: Any) -> Tuple[bool, str]:
         """Update a user preference field."""
         if field not in UserPreferences.AMENDABLE_FIELDS:
             logger.warning(f"Attempted to update non-amendable field: {field}")

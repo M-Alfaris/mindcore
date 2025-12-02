@@ -6,6 +6,7 @@ Provides commands for:
 - Checking system status
 - Configuration management
 """
+
 import os
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ def get_version() -> str:
     """Get Mindcore version."""
     try:
         from mindcore import __version__
+
         return __version__
     except ImportError:
         return "unknown"
@@ -54,22 +56,20 @@ def cli():
 
 @cli.command("download-model")
 @click.option(
-    "--model", "-m",
+    "--model",
+    "-m",
     type=click.Choice(list(RECOMMENDED_MODELS.keys())),
     default=DEFAULT_MODEL,
-    help=f"Model to download (default: {DEFAULT_MODEL})"
+    help=f"Model to download (default: {DEFAULT_MODEL})",
 )
 @click.option(
-    "--output-dir", "-o",
+    "--output-dir",
+    "-o",
     type=click.Path(),
     default=None,
-    help="Directory to save model (default: ~/.mindcore/models)"
+    help="Directory to save model (default: ~/.mindcore/models)",
 )
-@click.option(
-    "--force", "-f",
-    is_flag=True,
-    help="Overwrite existing model file"
-)
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing model file")
 def download_model(model: str, output_dir: Optional[str], force: bool):
     """
     Download a GGUF model for local inference.
@@ -142,7 +142,7 @@ def _download_with_progress(url: str, output_path: Path) -> None:
 
         # Get file size
         with urllib.request.urlopen(url) as response:
-            total_size = int(response.headers.get('content-length', 0))
+            total_size = int(response.headers.get("content-length", 0))
 
             # Download with progress bar
             with click.progressbar(
@@ -151,7 +151,7 @@ def _download_with_progress(url: str, output_path: Path) -> None:
                 show_eta=True,
                 show_percent=True,
             ) as bar:
-                with open(output_path, 'wb') as out_file:
+                with open(output_path, "wb") as out_file:
                     downloaded = 0
                     chunk_size = 1024 * 1024  # 1MB chunks
 
@@ -168,11 +168,7 @@ def _download_with_progress(url: str, output_path: Path) -> None:
 
 
 @cli.command("list-models")
-@click.option(
-    "--verbose", "-v",
-    is_flag=True,
-    help="Show detailed model information"
-)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed model information")
 def list_models(verbose: bool):
     """
     List available models for download.
@@ -281,7 +277,9 @@ def status():
         click.echo("     mindcore download-model")
         click.echo()
         click.echo("  2. Set the model path:")
-        click.echo("     export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf")
+        click.echo(
+            "     export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+        )
         click.echo()
         click.echo("  Or use OpenAI as fallback:")
         click.echo("     export OPENAI_API_KEY=sk-...")
@@ -300,6 +298,7 @@ def config(show: bool):
     if show:
         try:
             from mindcore.core import ConfigLoader
+
             loader = ConfigLoader()
             llm_config = loader.get_llm_config()
 
@@ -318,7 +317,7 @@ def config(show: bool):
             click.echo()
 
             click.echo("  OpenAI:")
-            api_key = llm_config['openai']['api_key']
+            api_key = llm_config["openai"]["api_key"]
             click.echo(f"    api_key: {api_key[:8] + '...' if api_key else 'Not set'}")
             click.echo(f"    base_url: {llm_config['openai']['base_url'] or 'Default (OpenAI)'}")
             click.echo(f"    model: {llm_config['openai']['model']}")
@@ -326,7 +325,9 @@ def config(show: bool):
 
             click.echo("  Defaults:")
             click.echo(f"    temperature: {llm_config['defaults']['temperature']}")
-            click.echo(f"    max_tokens_enrichment: {llm_config['defaults']['max_tokens_enrichment']}")
+            click.echo(
+                f"    max_tokens_enrichment: {llm_config['defaults']['max_tokens_enrichment']}"
+            )
             click.echo(f"    max_tokens_context: {llm_config['defaults']['max_tokens_context']}")
 
         except Exception as e:

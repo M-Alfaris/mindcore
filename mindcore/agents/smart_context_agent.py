@@ -5,7 +5,12 @@ Single LLM call that uses tools to fetch relevant context.
 Uses VocabularyManager for controlled vocabulary in tool parameters.
 
 This is the PRIMARY context retrieval method for Mindcore.
+
+Handles early conversation scenarios gracefully by detecting when there's
+insufficient history and returning appropriate context without unnecessary
+LLM calls.
 """
+
 import json
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
@@ -13,12 +18,17 @@ from dataclasses import dataclass
 from .base_agent import BaseAgent
 from ..core.schemas import Message, AssembledContext, ThreadSummary, UserPreferences
 from ..core.vocabulary import get_vocabulary, VocabularyManager
-from ..utils.logger import get_logger
+from ..utils.logger import get_logger, LogCategory
 
 if TYPE_CHECKING:
     from ..llm import BaseLLMProvider
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, category=LogCategory.CONTEXT)
+
+
+# Thresholds for early conversation detection
+MIN_MESSAGES_FOR_CONTEXT = 2  # Minimum messages before attempting context assembly
+MIN_MESSAGES_FOR_HISTORY_SEARCH = 5  # Minimum messages before searching history
 
 
 @dataclass
@@ -28,11 +38,16 @@ class ContextTools:
 
     These are callbacks that the agent can invoke to fetch data.
     """
+
     get_recent_messages: Callable[[str, str, int], List[Message]]
-    search_history: Callable[[str, Optional[str], List[str], List[str], Optional[str], int], List[Message]]
+    search_history: Callable[
+        [str, Optional[str], List[str], List[str], Optional[str], int], List[Message]
+    ]
     get_session_metadata: Callable[[str, str], Dict[str, Any]]
     # New tools for enhanced context
-    get_historical_summaries: Optional[Callable[[str, Optional[List[str]], int], List[ThreadSummary]]] = None
+    get_historical_summaries: Optional[
+        Callable[[str, Optional[List[str]], int], List[ThreadSummary]]
+    ] = None
     get_user_preferences: Optional[Callable[[str], UserPreferences]] = None
     update_user_preference: Optional[Callable[[str, str, Any, str], tuple]] = None
     # External connector tools
@@ -65,12 +80,12 @@ def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of recent messages to retrieve (default: 10, max: 50)",
-                            "default": 10
+                            "default": 10,
                         }
                     },
-                    "required": []
-                }
-            }
+                    "required": [],
+                },
+            },
         },
         {
             "type": "function",
@@ -84,49 +99,45 @@ def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
                             "type": "array",
                             "items": {
                                 "type": "string",
-                                "enum": topics  # Constrained to vocabulary
+                                "enum": topics,  # Constrained to vocabulary
                             },
-                            "description": "Topics to search for (must be from predefined list)"
+                            "description": "Topics to search for (must be from predefined list)",
                         },
                         "categories": {
                             "type": "array",
                             "items": {
                                 "type": "string",
-                                "enum": categories  # Constrained to vocabulary
+                                "enum": categories,  # Constrained to vocabulary
                             },
-                            "description": "Categories to filter by (must be from predefined list)"
+                            "description": "Categories to filter by (must be from predefined list)",
                         },
                         "intent": {
                             "type": "string",
                             "enum": intents,  # Constrained to vocabulary
-                            "description": "Intent type to filter by"
+                            "description": "Intent type to filter by",
                         },
                         "search_current_thread_only": {
                             "type": "boolean",
                             "description": "If true, only search within current thread. If false, search across all user's threads.",
-                            "default": False
+                            "default": False,
                         },
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of historical messages to retrieve (default: 20)",
-                            "default": 20
-                        }
+                            "default": 20,
+                        },
                     },
-                    "required": []
-                }
-            }
+                    "required": [],
+                },
+            },
         },
         {
             "type": "function",
             "function": {
                 "name": "get_session_metadata",
                 "description": "Get aggregated metadata about the current session (topics discussed, categories, intents). Useful for understanding the overall context of the conversation.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
         },
         {
             "type": "function",
@@ -138,33 +149,26 @@ def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
                     "properties": {
                         "topics": {
                             "type": "array",
-                            "items": {
-                                "type": "string",
-                                "enum": topics
-                            },
-                            "description": "Topics to filter summaries by"
+                            "items": {"type": "string", "enum": topics},
+                            "description": "Topics to filter summaries by",
                         },
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of summaries to retrieve (default: 5)",
-                            "default": 5
-                        }
+                            "default": 5,
+                        },
                     },
-                    "required": []
-                }
-            }
+                    "required": [],
+                },
+            },
         },
         {
             "type": "function",
             "function": {
                 "name": "get_user_preferences",
                 "description": "Get user's preferences (language, timezone, interests, goals, communication style). Use to personalize responses.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
         },
         {
             "type": "function",
@@ -176,22 +180,27 @@ def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
                     "properties": {
                         "field": {
                             "type": "string",
-                            "enum": ["language", "timezone", "communication_style", "interests", "goals", "preferred_name"],
-                            "description": "The preference field to update"
+                            "enum": [
+                                "language",
+                                "timezone",
+                                "communication_style",
+                                "interests",
+                                "goals",
+                                "preferred_name",
+                            ],
+                            "description": "The preference field to update",
                         },
-                        "value": {
-                            "description": "The new value for the field"
-                        },
+                        "value": {"description": "The new value for the field"},
                         "action": {
                             "type": "string",
                             "enum": ["set", "add", "remove"],
                             "description": "For list fields (interests, goals): 'add' or 'remove' item. For others: 'set' value.",
-                            "default": "set"
-                        }
+                            "default": "set",
+                        },
                     },
-                    "required": ["field", "value"]
-                }
-            }
+                    "required": ["field", "value"],
+                },
+            },
         },
         {
             "type": "function",
@@ -203,21 +212,18 @@ def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
                     "properties": {
                         "topics": {
                             "type": "array",
-                            "items": {
-                                "type": "string",
-                                "enum": topics
-                            },
-                            "description": "Topics to look up (e.g., 'orders', 'billing', 'subscription', 'delivery')"
+                            "items": {"type": "string", "enum": topics},
+                            "description": "Topics to look up (e.g., 'orders', 'billing', 'subscription', 'delivery')",
                         },
                         "context": {
                             "type": "object",
-                            "description": "Extracted entities like order_id, invoice_id, dates. Pass relevant IDs mentioned in conversation."
-                        }
+                            "description": "Extracted entities like order_id, invoice_id, dates. Pass relevant IDs mentioned in conversation.",
+                        },
                     },
-                    "required": ["topics"]
-                }
-            }
-        }
+                    "required": ["topics"],
+                },
+            },
+        },
     ]
 
 
@@ -261,7 +267,7 @@ class SmartContextAgent(BaseAgent):
         temperature: float = 0.2,
         max_tokens: int = 1500,
         vocabulary: Optional[VocabularyManager] = None,
-        max_tool_rounds: int = 3
+        max_tool_rounds: int = 3,
     ):
         """
         Initialize smart context agent.
@@ -350,18 +356,18 @@ Guidelines:
 - Focus on information that helps answer the user's query"""
 
     def _execute_tool(
-        self,
-        tool_name: str,
-        arguments: Dict[str, Any],
-        user_id: str,
-        thread_id: str
+        self, tool_name: str, arguments: Dict[str, Any], user_id: str, thread_id: str
     ) -> str:
         """Execute a tool and return the result as a string."""
         try:
             if tool_name == "get_recent_messages":
                 limit = arguments.get("limit", 10)
                 messages = self.tools.get_recent_messages(user_id, thread_id, min(limit, 50))
-                return self._format_messages(messages)
+                result = self._format_messages(messages)
+                logger.debug(
+                    "Tool executed: get_recent_messages", message_count=len(messages), limit=limit
+                )
+                return result
 
             elif tool_name == "search_history":
                 # Validate topics/categories against vocabulary
@@ -380,50 +386,88 @@ Guidelines:
                 messages = self.tools.search_history(
                     user_id, search_thread_id, topics, categories, intent, limit
                 )
-                return self._format_messages(messages)
+                result = self._format_messages(messages)
+                logger.debug(
+                    "Tool executed: search_history",
+                    message_count=len(messages),
+                    topics=topics,
+                    categories=categories,
+                    intent=intent,
+                )
+                return result
 
             elif tool_name == "get_session_metadata":
                 metadata = self.tools.get_session_metadata(user_id, thread_id)
+                logger.debug("Tool executed: get_session_metadata", has_metadata=bool(metadata))
                 return json.dumps(metadata, indent=2)
 
             elif tool_name == "get_historical_summaries":
                 if self.tools.get_historical_summaries is None:
+                    logger.debug("Tool not available: get_historical_summaries")
                     return "Historical summaries feature is not enabled."
                 raw_topics = arguments.get("topics")
                 topics = self.vocabulary.validate_topics(raw_topics) if raw_topics else None
                 limit = arguments.get("limit", 5)
                 summaries = self.tools.get_historical_summaries(user_id, topics, limit)
+                logger.debug(
+                    "Tool executed: get_historical_summaries",
+                    summary_count=len(summaries) if summaries else 0,
+                )
                 return self._format_summaries(summaries)
 
             elif tool_name == "get_user_preferences":
                 if self.tools.get_user_preferences is None:
+                    logger.debug("Tool not available: get_user_preferences")
                     return "User preferences feature is not enabled."
                 prefs = self.tools.get_user_preferences(user_id)
+                logger.debug(
+                    "Tool executed: get_user_preferences", has_preferences=prefs is not None
+                )
                 return self._format_preferences(prefs)
 
             elif tool_name == "update_user_preference":
                 if self.tools.update_user_preference is None:
+                    logger.debug("Tool not available: update_user_preference")
                     return "User preference updates are not enabled."
                 field = arguments.get("field")
                 value = arguments.get("value")
                 action = arguments.get("action", "set")
                 success, message = self.tools.update_user_preference(user_id, field, value, action)
+                logger.debug(
+                    "Tool executed: update_user_preference",
+                    field=field,
+                    action=action,
+                    success=success,
+                )
                 return json.dumps({"success": success, "message": message})
 
             elif tool_name == "lookup_external_data":
                 if self.tools.lookup_external_data is None:
+                    logger.debug("Tool not available: lookup_external_data")
                     return "External data lookup is not enabled. Configure connectors to enable."
                 raw_topics = arguments.get("topics", [])
                 topics = self.vocabulary.validate_topics(raw_topics)
                 context = arguments.get("context", {})
                 results = self.tools.lookup_external_data(user_id, topics, context)
+                logger.debug(
+                    "Tool executed: lookup_external_data",
+                    result_count=len(results) if results else 0,
+                    topics=topics,
+                )
                 return self._format_external_results(results)
 
             else:
+                logger.warning("Unknown tool requested", tool_name=tool_name)
                 return f"Unknown tool: {tool_name}"
 
         except Exception as e:
-            logger.error(f"Tool execution error ({tool_name}): {e}")
+            logger.error(
+                "Tool execution error",
+                tool=tool_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                arguments=arguments,
+            )
             return f"Error executing {tool_name}: {str(e)}"
 
     def _format_messages(self, messages: List[Message]) -> str:
@@ -437,9 +481,7 @@ Guidelines:
             if msg.metadata and msg.metadata.topics:
                 meta_info = f" [topics: {', '.join(msg.metadata.topics)}]"
 
-            formatted.append(
-                f"[{msg.role.value}]{meta_info}: {msg.raw_text[:500]}"
-            )
+            formatted.append(f"[{msg.role.value}]{meta_info}: {msg.raw_text[:500]}")
 
         return "\n".join(formatted)
 
@@ -495,9 +537,9 @@ Guidelines:
         formatted = []
         for result in results:
             # Handle ConnectorResult objects
-            if hasattr(result, 'to_context_string'):
+            if hasattr(result, "to_context_string"):
                 formatted.append(result.to_context_string())
-            elif hasattr(result, 'source') and hasattr(result, 'data'):
+            elif hasattr(result, "source") and hasattr(result, "data"):
                 # Duck typing for ConnectorResult-like objects
                 if result.error:
                     formatted.append(f"[{result.source}] Error: {result.error}")
@@ -518,11 +560,7 @@ Guidelines:
         return "\n\n".join(formatted)
 
     def process(
-        self,
-        query: str,
-        user_id: str,
-        thread_id: str,
-        additional_context: Optional[str] = None
+        self, query: str, user_id: str, thread_id: str, additional_context: Optional[str] = None
     ) -> AssembledContext:
         """
         Assemble context for a query using tool calling.
@@ -536,22 +574,51 @@ Guidelines:
         Returns:
             AssembledContext with relevant information
         """
-        logger.debug(f"SmartContextAgent processing query: {query[:100]}...")
+        logger.debug(
+            "SmartContextAgent processing query",
+            query_preview=query[:100],
+            user_id=user_id,
+            thread_id=thread_id,
+        )
 
-        # Build initial messages
-        messages = [
-            {"role": "system", "content": self.system_prompt}
-        ]
+        # Check conversation state before expensive LLM calls
+        conversation_state = self._assess_conversation_state(user_id, thread_id)
+
+        if conversation_state["is_early_conversation"]:
+            return self._handle_early_conversation(
+                query=query,
+                user_id=user_id,
+                thread_id=thread_id,
+                state=conversation_state,
+                additional_context=additional_context,
+            )
+
+        # Build initial messages for tool calling
+        messages = [{"role": "system", "content": self.system_prompt}]
 
         user_content = f"User query: {query}"
         if additional_context:
             user_content += f"\n\nAdditional context: {additional_context}"
+
+        # Add conversation state hint to help LLM make better tool choices
+        if conversation_state["message_count"] < MIN_MESSAGES_FOR_HISTORY_SEARCH:
+            user_content += (
+                f"\n\nNote: This is a relatively new conversation with only "
+                f"{conversation_state['message_count']} messages. "
+                f"Focus on recent context rather than searching history."
+            )
 
         messages.append({"role": "user", "content": user_content})
 
         # Tool calling loop
         for round_num in range(self.max_tool_rounds):
             try:
+                logger.debug(
+                    "Tool calling round started",
+                    round=round_num + 1,
+                    max_rounds=self.max_tool_rounds,
+                )
+
                 response = self._call_llm_with_tools(messages)
 
                 # Check if LLM wants to call tools
@@ -565,51 +632,241 @@ Guidelines:
                             try:
                                 arguments = json.loads(arguments_str) if arguments_str else {}
                             except json.JSONDecodeError as je:
-                                logger.warning(f"Failed to parse tool arguments: {je}")
+                                logger.warning(
+                                    "Failed to parse tool arguments", tool=tool_name, error=str(je)
+                                )
                                 arguments = {}
 
-                            logger.debug(f"Tool call: {tool_name}({arguments})")
+                            logger.debug("Executing tool", tool=tool_name, arguments=arguments)
 
                             result = self._execute_tool(tool_name, arguments, user_id, thread_id)
-                            tool_results.append({
-                                "tool_call_id": tool_call["id"],
-                                "role": "tool",
-                                "content": result
-                            })
+                            tool_results.append(
+                                {"tool_call_id": tool_call["id"], "role": "tool", "content": result}
+                            )
                         except (KeyError, TypeError) as e:
-                            logger.error(f"Malformed tool call: {e}")
-                            tool_results.append({
-                                "tool_call_id": tool_call.get("id", "unknown"),
-                                "role": "tool",
-                                "content": f"Error: malformed tool call - {e}"
-                            })
+                            logger.error("Malformed tool call", error=str(e), tool_call=tool_call)
+                            tool_results.append(
+                                {
+                                    "tool_call_id": tool_call.get("id", "unknown"),
+                                    "role": "tool",
+                                    "content": f"Error: malformed tool call - {e}",
+                                }
+                            )
 
                     # Add assistant message with tool calls
-                    messages.append({
-                        "role": "assistant",
-                        "content": response.get("content"),
-                        "tool_calls": response["tool_calls"]
-                    })
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": response.get("content"),
+                            "tool_calls": response["tool_calls"],
+                        }
+                    )
 
                     # Add tool results
                     messages.extend(tool_results)
 
                 else:
                     # No more tool calls, parse final response
+                    logger.debug(
+                        "Tool calling complete, parsing response", rounds_used=round_num + 1
+                    )
                     return self._parse_final_response(response.get("content", ""), query)
 
             except Exception as e:
-                logger.error(f"Error in tool calling round {round_num}: {e}")
+                logger.error(
+                    "Error in tool calling round",
+                    round=round_num + 1,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 break
 
-        # Fallback if tool calling fails
-        logger.warning("Tool calling exhausted or failed, returning minimal context")
-        return AssembledContext(
-            assembled_context="Unable to assemble context",
-            key_points=[],
-            relevant_message_ids=[],
-            metadata={"error": "Context assembly failed"}
+        # Fallback if tool calling fails - provide helpful context
+        return self._create_fallback_context(
+            query=query,
+            reason="tool_calling_exhausted",
+            message_count=conversation_state.get("message_count", 0),
         )
+
+    def _assess_conversation_state(self, user_id: str, thread_id: str) -> Dict[str, Any]:
+        """
+        Assess the current conversation state to determine context strategy.
+
+        Returns dict with:
+        - is_early_conversation: True if not enough history for full context
+        - message_count: Number of messages in thread
+        - has_enriched_messages: Whether messages have been enriched
+        - recent_messages: List of recent messages (for early conversation handling)
+        """
+        try:
+            # Get recent messages to assess state
+            recent_messages = self.tools.get_recent_messages(user_id, thread_id, 10)
+            message_count = len(recent_messages)
+
+            # Check if messages have been enriched (have topics)
+            enriched_count = sum(
+                1
+                for msg in recent_messages
+                if msg.metadata and msg.metadata.topics and len(msg.metadata.topics) > 0
+            )
+            has_enriched_messages = enriched_count > 0
+
+            is_early = message_count < MIN_MESSAGES_FOR_CONTEXT
+
+            if is_early:
+                logger.info(
+                    "Early conversation detected",
+                    message_count=message_count,
+                    min_required=MIN_MESSAGES_FOR_CONTEXT,
+                    enriched_count=enriched_count,
+                )
+
+            return {
+                "is_early_conversation": is_early,
+                "message_count": message_count,
+                "has_enriched_messages": has_enriched_messages,
+                "enriched_count": enriched_count,
+                "recent_messages": recent_messages,
+            }
+
+        except Exception as e:
+            logger.error(
+                "Failed to assess conversation state",
+                error=str(e),
+                user_id=user_id,
+                thread_id=thread_id,
+            )
+            # Return safe defaults - assume early conversation
+            return {
+                "is_early_conversation": True,
+                "message_count": 0,
+                "has_enriched_messages": False,
+                "enriched_count": 0,
+                "recent_messages": [],
+                "error": str(e),
+            }
+
+    def _handle_early_conversation(
+        self,
+        query: str,
+        user_id: str,
+        thread_id: str,
+        state: Dict[str, Any],
+        additional_context: Optional[str] = None,
+    ) -> AssembledContext:
+        """
+        Handle context assembly for early conversations without LLM tool calling.
+
+        For new conversations with minimal history, we skip the expensive LLM
+        tool-calling loop and directly return available context.
+        """
+        message_count = state.get("message_count", 0)
+        recent_messages = state.get("recent_messages", [])
+
+        logger.info(
+            "Handling early conversation context",
+            message_count=message_count,
+            query_preview=query[:50],
+        )
+
+        # Build context from available messages
+        context_parts = []
+
+        if message_count == 0:
+            context_parts.append(
+                "This is the start of a new conversation. No prior context available."
+            )
+        else:
+            context_parts.append(
+                f"This is an early conversation with {message_count} message(s). "
+                f"Limited historical context is available."
+            )
+
+            # Include recent messages as context
+            if recent_messages:
+                context_parts.append("\nRecent messages:")
+                for msg in recent_messages[-5:]:  # Last 5 messages
+                    role = msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+                    text_preview = msg.raw_text[:200] if msg.raw_text else ""
+                    context_parts.append(f"  [{role}]: {text_preview}")
+
+        if additional_context:
+            context_parts.append(f"\nAdditional context: {additional_context}")
+
+        assembled = "\n".join(context_parts)
+
+        return AssembledContext(
+            assembled_context=assembled,
+            key_points=[
+                f"New conversation ({message_count} messages)",
+                "Context will improve as conversation progresses",
+            ],
+            relevant_message_ids=[msg.message_id for msg in recent_messages],
+            metadata={
+                "context_source": "early_conversation",
+                "confidence": "low" if message_count == 0 else "medium",
+                "message_count": message_count,
+                "is_early_conversation": True,
+                "query": query,
+            },
+        )
+
+    def _create_fallback_context(
+        self, query: str, reason: str, message_count: int = 0
+    ) -> AssembledContext:
+        """
+        Create a fallback context when tool calling fails or is exhausted.
+
+        Provides a helpful response instead of a generic error.
+        """
+        if reason == "tool_calling_exhausted":
+            if message_count < MIN_MESSAGES_FOR_HISTORY_SEARCH:
+                # Not enough history - this is expected
+                logger.info(
+                    "Context assembly completed with limited history",
+                    message_count=message_count,
+                    reason=reason,
+                )
+                return AssembledContext(
+                    assembled_context=(
+                        f"Limited conversation history ({message_count} messages). "
+                        f"Context will improve as the conversation continues."
+                    ),
+                    key_points=["Conversation history is still building"],
+                    relevant_message_ids=[],
+                    metadata={
+                        "context_source": "fallback",
+                        "confidence": "low",
+                        "reason": reason,
+                        "message_count": message_count,
+                    },
+                )
+            else:
+                # Unexpected failure with sufficient history
+                logger.warning(
+                    "Tool calling exhausted with sufficient history",
+                    message_count=message_count,
+                    reason=reason,
+                )
+                return AssembledContext(
+                    assembled_context="Context assembly encountered an issue. Proceeding with available information.",
+                    key_points=[],
+                    relevant_message_ids=[],
+                    metadata={
+                        "context_source": "fallback",
+                        "confidence": "low",
+                        "reason": reason,
+                        "error": "Tool calling exhausted without producing final response",
+                    },
+                )
+        else:
+            logger.error("Context assembly failed", reason=reason, message_count=message_count)
+            return AssembledContext(
+                assembled_context="Unable to assemble context due to an error.",
+                key_points=[],
+                relevant_message_ids=[],
+                metadata={"context_source": "error", "confidence": "none", "error": reason},
+            )
 
     def _call_llm_with_tools(self, messages: List[Dict]) -> Dict[str, Any]:
         """
@@ -623,7 +880,7 @@ Guidelines:
                 messages=messages,
                 tools=self._tool_definitions,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens
+                max_tokens=self.max_tokens,
             )
             return response
         except AttributeError:
@@ -644,8 +901,8 @@ Guidelines:
                 metadata={
                     "context_source": data.get("context_source", "unknown"),
                     "confidence": data.get("confidence", "medium"),
-                    "query": query
-                }
+                    "query": query,
+                },
             )
         except Exception as e:
             logger.warning(f"Failed to parse context response: {e}")
@@ -654,7 +911,7 @@ Guidelines:
                 assembled_context=content[:1000] if content else "",
                 key_points=[],
                 relevant_message_ids=[],
-                metadata={"parse_error": str(e)}
+                metadata={"parse_error": str(e)},
             )
 
     def refresh_vocabulary(self) -> None:

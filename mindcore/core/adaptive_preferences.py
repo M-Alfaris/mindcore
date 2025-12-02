@@ -4,6 +4,7 @@ Adaptive User Preferences Learner.
 Automatically learns and updates user preferences based on enriched
 message metadata, without explicit user instruction.
 """
+
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
@@ -21,6 +22,7 @@ logger = get_logger(__name__)
 @dataclass
 class PreferenceSignal:
     """A signal that may indicate a user preference."""
+
     signal_type: str  # e.g., "topic_interest", "communication_style"
     value: str
     weight: float  # 0.0 to 1.0
@@ -30,6 +32,7 @@ class PreferenceSignal:
 @dataclass
 class AdaptiveConfig:
     """Configuration for adaptive preferences learning."""
+
     # Minimum signals before updating a preference
     min_signals_for_topic: int = 3
     min_signals_for_style: int = 5
@@ -71,7 +74,7 @@ class AdaptivePreferencesLearner:
         self,
         preferences_manager: PreferencesManager,
         db_manager,
-        config: Optional[AdaptiveConfig] = None
+        config: Optional[AdaptiveConfig] = None,
     ):
         """
         Initialize the adaptive preferences learner.
@@ -90,11 +93,7 @@ class AdaptivePreferencesLearner:
         # In-memory signal buffers per user (for real-time learning)
         self._signal_buffers: Dict[str, List[PreferenceSignal]] = {}
 
-    def process_message_metadata(
-        self,
-        user_id: str,
-        metadata: MessageMetadata
-    ) -> None:
+    def process_message_metadata(self, user_id: str, metadata: MessageMetadata) -> None:
         """
         Process enriched message metadata and extract preference signals.
 
@@ -119,57 +118,72 @@ class AdaptivePreferencesLearner:
     def _extract_signals(self, metadata: MessageMetadata) -> List[PreferenceSignal]:
         """Extract preference signals from message metadata."""
         signals = []
-        base_weight = metadata.importance if hasattr(metadata, 'importance') else 0.5
+        base_weight = metadata.importance if hasattr(metadata, "importance") else 0.5
 
         # Skip low importance messages for preference learning
         if base_weight < 0.3:
             return signals
 
         # Topic interest signals
-        for topic in getattr(metadata, 'topics', []):
+        for topic in getattr(metadata, "topics", []):
             if topic and topic != "general":
-                signals.append(PreferenceSignal(
-                    signal_type="topic_interest",
-                    value=topic,
-                    weight=base_weight
-                ))
+                signals.append(
+                    PreferenceSignal(signal_type="topic_interest", value=topic, weight=base_weight)
+                )
 
         # Communication style signals from sentiment and intent
-        sentiment = getattr(metadata, 'sentiment', None)
-        intent = getattr(metadata, 'intent', None)
+        sentiment = getattr(metadata, "sentiment", None)
+        intent = getattr(metadata, "intent", None)
 
         if sentiment:
             # Handle both string and dict formats for sentiment
             sentiment_value = sentiment
             if isinstance(sentiment, dict):
-                sentiment_value = sentiment.get('overall', '')
+                sentiment_value = sentiment.get("overall", "")
             style = self._infer_style_from_sentiment(sentiment_value)
             if style:
-                signals.append(PreferenceSignal(
-                    signal_type="communication_style",
-                    value=style,
-                    weight=base_weight * 0.5  # Lower weight for inferred style
-                ))
+                signals.append(
+                    PreferenceSignal(
+                        signal_type="communication_style",
+                        value=style,
+                        weight=base_weight * 0.5,  # Lower weight for inferred style
+                    )
+                )
 
         # Entity-based interest signals
-        for entity in getattr(metadata, 'entities', []):
-            entity_type = entity.get('type', '')
-            entity_value = entity.get('value', '')
-            if entity_type in ['product', 'service', 'feature']:
-                signals.append(PreferenceSignal(
-                    signal_type="interest",
-                    value=entity_value,
-                    weight=base_weight
-                ))
+        # Entities can be either dicts with type/value keys or plain strings
+        for entity in getattr(metadata, "entities", []):
+            if isinstance(entity, dict):
+                entity_type = entity.get("type", "")
+                entity_value = entity.get("value", "")
+            elif isinstance(entity, str):
+                # Parse string format like "product: iPhone" or just "iPhone"
+                if ":" in entity:
+                    parts = entity.split(":", 1)
+                    entity_type = parts[0].strip().lower()
+                    entity_value = parts[1].strip()
+                else:
+                    # Plain string entity - treat as generic interest
+                    entity_type = "entity"
+                    entity_value = entity.strip()
+            else:
+                continue
+
+            if entity_type in ["product", "service", "feature", "entity"]:
+                signals.append(
+                    PreferenceSignal(signal_type="interest", value=entity_value, weight=base_weight)
+                )
 
         # Keyword-based interest signals (high importance keywords only)
-        for keyword in getattr(metadata, 'keywords', []):
+        for keyword in getattr(metadata, "keywords", []):
             if keyword and len(keyword) > 3:  # Skip short keywords
-                signals.append(PreferenceSignal(
-                    signal_type="keyword_interest",
-                    value=keyword.lower(),
-                    weight=base_weight * 0.3
-                ))
+                signals.append(
+                    PreferenceSignal(
+                        signal_type="keyword_interest",
+                        value=keyword.lower(),
+                        weight=base_weight * 0.3,
+                    )
+                )
 
         return signals
 
@@ -183,11 +197,7 @@ class AdaptivePreferencesLearner:
         }
         return style_map.get(sentiment)
 
-    def apply_updates(
-        self,
-        user_id: str,
-        force: bool = False
-    ) -> List[Tuple[str, str, Any]]:
+    def apply_updates(self, user_id: str, force: bool = False) -> List[Tuple[str, str, Any]]:
         """
         Apply learned preferences based on accumulated signals.
 
@@ -247,9 +257,7 @@ class AdaptivePreferencesLearner:
         return updates
 
     def _compute_topic_updates(
-        self,
-        user_id: str,
-        signals: List[PreferenceSignal]
+        self, user_id: str, signals: List[PreferenceSignal]
     ) -> List[Tuple[str, str, Any]]:
         """Compute topic-based preference updates."""
         updates = []
@@ -284,9 +292,7 @@ class AdaptivePreferencesLearner:
         return updates
 
     def _compute_style_update(
-        self,
-        user_id: str,
-        signals: List[PreferenceSignal]
+        self, user_id: str, signals: List[PreferenceSignal]
     ) -> Optional[Tuple[str, str, str]]:
         """Compute communication style update."""
         # Weight-adjusted style counts
@@ -308,15 +314,15 @@ class AdaptivePreferencesLearner:
                     user_id, "communication_style", dominant_style
                 )
                 if success:
-                    logger.info(f"Learned communication style '{dominant_style}' for user {user_id}")
+                    logger.info(
+                        f"Learned communication style '{dominant_style}' for user {user_id}"
+                    )
                     return ("communication_style", "set", dominant_style)
 
         return None
 
     def _compute_interest_updates(
-        self,
-        user_id: str,
-        signals: List[PreferenceSignal]
+        self, user_id: str, signals: List[PreferenceSignal]
     ) -> List[Tuple[str, str, Any]]:
         """Compute interest updates from entity and keyword signals."""
         updates = []
@@ -368,10 +374,7 @@ class AdaptivePreferencesLearner:
             by_type[signal.signal_type].append(signal)
 
         # Summarize each type
-        summary = {
-            "total_signals": len(signals),
-            "by_type": {}
-        }
+        summary = {"total_signals": len(signals), "by_type": {}}
 
         for signal_type, type_signals in by_type.items():
             weights = Counter()
@@ -380,7 +383,7 @@ class AdaptivePreferencesLearner:
 
             summary["by_type"][signal_type] = {
                 "count": len(type_signals),
-                "top_values": dict(weights.most_common(5))
+                "top_values": dict(weights.most_common(5)),
             }
 
         return summary
@@ -398,8 +401,7 @@ _learner_lock = threading.Lock()
 
 
 def get_adaptive_learner(
-    preferences_manager: Optional[PreferencesManager] = None,
-    db_manager=None
+    preferences_manager: Optional[PreferencesManager] = None, db_manager=None
 ) -> AdaptivePreferencesLearner:
     """Get or create the singleton adaptive learner."""
     global _learner

@@ -9,6 +9,7 @@ Provides endpoints for:
 - Configuration
 - Model management
 """
+
 import os
 import json
 from datetime import datetime, timedelta, timezone
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 # ============================================================================
 # Pydantic Models
 # ============================================================================
+
 
 class StatsResponse(BaseModel):
     total_messages: int
@@ -121,7 +123,7 @@ def add_log_entry(level: str, message: str, logger_name: str = "mindcore"):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level.upper(),
         "message": message,
-        "logger": logger_name
+        "logger": logger_name,
     }
     _log_buffer.append(entry)
     if len(_log_buffer) > _max_log_entries:
@@ -138,6 +140,7 @@ add_log_entry("DEBUG", "Cache manager started with TTL=3600s")
 # Stats Endpoints
 # ============================================================================
 
+
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats():
     """Get dashboard statistics."""
@@ -151,11 +154,11 @@ async def get_stats():
     if _mindcore_instance is not None:
         try:
             # Get stats from database
-            if hasattr(_mindcore_instance, 'db'):
+            if hasattr(_mindcore_instance, "db"):
                 db = _mindcore_instance.db
 
                 # For SQLite
-                if hasattr(db, 'get_connection'):
+                if hasattr(db, "get_connection"):
                     with db.get_connection() as conn:
                         # Total messages
                         cursor = conn.execute("SELECT COUNT(*) FROM messages")
@@ -164,8 +167,7 @@ async def get_stats():
                         # Today's messages
                         today = datetime.now(timezone.utc).date().isoformat()
                         cursor = conn.execute(
-                            "SELECT COUNT(*) FROM messages WHERE date(created_at) = ?",
-                            (today,)
+                            "SELECT COUNT(*) FROM messages WHERE date(created_at) = ?", (today,)
                         )
                         today_messages = cursor.fetchone()[0]
 
@@ -178,7 +180,7 @@ async def get_stats():
                         conversations = set(row[0] for row in cursor.fetchall())
 
                 # For PostgreSQL
-                elif hasattr(db, 'pool'):
+                elif hasattr(db, "pool"):
                     with db.get_connection() as conn:
                         with conn.cursor() as cursor:
                             cursor.execute("SELECT COUNT(*) FROM messages")
@@ -203,7 +205,7 @@ async def get_stats():
         total_messages=total_messages,
         today_messages=today_messages,
         active_users=len(active_users),
-        conversations=len(conversations)
+        conversations=len(conversations),
     )
 
 
@@ -223,7 +225,7 @@ async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
                     cursor = conn.execute(
@@ -232,13 +234,13 @@ async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
                            WHERE created_at >= ?
                            GROUP BY date(created_at)
                            ORDER BY date""",
-                        (start_date,)
+                        (start_date,),
                     )
                     for row in cursor.fetchall():
                         if row[0]:
                             result[row[0]] = row[1]
 
-            elif hasattr(db, 'pool'):
+            elif hasattr(db, "pool"):
                 with db.get_connection() as conn:
                     with conn.cursor() as cursor:
                         cursor.execute(
@@ -247,7 +249,7 @@ async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
                                WHERE created_at >= NOW() - INTERVAL '%s days'
                                GROUP BY DATE(created_at)
                                ORDER BY date""",
-                            (days,)
+                            (days,),
                         )
                         for row in cursor.fetchall():
                             if row[0]:
@@ -258,10 +260,7 @@ async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
 
     # Convert to sorted list
     sorted_dates = sorted(result.keys())
-    return {
-        "labels": sorted_dates,
-        "data": [result[d] for d in sorted_dates]
-    }
+    return {"labels": sorted_dates, "data": [result[d] for d in sorted_dates]}
 
 
 @router.get("/messages-by-role")
@@ -275,21 +274,17 @@ async def get_messages_by_role():
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
-                    cursor = conn.execute(
-                        "SELECT role, COUNT(*) FROM messages GROUP BY role"
-                    )
+                    cursor = conn.execute("SELECT role, COUNT(*) FROM messages GROUP BY role")
                     for row in cursor.fetchall():
                         if row[0] in result:
                             result[row[0]] = row[1]
 
-            elif hasattr(db, 'pool'):
+            elif hasattr(db, "pool"):
                 with db.get_connection() as conn:
                     with conn.cursor() as cursor:
-                        cursor.execute(
-                            "SELECT role, COUNT(*) FROM messages GROUP BY role"
-                        )
+                        cursor.execute("SELECT role, COUNT(*) FROM messages GROUP BY role")
                         for row in cursor.fetchall():
                             if row[0] in result:
                                 result[row[0]] = row[1]
@@ -297,15 +292,13 @@ async def get_messages_by_role():
         except Exception as e:
             logger.error(f"Failed to get messages by role: {e}")
 
-    return {
-        "labels": list(result.keys()),
-        "data": list(result.values())
-    }
+    return {"labels": list(result.keys()), "data": list(result.values())}
 
 
 # ============================================================================
 # Messages Endpoints
 # ============================================================================
+
 
 @router.get("/messages", response_model=MessagesListResponse)
 async def get_messages(
@@ -314,7 +307,7 @@ async def get_messages(
     role: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     user_id: Optional[str] = Query(None),
-    thread_id: Optional[str] = Query(None)
+    thread_id: Optional[str] = Query(None),
 ):
     """Get paginated messages with optional filters."""
     from ... import _mindcore_instance
@@ -327,7 +320,7 @@ async def get_messages(
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Build query
                     conditions = []
@@ -350,8 +343,7 @@ async def get_messages(
 
                     # Count
                     cursor = conn.execute(
-                        f"SELECT COUNT(*) FROM messages WHERE {where_clause}",
-                        params
+                        f"SELECT COUNT(*) FROM messages WHERE {where_clause}", params
                     )
                     total = cursor.fetchone()[0]
 
@@ -361,38 +353,39 @@ async def get_messages(
                             WHERE {where_clause}
                             ORDER BY created_at DESC
                             LIMIT ? OFFSET ?""",
-                        params + [page_size, offset]
+                        params + [page_size, offset],
                     )
 
                     for row in cursor.fetchall():
                         metadata = {}
-                        if row['metadata']:
+                        if row["metadata"]:
                             try:
-                                metadata = json.loads(row['metadata']) if isinstance(row['metadata'], str) else row['metadata']
+                                metadata = (
+                                    json.loads(row["metadata"])
+                                    if isinstance(row["metadata"], str)
+                                    else row["metadata"]
+                                )
                             except:
                                 pass
 
-                        messages.append(MessageResponse(
-                            message_id=row['message_id'],
-                            user_id=row['user_id'],
-                            thread_id=row['thread_id'],
-                            session_id=row['session_id'],
-                            role=row['role'],
-                            raw_text=row['raw_text'],
-                            metadata=metadata,
-                            created_at=str(row['created_at']) if row['created_at'] else None
-                        ))
+                        messages.append(
+                            MessageResponse(
+                                message_id=row["message_id"],
+                                user_id=row["user_id"],
+                                thread_id=row["thread_id"],
+                                session_id=row["session_id"],
+                                role=row["role"],
+                                raw_text=row["raw_text"],
+                                metadata=metadata,
+                                created_at=str(row["created_at"]) if row["created_at"] else None,
+                            )
+                        )
 
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             add_log_entry("ERROR", f"Failed to get messages: {e}")
 
-    return MessagesListResponse(
-        messages=messages,
-        total=total,
-        page=page,
-        page_size=page_size
-    )
+    return MessagesListResponse(messages=messages, total=total, page=page, page_size=page_size)
 
 
 @router.get("/messages/{message_id}", response_model=MessageResponse)
@@ -409,17 +402,19 @@ async def get_message(message_id: str):
 
     metadata = {}
     if message.metadata:
-        metadata = message.metadata.to_dict() if hasattr(message.metadata, 'to_dict') else message.metadata
+        metadata = (
+            message.metadata.to_dict() if hasattr(message.metadata, "to_dict") else message.metadata
+        )
 
     return MessageResponse(
         message_id=message.message_id,
         user_id=message.user_id,
         thread_id=message.thread_id,
         session_id=message.session_id,
-        role=message.role.value if hasattr(message.role, 'value') else message.role,
+        role=message.role.value if hasattr(message.role, "value") else message.role,
         raw_text=message.raw_text,
         metadata=metadata,
-        created_at=str(message.created_at) if message.created_at else None
+        created_at=str(message.created_at) if message.created_at else None,
     )
 
 
@@ -434,11 +429,11 @@ async def delete_message(message_id: str):
     try:
         db = _mindcore_instance.db
 
-        if hasattr(db, 'get_connection'):
+        if hasattr(db, "get_connection"):
             with db.get_connection() as conn:
                 conn.execute("DELETE FROM messages WHERE message_id = ?", (message_id,))
                 conn.commit()
-        elif hasattr(db, 'pool'):
+        elif hasattr(db, "pool"):
             with db.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("DELETE FROM messages WHERE message_id = %s", (message_id,))
@@ -456,11 +451,12 @@ async def delete_message(message_id: str):
 # Threads Endpoints
 # ============================================================================
 
+
 @router.get("/threads", response_model=ThreadsListResponse)
 async def get_threads(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    user_id: Optional[str] = Query(None)
+    user_id: Optional[str] = Query(None),
 ):
     """Get list of conversation threads."""
     from ... import _mindcore_instance
@@ -473,7 +469,7 @@ async def get_threads(
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Build query
                     where_clause = f"user_id = '{user_id}'" if user_id else "1=1"
@@ -497,17 +493,25 @@ async def get_threads(
                             GROUP BY thread_id, user_id
                             ORDER BY last_message_at DESC
                             LIMIT ? OFFSET ?""",
-                        (page_size, offset)
+                        (page_size, offset),
                     )
 
                     for row in cursor.fetchall():
-                        threads.append(ThreadResponse(
-                            thread_id=row['thread_id'],
-                            user_id=row['user_id'],
-                            message_count=row['message_count'],
-                            last_message_at=str(row['last_message_at']) if row['last_message_at'] else None,
-                            first_message_at=str(row['first_message_at']) if row['first_message_at'] else None
-                        ))
+                        threads.append(
+                            ThreadResponse(
+                                thread_id=row["thread_id"],
+                                user_id=row["user_id"],
+                                message_count=row["message_count"],
+                                last_message_at=(
+                                    str(row["last_message_at"]) if row["last_message_at"] else None
+                                ),
+                                first_message_at=(
+                                    str(row["first_message_at"])
+                                    if row["first_message_at"]
+                                    else None
+                                ),
+                            )
+                        )
 
         except Exception as e:
             logger.error(f"Failed to get threads: {e}")
@@ -517,40 +521,29 @@ async def get_threads(
 
 @router.get("/threads/{thread_id}/messages")
 async def get_thread_messages(
-    thread_id: str,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200)
+    thread_id: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)
 ):
     """Get messages for a specific thread."""
-    return await get_messages(
-        page=page,
-        page_size=page_size,
-        thread_id=thread_id
-    )
+    return await get_messages(page=page, page_size=page_size, thread_id=thread_id)
 
 
 # ============================================================================
 # Logs Endpoints
 # ============================================================================
 
+
 @router.get("/logs", response_model=LogsResponse)
-async def get_logs(
-    level: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500)
-):
+async def get_logs(level: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=500)):
     """Get system logs."""
     logs = _log_buffer.copy()
 
     if level:
-        logs = [log for log in logs if log['level'].upper() == level.upper()]
+        logs = [log for log in logs if log["level"].upper() == level.upper()]
 
     # Most recent first
     logs = list(reversed(logs))[:limit]
 
-    return LogsResponse(
-        logs=[LogEntry(**log) for log in logs],
-        total=len(logs)
-    )
+    return LogsResponse(logs=[LogEntry(**log) for log in logs], total=len(logs))
 
 
 @router.delete("/logs")
@@ -574,41 +567,15 @@ _runtime_config: Dict[str, Any] = {
         "model": "gpt-4o-mini",
         "local_model": "llama-3.2-3b",
         "temperature": 0.3,
-        "max_tokens": 1500
+        "max_tokens": 1500,
     },
-    "memory": {
-        "enabled": True,
-        "provider": "llama_cpp",
-        "local_model": "llama-3.2-1b"
-    },
-    "database": {
-        "type": "sqlite",
-        "path": "mindcore.db"
-    },
-    "cache": {
-        "max_size": 50,
-        "ttl": 3600
-    },
-    "api": {
-        "port": 8000,
-        "cors_origins": [],
-        "rate_limiting": True,
-        "rate_limit": 100
-    },
-    "logging": {
-        "level": "INFO",
-        "json_format": False
-    },
-    "monitoring": {
-        "performance_tracking": True,
-        "tool_tracking": True,
-        "retention_days": 30
-    },
-    "security": {
-        "input_validation": True,
-        "max_message_length": 10000,
-        "audit_logging": False
-    }
+    "memory": {"enabled": True, "provider": "llama_cpp", "local_model": "llama-3.2-1b"},
+    "database": {"type": "sqlite", "path": "mindcore.db"},
+    "cache": {"max_size": 50, "ttl": 3600},
+    "api": {"port": 8000, "cors_origins": [], "rate_limiting": True, "rate_limit": 100},
+    "logging": {"level": "INFO", "json_format": False},
+    "monitoring": {"performance_tracking": True, "tool_tracking": True, "retention_days": 30},
+    "security": {"input_validation": True, "max_message_length": 10000, "audit_logging": False},
 }
 
 
@@ -634,21 +601,25 @@ async def get_config():
     if _mindcore_instance is not None:
         try:
             # Get LLM config
-            if hasattr(_mindcore_instance, '_llm_provider'):
+            if hasattr(_mindcore_instance, "_llm_provider"):
                 provider = _mindcore_instance._llm_provider
-                config["llm"]["provider"] = provider.name if hasattr(provider, 'name') else config["llm"]["provider"]
+                config["llm"]["provider"] = (
+                    provider.name if hasattr(provider, "name") else config["llm"]["provider"]
+                )
 
             # Get cache config
-            if hasattr(_mindcore_instance, 'cache'):
+            if hasattr(_mindcore_instance, "cache"):
                 cache = _mindcore_instance.cache
-                if hasattr(cache, 'max_size'):
+                if hasattr(cache, "max_size"):
                     config["cache"]["max_size"] = cache.max_size
-                if hasattr(cache, 'ttl_seconds'):
+                if hasattr(cache, "ttl_seconds"):
                     config["cache"]["ttl"] = cache.ttl_seconds
 
             # Get DB config
-            if hasattr(_mindcore_instance, '_use_sqlite'):
-                config["database"]["type"] = "sqlite" if _mindcore_instance._use_sqlite else "postgresql"
+            if hasattr(_mindcore_instance, "_use_sqlite"):
+                config["database"]["type"] = (
+                    "sqlite" if _mindcore_instance._use_sqlite else "postgresql"
+                )
 
         except Exception as e:
             logger.error(f"Failed to get config: {e}")
@@ -663,7 +634,11 @@ async def update_config(config: Dict[str, Any] = Body(...)):
 
     # Deep merge configuration
     for key, value in config.items():
-        if key in _runtime_config and isinstance(_runtime_config[key], dict) and isinstance(value, dict):
+        if (
+            key in _runtime_config
+            and isinstance(_runtime_config[key], dict)
+            and isinstance(value, dict)
+        ):
             _runtime_config[key].update(value)
         else:
             _runtime_config[key] = value
@@ -682,7 +657,7 @@ async def get_system_status():
         "server_status": "online",
         "mindcore_initialized": _mindcore_instance is not None,
         "active_model": _runtime_config.get("llm", {}).get("model", "gpt-4o-mini"),
-        "database_type": _runtime_config.get("database", {}).get("type", "sqlite")
+        "database_type": _runtime_config.get("database", {}).get("type", "sqlite"),
     }
 
 
@@ -706,11 +681,31 @@ async def get_env_vars():
     """Get configured environment variables (masked for sensitive ones)."""
     env_vars = [
         {"key": "OPENAI_API_KEY", "value": os.environ.get("OPENAI_API_KEY", ""), "sensitive": True},
-        {"key": "ANTHROPIC_API_KEY", "value": os.environ.get("ANTHROPIC_API_KEY", ""), "sensitive": True},
-        {"key": "MINDCORE_DB_PATH", "value": os.environ.get("MINDCORE_DB_PATH", "mindcore.db"), "sensitive": False},
-        {"key": "MINDCORE_LOG_LEVEL", "value": os.environ.get("MINDCORE_LOG_LEVEL", "INFO"), "sensitive": False},
-        {"key": "MINDCORE_API_PORT", "value": os.environ.get("MINDCORE_API_PORT", "8000"), "sensitive": False},
-        {"key": "MINDCORE_LLAMA_MODEL_PATH", "value": os.environ.get("MINDCORE_LLAMA_MODEL_PATH", ""), "sensitive": False},
+        {
+            "key": "ANTHROPIC_API_KEY",
+            "value": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "sensitive": True,
+        },
+        {
+            "key": "MINDCORE_DB_PATH",
+            "value": os.environ.get("MINDCORE_DB_PATH", "mindcore.db"),
+            "sensitive": False,
+        },
+        {
+            "key": "MINDCORE_LOG_LEVEL",
+            "value": os.environ.get("MINDCORE_LOG_LEVEL", "INFO"),
+            "sensitive": False,
+        },
+        {
+            "key": "MINDCORE_API_PORT",
+            "value": os.environ.get("MINDCORE_API_PORT", "8000"),
+            "sensitive": False,
+        },
+        {
+            "key": "MINDCORE_LLAMA_MODEL_PATH",
+            "value": os.environ.get("MINDCORE_LLAMA_MODEL_PATH", ""),
+            "sensitive": False,
+        },
     ]
 
     # Mask sensitive values
@@ -737,12 +732,17 @@ async def update_env_vars(env_vars: List[Dict[str, Any]] = Body(...)):
             add_log_entry("INFO", f"Environment variable update requested: {key}")
             updated.append(key)
 
-    return {"status": "updated", "variables": updated, "note": "Changes require server restart to take effect"}
+    return {
+        "status": "updated",
+        "variables": updated,
+        "note": "Changes require server restart to take effect",
+    }
 
 
 # ============================================================================
 # Database Management Endpoints
 # ============================================================================
+
 
 @router.post("/config/database/test")
 async def test_database_connection(db_config: Dict[str, Any] = Body(...)):
@@ -752,6 +752,7 @@ async def test_database_connection(db_config: Dict[str, Any] = Body(...)):
     try:
         if db_type == "sqlite":
             import sqlite3
+
             path = db_config.get("path", "mindcore.db")
             conn = sqlite3.connect(path)
             conn.execute("SELECT 1")
@@ -776,7 +777,7 @@ async def vacuum_database():
 
     try:
         db = _mindcore_instance.db
-        if hasattr(db, 'get_connection'):
+        if hasattr(db, "get_connection"):
             with db.get_connection() as conn:
                 conn.execute("VACUUM")
                 add_log_entry("INFO", "Database vacuumed successfully")
@@ -802,20 +803,16 @@ async def clear_old_metrics(days: int = Body(..., embed=True)):
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         deleted_count = 0
-        if hasattr(db, 'get_connection'):
+        if hasattr(db, "get_connection"):
             with db.get_connection() as conn:
                 # Clear performance metrics
                 cursor = conn.execute(
-                    "DELETE FROM performance_metrics WHERE created_at < ?",
-                    (cutoff,)
+                    "DELETE FROM performance_metrics WHERE created_at < ?", (cutoff,)
                 )
                 deleted_count += cursor.rowcount
 
                 # Clear tool calls
-                cursor = conn.execute(
-                    "DELETE FROM tool_calls WHERE created_at < ?",
-                    (cutoff,)
-                )
+                cursor = conn.execute("DELETE FROM tool_calls WHERE created_at < ?", (cutoff,))
                 deleted_count += cursor.rowcount
                 conn.commit()
 
@@ -838,7 +835,7 @@ async def reset_database():
 
     try:
         db = _mindcore_instance.db
-        if hasattr(db, 'get_connection'):
+        if hasattr(db, "get_connection"):
             with db.get_connection() as conn:
                 # Get all tables
                 cursor = conn.execute(
@@ -863,6 +860,7 @@ async def reset_database():
 # Models Endpoints
 # ============================================================================
 
+
 @router.get("/models", response_model=ModelsResponse)
 async def get_models():
     """Get available models."""
@@ -874,29 +872,29 @@ async def get_models():
             name="GPT-4o",
             description="Most capable model for complex tasks",
             provider="openai",
-            available=True
+            available=True,
         ),
         ModelInfo(
             id="gpt-4o-mini",
             name="GPT-4o Mini",
             description="Fast and cost-effective for most tasks",
             provider="openai",
-            available=True
+            available=True,
         ),
         ModelInfo(
             id="gpt-4-turbo",
             name="GPT-4 Turbo",
             description="High performance with vision capabilities",
             provider="openai",
-            available=True
+            available=True,
         ),
         ModelInfo(
             id="gpt-3.5-turbo",
             name="GPT-3.5 Turbo",
             description="Good balance of speed and capability",
             provider="openai",
-            available=True
-        )
+            available=True,
+        ),
     ]
 
     local_models = [
@@ -906,7 +904,7 @@ async def get_models():
             description="Best quality for local inference",
             provider="llama_cpp",
             size="2.0 GB",
-            available=_check_model_available("llama-3.2-3b")
+            available=_check_model_available("llama-3.2-3b"),
         ),
         ModelInfo(
             id="llama-3.2-1b",
@@ -914,7 +912,7 @@ async def get_models():
             description="Lightweight, low resource usage",
             provider="llama_cpp",
             size="0.8 GB",
-            available=_check_model_available("llama-3.2-1b")
+            available=_check_model_available("llama-3.2-1b"),
         ),
         ModelInfo(
             id="qwen2.5-3b",
@@ -922,7 +920,7 @@ async def get_models():
             description="Multilingual, great for structured output",
             provider="llama_cpp",
             size="2.1 GB",
-            available=_check_model_available("qwen2.5-3b")
+            available=_check_model_available("qwen2.5-3b"),
         ),
         ModelInfo(
             id="phi-3.5-mini",
@@ -930,24 +928,20 @@ async def get_models():
             description="Microsoft's reasoning-focused model",
             provider="llama_cpp",
             size="2.2 GB",
-            available=_check_model_available("phi-3.5-mini")
-        )
+            available=_check_model_available("phi-3.5-mini"),
+        ),
     ]
 
     active = None
     if _mindcore_instance is not None:
         try:
-            if hasattr(_mindcore_instance, '_llm_provider'):
+            if hasattr(_mindcore_instance, "_llm_provider"):
                 provider = _mindcore_instance._llm_provider
-                active = provider.name if hasattr(provider, 'name') else None
+                active = provider.name if hasattr(provider, "name") else None
         except:
             pass
 
-    return ModelsResponse(
-        cloud=cloud_models,
-        local=local_models,
-        active=active
-    )
+    return ModelsResponse(cloud=cloud_models, local=local_models, active=active)
 
 
 def _check_model_available(model_id: str) -> bool:
@@ -972,11 +966,11 @@ async def get_active_model():
         return {"model": None, "provider": None}
 
     try:
-        if hasattr(_mindcore_instance, '_llm_provider'):
+        if hasattr(_mindcore_instance, "_llm_provider"):
             provider = _mindcore_instance._llm_provider
             return {
-                "model": provider.name if hasattr(provider, 'name') else "unknown",
-                "provider": type(provider).__name__
+                "model": provider.name if hasattr(provider, "name") else "unknown",
+                "provider": type(provider).__name__,
             }
     except:
         pass
@@ -998,13 +992,14 @@ async def download_model(model_id: str):
     return {
         "status": "downloading",
         "model_id": model_id,
-        "message": "Use 'mindcore download-model' CLI for actual download"
+        "message": "Use 'mindcore download-model' CLI for actual download",
     }
 
 
 # ============================================================================
 # Performance & Observability Endpoints
 # ============================================================================
+
 
 class PerformanceStatsResponse(BaseModel):
     stats: Dict[str, Any]
@@ -1028,7 +1023,7 @@ class ToolCallResponse(BaseModel):
 _performance_metrics: Dict[str, List[Dict[str, Any]]] = {
     "response_times": [],
     "tool_calls": [],
-    "user_stats": {}
+    "user_stats": {},
 }
 
 
@@ -1047,9 +1042,7 @@ def record_performance_metric(metric_type: str, data: Dict[str, Any]):
 
 
 @router.get("/performance")
-async def get_performance_stats(
-    range: str = Query("24h", pattern="^(1h|24h|7d)$")
-):
+async def get_performance_stats(range: str = Query("24h", pattern="^(1h|24h|7d)$")):
     """Get performance statistics and metrics."""
     from ... import _mindcore_instance
 
@@ -1072,15 +1065,12 @@ async def get_performance_stats(
             "avg_llm_time_ms": 0,
             "avg_retrieval_time_ms": 0,
             "avg_storage_time_ms": 0,
-            "avg_total_time_ms": 0
+            "avg_total_time_ms": 0,
         },
-        "tool_stats": {
-            "success_rate": 100,
-            "tools": []
-        },
+        "tool_stats": {"success_rate": 100, "tools": []},
         "user_performance": [],
         "response_time_trend": [],
-        "latency_distribution": [0, 0, 0, 0, 0]
+        "latency_distribution": [0, 0, 0, 0, 0],
     }
 
     # Calculate from stored metrics
@@ -1123,7 +1113,12 @@ async def get_performance_stats(
         for t in recent_tools:
             name = t.get("tool_name", "unknown")
             if name not in tool_grouped:
-                tool_grouped[name] = {"name": name, "call_count": 0, "success_count": 0, "total_time_ms": 0}
+                tool_grouped[name] = {
+                    "name": name,
+                    "call_count": 0,
+                    "success_count": 0,
+                    "total_time_ms": 0,
+                }
             tool_grouped[name]["call_count"] += 1
             if t.get("success", False):
                 tool_grouped[name]["success_count"] += 1
@@ -1133,8 +1128,12 @@ async def get_performance_stats(
             {
                 "name": v["name"],
                 "call_count": v["call_count"],
-                "success_rate": round(v["success_count"] / v["call_count"] * 100, 1) if v["call_count"] > 0 else 0,
-                "avg_time_ms": v["total_time_ms"] // v["call_count"] if v["call_count"] > 0 else 0
+                "success_rate": (
+                    round(v["success_count"] / v["call_count"] * 100, 1)
+                    if v["call_count"] > 0
+                    else 0
+                ),
+                "avg_time_ms": v["total_time_ms"] // v["call_count"] if v["call_count"] > 0 else 0,
             }
             for v in tool_grouped.values()
         ]
@@ -1144,7 +1143,7 @@ async def get_performance_stats(
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Get user performance stats
                     cursor = conn.execute(
@@ -1158,13 +1157,15 @@ async def get_performance_stats(
                            LIMIT 20"""
                     )
                     for row in cursor.fetchall():
-                        response["user_performance"].append({
-                            "user_id": row['user_id'],
-                            "thread_count": row['thread_count'],
-                            "message_count": row['message_count'],
-                            "avg_response_time_ms": 0,  # Would need timing data in DB
-                            "total_time_ms": 0
-                        })
+                        response["user_performance"].append(
+                            {
+                                "user_id": row["user_id"],
+                                "thread_count": row["thread_count"],
+                                "message_count": row["message_count"],
+                                "avg_response_time_ms": 0,  # Would need timing data in DB
+                                "total_time_ms": 0,
+                            }
+                        )
 
                     # Build response time trend from message timestamps
                     if range == "1h":
@@ -1180,16 +1181,18 @@ async def get_performance_stats(
                             WHERE created_at >= ?
                             GROUP BY time_bucket
                             ORDER BY time_bucket""",
-                        (start_time.isoformat(),)
+                        (start_time.isoformat(),),
                     )
 
                     # Simulated response times based on message volume
                     for row in cursor.fetchall():
-                        if row['time_bucket']:
-                            response["response_time_trend"].append({
-                                "time": row['time_bucket'],
-                                "value": 200 + (row['count'] * 10)  # Simulated latency
-                            })
+                        if row["time_bucket"]:
+                            response["response_time_trend"].append(
+                                {
+                                    "time": row["time_bucket"],
+                                    "value": 200 + (row["count"] * 10),  # Simulated latency
+                                }
+                            )
 
         except Exception as e:
             logger.error(f"Failed to get performance stats from DB: {e}")
@@ -1198,11 +1201,8 @@ async def get_performance_stats(
     # Add demo data if no real data
     if not response["response_time_trend"]:
         for i in range(6):
-            hour = (now - timedelta(hours=4*i)).strftime("%H:00")
-            response["response_time_trend"].append({
-                "time": hour,
-                "value": 250 + (i * 20)
-            })
+            hour = (now - timedelta(hours=4 * i)).strftime("%H:00")
+            response["response_time_trend"].append({"time": hour, "value": 250 + (i * 20)})
         response["response_time_trend"].reverse()
 
     if not response["latency_distribution"] or sum(response["latency_distribution"]) == 0:
@@ -1217,11 +1217,7 @@ async def get_tool_stats():
     tool_calls = _performance_metrics["tool_calls"]
 
     if not tool_calls:
-        return {
-            "success_rate": 100,
-            "total_calls": 0,
-            "tools": []
-        }
+        return {"success_rate": 100, "total_calls": 0, "tools": []}
 
     success_count = sum(1 for t in tool_calls if t.get("success", False))
 
@@ -1230,7 +1226,12 @@ async def get_tool_stats():
     for t in tool_calls:
         name = t.get("tool_name", "unknown")
         if name not in tool_grouped:
-            tool_grouped[name] = {"name": name, "call_count": 0, "success_count": 0, "total_time_ms": 0}
+            tool_grouped[name] = {
+                "name": name,
+                "call_count": 0,
+                "success_count": 0,
+                "total_time_ms": 0,
+            }
         tool_grouped[name]["call_count"] += 1
         if t.get("success", False):
             tool_grouped[name]["success_count"] += 1
@@ -1243,11 +1244,15 @@ async def get_tool_stats():
             {
                 "name": v["name"],
                 "call_count": v["call_count"],
-                "success_rate": round(v["success_count"] / v["call_count"] * 100, 1) if v["call_count"] > 0 else 0,
-                "avg_time_ms": v["total_time_ms"] // v["call_count"] if v["call_count"] > 0 else 0
+                "success_rate": (
+                    round(v["success_count"] / v["call_count"] * 100, 1)
+                    if v["call_count"] > 0
+                    else 0
+                ),
+                "avg_time_ms": v["total_time_ms"] // v["call_count"] if v["call_count"] > 0 else 0,
             }
             for v in tool_grouped.values()
-        ]
+        ],
     }
 
 
@@ -1256,7 +1261,7 @@ async def get_tool_calls(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     tool_name: Optional[str] = Query(None),
-    success: Optional[bool] = Query(None)
+    success: Optional[bool] = Query(None),
 ):
     """Get detailed tool call history."""
     calls = _performance_metrics["tool_calls"].copy()
@@ -1269,20 +1274,14 @@ async def get_tool_calls(
 
     total = len(calls)
     offset = (page - 1) * page_size
-    calls = list(reversed(calls))[offset:offset + page_size]
+    calls = list(reversed(calls))[offset : offset + page_size]
 
-    return {
-        "tool_calls": calls,
-        "total": total,
-        "page": page,
-        "page_size": page_size
-    }
+    return {"tool_calls": calls, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/users/performance")
 async def get_user_performance(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100)
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 ):
     """Get per-user performance metrics."""
     from ... import _mindcore_instance
@@ -1295,7 +1294,7 @@ async def get_user_performance(
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Count unique users
                     cursor = conn.execute("SELECT COUNT(DISTINCT user_id) FROM messages")
@@ -1313,34 +1312,36 @@ async def get_user_performance(
                            GROUP BY user_id
                            ORDER BY message_count DESC
                            LIMIT ? OFFSET ?""",
-                        (page_size, offset)
+                        (page_size, offset),
                     )
 
                     for row in cursor.fetchall():
-                        users.append({
-                            "user_id": row['user_id'],
-                            "thread_count": row['thread_count'],
-                            "message_count": row['message_count'],
-                            "first_message": str(row['first_message']) if row['first_message'] else None,
-                            "last_message": str(row['last_message']) if row['last_message'] else None,
-                            "avg_response_time_ms": 0,  # Would need timing data
-                            "total_time_ms": 0
-                        })
+                        users.append(
+                            {
+                                "user_id": row["user_id"],
+                                "thread_count": row["thread_count"],
+                                "message_count": row["message_count"],
+                                "first_message": (
+                                    str(row["first_message"]) if row["first_message"] else None
+                                ),
+                                "last_message": (
+                                    str(row["last_message"]) if row["last_message"] else None
+                                ),
+                                "avg_response_time_ms": 0,  # Would need timing data
+                                "total_time_ms": 0,
+                            }
+                        )
 
         except Exception as e:
             logger.error(f"Failed to get user performance: {e}")
 
-    return {
-        "users": users,
-        "total": total,
-        "page": page,
-        "page_size": page_size
-    }
+    return {"users": users, "total": total, "page": page, "page_size": page_size}
 
 
 # ============================================================================
 # Sessions Endpoints
 # ============================================================================
+
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -1379,14 +1380,14 @@ async def get_session_stats():
         "total_sessions": 0,
         "active_today": 0,
         "avg_duration_minutes": 0,
-        "avg_messages_per_session": 0
+        "avg_messages_per_session": 0,
     }
 
     if _mindcore_instance is not None:
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Total unique sessions
                     cursor = conn.execute("SELECT COUNT(DISTINCT session_id) FROM messages")
@@ -1396,7 +1397,7 @@ async def get_session_stats():
                     today = datetime.now(timezone.utc).date().isoformat()
                     cursor = conn.execute(
                         "SELECT COUNT(DISTINCT session_id) FROM messages WHERE date(created_at) = ?",
-                        (today,)
+                        (today,),
                     )
                     stats["active_today"] = cursor.fetchone()[0]
 
@@ -1404,7 +1405,9 @@ async def get_session_stats():
                     if stats["total_sessions"] > 0:
                         cursor = conn.execute("SELECT COUNT(*) FROM messages")
                         total_messages = cursor.fetchone()[0]
-                        stats["avg_messages_per_session"] = total_messages // stats["total_sessions"]
+                        stats["avg_messages_per_session"] = (
+                            total_messages // stats["total_sessions"]
+                        )
 
                     # Avg duration (based on time between first and last message)
                     cursor = conn.execute(
@@ -1434,7 +1437,7 @@ async def get_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None)
+    status: Optional[str] = Query(None),
 ):
     """Get list of sessions with analytics."""
     from ... import _mindcore_instance
@@ -1447,7 +1450,7 @@ async def get_sessions(
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Build conditions
                     conditions = []
@@ -1462,7 +1465,7 @@ async def get_sessions(
                     # Count unique sessions
                     cursor = conn.execute(
                         f"SELECT COUNT(DISTINCT session_id) FROM messages WHERE {where_clause}",
-                        params
+                        params,
                     )
                     total = cursor.fetchone()[0]
 
@@ -1480,16 +1483,18 @@ async def get_sessions(
                            GROUP BY session_id, user_id
                            ORDER BY last_activity_at DESC
                            LIMIT ? OFFSET ?""",
-                        params + [page_size, offset]
+                        params + [page_size, offset],
                     )
 
                     now = datetime.now(timezone.utc)
                     inactive_threshold = now - timedelta(minutes=30)
 
                     for row in cursor.fetchall():
-                        last_activity = row['last_activity_at']
+                        last_activity = row["last_activity_at"]
                         try:
-                            last_dt = datetime.fromisoformat(str(last_activity).replace('Z', '+00:00'))
+                            last_dt = datetime.fromisoformat(
+                                str(last_activity).replace("Z", "+00:00")
+                            )
                             session_status = "active" if last_dt > inactive_threshold else "idle"
                         except:
                             session_status = "unknown"
@@ -1498,30 +1503,29 @@ async def get_sessions(
                         if status and session_status != status:
                             continue
 
-                        sessions.append(SessionResponse(
-                            session_id=row['session_id'],
-                            user_id=row['user_id'],
-                            started_at=str(row['started_at']) if row['started_at'] else "",
-                            last_activity_at=str(row['last_activity_at']) if row['last_activity_at'] else "",
-                            thread_count=row['thread_count'],
-                            message_count=row['message_count'],
-                            total_llm_calls=row['message_count'],  # Approximation
-                            total_tool_calls=0,  # Would need tool tracking
-                            total_latency_ms=0,  # Would need performance tracking
-                            avg_latency_ms=0,
-                            status=session_status
-                        ))
+                        sessions.append(
+                            SessionResponse(
+                                session_id=row["session_id"],
+                                user_id=row["user_id"],
+                                started_at=str(row["started_at"]) if row["started_at"] else "",
+                                last_activity_at=(
+                                    str(row["last_activity_at"]) if row["last_activity_at"] else ""
+                                ),
+                                thread_count=row["thread_count"],
+                                message_count=row["message_count"],
+                                total_llm_calls=row["message_count"],  # Approximation
+                                total_tool_calls=0,  # Would need tool tracking
+                                total_latency_ms=0,  # Would need performance tracking
+                                avg_latency_ms=0,
+                                status=session_status,
+                            )
+                        )
 
         except Exception as e:
             logger.error(f"Failed to get sessions: {e}")
             add_log_entry("ERROR", f"Failed to get sessions: {e}")
 
-    return SessionsListResponse(
-        sessions=sessions,
-        total=total,
-        page=page,
-        page_size=page_size
-    )
+    return SessionsListResponse(sessions=sessions, total=total, page=page, page_size=page_size)
 
 
 @router.get("/sessions/{session_id}")
@@ -1535,7 +1539,7 @@ async def get_session_detail(session_id: str):
     try:
         db = _mindcore_instance.db
 
-        if hasattr(db, 'get_connection'):
+        if hasattr(db, "get_connection"):
             with db.get_connection() as conn:
                 # Get session summary
                 cursor = conn.execute(
@@ -1549,7 +1553,7 @@ async def get_session_detail(session_id: str):
                        FROM messages
                        WHERE session_id = ?
                        GROUP BY session_id, user_id""",
-                    (session_id,)
+                    (session_id,),
                 )
                 row = cursor.fetchone()
 
@@ -1567,14 +1571,14 @@ async def get_session_detail(session_id: str):
                        WHERE session_id = ?
                        GROUP BY thread_id
                        ORDER BY first_message""",
-                    (session_id,)
+                    (session_id,),
                 )
                 threads = [
                     {
-                        "thread_id": t['thread_id'],
-                        "message_count": t['message_count'],
-                        "first_message": str(t['first_message']),
-                        "last_message": str(t['last_message'])
+                        "thread_id": t["thread_id"],
+                        "message_count": t["message_count"],
+                        "first_message": str(t["first_message"]),
+                        "last_message": str(t["last_message"]),
                     }
                     for t in cursor.fetchall()
                 ]
@@ -1582,23 +1586,23 @@ async def get_session_detail(session_id: str):
                 # Get role breakdown
                 cursor = conn.execute(
                     "SELECT role, COUNT(*) as count FROM messages WHERE session_id = ? GROUP BY role",
-                    (session_id,)
+                    (session_id,),
                 )
-                role_breakdown = {r['role']: r['count'] for r in cursor.fetchall()}
+                role_breakdown = {r["role"]: r["count"] for r in cursor.fetchall()}
 
                 return {
-                    "session_id": row['session_id'],
-                    "user_id": row['user_id'],
-                    "started_at": str(row['started_at']),
-                    "last_activity_at": str(row['last_activity_at']),
-                    "thread_count": row['thread_count'],
-                    "message_count": row['message_count'],
+                    "session_id": row["session_id"],
+                    "user_id": row["user_id"],
+                    "started_at": str(row["started_at"]),
+                    "last_activity_at": str(row["last_activity_at"]),
+                    "thread_count": row["thread_count"],
+                    "message_count": row["message_count"],
                     "threads": threads,
                     "role_breakdown": role_breakdown,
-                    "total_llm_calls": row['message_count'],
+                    "total_llm_calls": row["message_count"],
                     "total_tool_calls": 0,
                     "total_latency_ms": 0,
-                    "avg_latency_ms": 0
+                    "avg_latency_ms": 0,
                 }
 
     except HTTPException:
@@ -1610,9 +1614,7 @@ async def get_session_detail(session_id: str):
 
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
-    session_id: str,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200)
+    session_id: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)
 ):
     """Get messages for a specific session."""
     from ... import _mindcore_instance
@@ -1625,12 +1627,11 @@ async def get_session_messages(
         try:
             db = _mindcore_instance.db
 
-            if hasattr(db, 'get_connection'):
+            if hasattr(db, "get_connection"):
                 with db.get_connection() as conn:
                     # Count
                     cursor = conn.execute(
-                        "SELECT COUNT(*) FROM messages WHERE session_id = ?",
-                        (session_id,)
+                        "SELECT COUNT(*) FROM messages WHERE session_id = ?", (session_id,)
                     )
                     total = cursor.fetchone()[0]
 
@@ -1640,37 +1641,38 @@ async def get_session_messages(
                            WHERE session_id = ?
                            ORDER BY created_at ASC
                            LIMIT ? OFFSET ?""",
-                        (session_id, page_size, offset)
+                        (session_id, page_size, offset),
                     )
 
                     for row in cursor.fetchall():
                         metadata = {}
-                        if row['metadata']:
+                        if row["metadata"]:
                             try:
-                                metadata = json.loads(row['metadata']) if isinstance(row['metadata'], str) else row['metadata']
+                                metadata = (
+                                    json.loads(row["metadata"])
+                                    if isinstance(row["metadata"], str)
+                                    else row["metadata"]
+                                )
                             except:
                                 pass
 
-                        messages.append({
-                            "message_id": row['message_id'],
-                            "user_id": row['user_id'],
-                            "thread_id": row['thread_id'],
-                            "session_id": row['session_id'],
-                            "role": row['role'],
-                            "raw_text": row['raw_text'],
-                            "metadata": metadata,
-                            "created_at": str(row['created_at']) if row['created_at'] else None
-                        })
+                        messages.append(
+                            {
+                                "message_id": row["message_id"],
+                                "user_id": row["user_id"],
+                                "thread_id": row["thread_id"],
+                                "session_id": row["session_id"],
+                                "role": row["role"],
+                                "raw_text": row["raw_text"],
+                                "metadata": metadata,
+                                "created_at": str(row["created_at"]) if row["created_at"] else None,
+                            }
+                        )
 
         except Exception as e:
             logger.error(f"Failed to get session messages: {e}")
 
-    return {
-        "messages": messages,
-        "total": total,
-        "page": page,
-        "page_size": page_size
-    }
+    return {"messages": messages, "total": total, "page": page, "page_size": page_size}
 
 
 @router.delete("/sessions/{session_id}")
@@ -1684,11 +1686,10 @@ async def delete_session(session_id: str):
     try:
         db = _mindcore_instance.db
 
-        if hasattr(db, 'get_connection'):
+        if hasattr(db, "get_connection"):
             with db.get_connection() as conn:
                 cursor = conn.execute(
-                    "SELECT COUNT(*) FROM messages WHERE session_id = ?",
-                    (session_id,)
+                    "SELECT COUNT(*) FROM messages WHERE session_id = ?", (session_id,)
                 )
                 count = cursor.fetchone()[0]
 

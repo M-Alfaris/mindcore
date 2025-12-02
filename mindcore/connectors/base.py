@@ -7,6 +7,7 @@ They map conversation topics to external data sources.
 Connectors automatically register their topics with VocabularyManager
 to ensure consistent vocabulary across the system.
 """
+
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ class ConnectorResult:
 
     Contains the fetched data, source information, and cache metadata.
     """
+
     data: Dict[str, Any]  # The fetched data
     source: str  # Connector name
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -45,7 +47,7 @@ class ConnectorResult:
             "fetched_at": self.fetched_at.isoformat(),
             "cache_ttl": self.cache_ttl,
             "error": self.error,
-            "success": self.success
+            "success": self.success,
         }
 
     def to_context_string(self) -> str:
@@ -158,11 +160,7 @@ class BaseConnector(ABC):
             logger.info(f"Connector '{cls.name}' registered topics: {cls.topics}")
 
     @abstractmethod
-    async def lookup(
-        self,
-        user_id: str,
-        context: Dict[str, Any]
-    ) -> ConnectorResult:
+    async def lookup(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
         """
         Fetch data from external system.
 
@@ -252,7 +250,7 @@ class BaseConnector(ABC):
         entities = {}
 
         # ISO dates (2024-03-15)
-        iso_dates = re.findall(r'\d{4}-\d{2}-\d{2}', text)
+        iso_dates = re.findall(r"\d{4}-\d{2}-\d{2}", text)
         if iso_dates:
             entities["dates"] = iso_dates
 
@@ -285,8 +283,8 @@ class BaseConnector(ABC):
 
         # Currency amounts ($100, $99.99, 100 USD)
         amount_patterns = [
-            r'\$(\d+(?:\.\d{2})?)',
-            r'(\d+(?:\.\d{2})?)\s*(?:USD|EUR|GBP)',
+            r"\$(\d+(?:\.\d{2})?)",
+            r"(\d+(?:\.\d{2})?)\s*(?:USD|EUR|GBP)",
         ]
 
         for pattern in amount_patterns:

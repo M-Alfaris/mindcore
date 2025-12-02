@@ -4,6 +4,7 @@ Database manager for PostgreSQL persistence.
 Supports both direct PostgreSQL connections and PgBouncer pooled connections.
 When using PgBouncer, set MINDCORE_DB_USE_PGBOUNCER=true for optimal settings.
 """
+
 import os
 import json
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ try:
     import psycopg
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
+
     _PSYCOPG_VERSION = 3
     logger.debug("Using psycopg v3")
 except ImportError:
@@ -27,6 +29,7 @@ except ImportError:
         import psycopg2 as psycopg
         from psycopg2.extras import RealDictCursor
         from psycopg2.pool import ThreadedConnectionPool
+
         _PSYCOPG_VERSION = 2
         logger.debug("Using psycopg2 (legacy)")
     except ImportError:
@@ -39,6 +42,7 @@ except ImportError:
 
 class DatabaseConnectionError(Exception):
     """Raised when database connection fails."""
+
     pass
 
 
@@ -62,7 +66,7 @@ def _normalize_datetime(dt: Any) -> Optional[datetime]:
     # Handle string datetimes
     if isinstance(dt, str):
         try:
-            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             return None
 
@@ -344,34 +348,42 @@ class DatabaseManager:
                 with conn.cursor() as cursor:
                     if _PSYCOPG_VERSION == 3:
                         from psycopg.types.json import Jsonb
-                        cursor.execute(insert_sql, (
-                            message.message_id,
-                            message.user_id,
-                            message.thread_id,
-                            message.session_id,
-                            message.role.value,
-                            message.raw_text,
-                            Jsonb(metadata_dict),
-                            message.created_at,
-                            getattr(message, 'agent_id', None),
-                            getattr(message, 'visibility', 'private'),
-                            getattr(message, 'sharing_groups', []),
-                        ))
+
+                        cursor.execute(
+                            insert_sql,
+                            (
+                                message.message_id,
+                                message.user_id,
+                                message.thread_id,
+                                message.session_id,
+                                message.role.value,
+                                message.raw_text,
+                                Jsonb(metadata_dict),
+                                message.created_at,
+                                getattr(message, "agent_id", None),
+                                getattr(message, "visibility", "private"),
+                                getattr(message, "sharing_groups", []),
+                            ),
+                        )
                     else:
                         from psycopg2.extras import Json
-                        cursor.execute(insert_sql, (
-                            message.message_id,
-                            message.user_id,
-                            message.thread_id,
-                            message.session_id,
-                            message.role.value,
-                            message.raw_text,
-                            Json(metadata_dict),
-                            message.created_at,
-                            getattr(message, 'agent_id', None),
-                            getattr(message, 'visibility', 'private'),
-                            getattr(message, 'sharing_groups', []),
-                        ))
+
+                        cursor.execute(
+                            insert_sql,
+                            (
+                                message.message_id,
+                                message.user_id,
+                                message.thread_id,
+                                message.session_id,
+                                message.role.value,
+                                message.raw_text,
+                                Json(metadata_dict),
+                                message.created_at,
+                                getattr(message, "agent_id", None),
+                                getattr(message, "visibility", "private"),
+                                getattr(message, "sharing_groups", []),
+                            ),
+                        )
                     conn.commit()
                     logger.debug(f"Message {message.message_id} inserted successfully")
                     return True
@@ -394,18 +406,18 @@ class DatabaseManager:
 
         try:
             metadata_dict = (
-                metadata.to_dict()
-                if isinstance(metadata, MessageMetadata)
-                else metadata
+                metadata.to_dict() if isinstance(metadata, MessageMetadata) else metadata
             )
 
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     if _PSYCOPG_VERSION == 3:
                         from psycopg.types.json import Jsonb
+
                         cursor.execute(update_sql, (Jsonb(metadata_dict), message_id))
                     else:
                         from psycopg2.extras import Json
+
                         cursor.execute(update_sql, (Json(metadata_dict), message_id))
                     conn.commit()
                     return cursor.rowcount > 0
@@ -413,12 +425,7 @@ class DatabaseManager:
             logger.error(f"Failed to update message metadata: {e}")
             return False
 
-    def fetch_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: int = 50
-    ) -> List[Message]:
+    def fetch_recent_messages(self, user_id: str, thread_id: str, limit: int = 50) -> List[Message]:
         """
         Fetch recent messages for a user and thread.
 
@@ -446,17 +453,21 @@ class DatabaseManager:
                     messages = []
                     for row in rows:
                         message = Message(
-                            message_id=row['message_id'],
-                            user_id=row['user_id'],
-                            thread_id=row['thread_id'],
-                            session_id=row['session_id'],
-                            role=MessageRole(row['role']),
-                            raw_text=row['raw_text'],
-                            metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=_normalize_datetime(row['created_at']),
-                            agent_id=row.get('agent_id'),
-                            visibility=row.get('visibility', 'private'),
-                            sharing_groups=row.get('sharing_groups', []),
+                            message_id=row["message_id"],
+                            user_id=row["user_id"],
+                            thread_id=row["thread_id"],
+                            session_id=row["session_id"],
+                            role=MessageRole(row["role"]),
+                            raw_text=row["raw_text"],
+                            metadata=(
+                                MessageMetadata(**row["metadata"])
+                                if row["metadata"]
+                                else MessageMetadata()
+                            ),
+                            created_at=_normalize_datetime(row["created_at"]),
+                            agent_id=row.get("agent_id"),
+                            visibility=row.get("visibility", "private"),
+                            sharing_groups=row.get("sharing_groups", []),
                         )
                         messages.append(message)
 
@@ -467,11 +478,7 @@ class DatabaseManager:
             return []
 
     def search_messages_by_topic(
-        self,
-        user_id: str,
-        thread_id: str,
-        topics: List[str],
-        limit: int = 20
+        self, user_id: str, thread_id: str, topics: List[str], limit: int = 20
     ) -> List[Message]:
         """
         Search messages by topics.
@@ -503,14 +510,18 @@ class DatabaseManager:
                     messages = []
                     for row in rows:
                         message = Message(
-                            message_id=row['message_id'],
-                            user_id=row['user_id'],
-                            thread_id=row['thread_id'],
-                            session_id=row['session_id'],
-                            role=MessageRole(row['role']),
-                            raw_text=row['raw_text'],
-                            metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=_normalize_datetime(row['created_at'])
+                            message_id=row["message_id"],
+                            user_id=row["user_id"],
+                            thread_id=row["thread_id"],
+                            session_id=row["session_id"],
+                            role=MessageRole(row["role"]),
+                            raw_text=row["raw_text"],
+                            metadata=(
+                                MessageMetadata(**row["metadata"])
+                                if row["metadata"]
+                                else MessageMetadata()
+                            ),
+                            created_at=_normalize_datetime(row["created_at"]),
                         )
                         messages.append(message)
 
@@ -528,7 +539,7 @@ class DatabaseManager:
         min_importance: float = 0.0,
         thread_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
     ) -> List[Message]:
         """
         Search messages by relevance using metadata matching and scoring.
@@ -578,36 +589,44 @@ class DatabaseManager:
         if topics:
             conditions.append("metadata->'topics' ?| %s")
             params.append(topics)
-            score_parts.append("""
+            score_parts.append(
+                """
                 (SELECT COUNT(*) FROM jsonb_array_elements_text(COALESCE(metadata->'topics', '[]'::jsonb)) t
                  WHERE t = ANY(%s)) * 3.0
-            """)
+            """
+            )
             params.append(topics)
 
         # Category matching score (2x weight)
         if categories:
             conditions.append("metadata->'categories' ?| %s")
             params.append(categories)
-            score_parts.append("""
+            score_parts.append(
+                """
                 (SELECT COUNT(*) FROM jsonb_array_elements_text(COALESCE(metadata->'categories', '[]'::jsonb)) c
                  WHERE c = ANY(%s)) * 2.0
-            """)
+            """
+            )
             params.append(categories)
 
         # Intent matching score (1.5x weight)
         if intent:
-            score_parts.append("""
+            score_parts.append(
+                """
                 CASE WHEN metadata->>'intent' = %s THEN 1.5 ELSE 0 END
-            """)
+            """
+            )
             params.append(intent)
 
         # Importance score (1x weight)
         score_parts.append("COALESCE((metadata->>'importance')::float, 0.5)")
 
         # Recency score (0.5x weight, normalized to 0-1 based on last 7 days)
-        score_parts.append("""
+        score_parts.append(
+            """
             LEAST(1.0, EXTRACT(EPOCH FROM (NOW() - created_at)) / 604800) * -0.5 + 0.5
-        """)
+        """
+        )
 
         # Combine scores
         if score_parts:
@@ -635,14 +654,18 @@ class DatabaseManager:
                     messages = []
                     for row in rows:
                         message = Message(
-                            message_id=row['message_id'],
-                            user_id=row['user_id'],
-                            thread_id=row['thread_id'],
-                            session_id=row['session_id'],
-                            role=MessageRole(row['role']),
-                            raw_text=row['raw_text'],
-                            metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=_normalize_datetime(row['created_at'])
+                            message_id=row["message_id"],
+                            user_id=row["user_id"],
+                            thread_id=row["thread_id"],
+                            session_id=row["session_id"],
+                            role=MessageRole(row["role"]),
+                            raw_text=row["raw_text"],
+                            metadata=(
+                                MessageMetadata(**row["metadata"])
+                                if row["metadata"]
+                                else MessageMetadata()
+                            ),
+                            created_at=_normalize_datetime(row["created_at"]),
                         )
                         messages.append(message)
 
@@ -672,14 +695,18 @@ class DatabaseManager:
 
                     if row:
                         return Message(
-                            message_id=row['message_id'],
-                            user_id=row['user_id'],
-                            thread_id=row['thread_id'],
-                            session_id=row['session_id'],
-                            role=MessageRole(row['role']),
-                            raw_text=row['raw_text'],
-                            metadata=MessageMetadata(**row['metadata']) if row['metadata'] else MessageMetadata(),
-                            created_at=_normalize_datetime(row['created_at'])
+                            message_id=row["message_id"],
+                            user_id=row["user_id"],
+                            thread_id=row["thread_id"],
+                            session_id=row["session_id"],
+                            role=MessageRole(row["role"]),
+                            raw_text=row["raw_text"],
+                            metadata=(
+                                MessageMetadata(**row["metadata"])
+                                if row["metadata"]
+                                else MessageMetadata()
+                            ),
+                            created_at=_normalize_datetime(row["created_at"]),
                         )
                     return None
         except Exception as e:
@@ -694,6 +721,7 @@ class DatabaseManager:
             Dict with status, latency, and pool info.
         """
         import time
+
         start = time.time()
 
         try:

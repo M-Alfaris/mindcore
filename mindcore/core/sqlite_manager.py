@@ -6,6 +6,7 @@ Provides a lightweight alternative to PostgreSQL for:
 - Quick prototyping
 - Environments where PostgreSQL isn't available
 """
+
 import json
 import sqlite3
 import threading
@@ -40,9 +41,9 @@ def _normalize_datetime(dt: Any) -> Optional[datetime]:
     if isinstance(dt, str):
         try:
             # Handle various ISO formats
-            dt_str = dt.replace('Z', '+00:00')
+            dt_str = dt.replace("Z", "+00:00")
             # Handle SQLite's default format (no timezone)
-            if '+' not in dt_str and 'T' in dt_str:
+            if "+" not in dt_str and "T" in dt_str:
                 dt = datetime.fromisoformat(dt_str)
             else:
                 dt = datetime.fromisoformat(dt_str)
@@ -94,11 +95,9 @@ class SQLiteManager:
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
-        if not hasattr(self._local, 'connection') or self._local.connection is None:
+        if not hasattr(self._local, "connection") or self._local.connection is None:
             self._local.connection = sqlite3.connect(
-                self.db_path,
-                check_same_thread=False,
-                timeout=30.0
+                self.db_path, check_same_thread=False, timeout=30.0
             )
             self._local.connection.row_factory = sqlite3.Row
             # Enable foreign keys
@@ -216,19 +215,23 @@ class SQLiteManager:
         try:
             with self.get_connection() as conn:
                 metadata_json = json.dumps(
-                    message.metadata.to_dict() if isinstance(message.metadata, MessageMetadata)
+                    message.metadata.to_dict()
+                    if isinstance(message.metadata, MessageMetadata)
                     else message.metadata
                 )
-                conn.execute(insert_sql, (
-                    message.message_id,
-                    message.user_id,
-                    message.thread_id,
-                    message.session_id,
-                    message.role.value,
-                    message.raw_text,
-                    metadata_json,
-                    message.created_at.isoformat() if message.created_at else None,
-                ))
+                conn.execute(
+                    insert_sql,
+                    (
+                        message.message_id,
+                        message.user_id,
+                        message.thread_id,
+                        message.session_id,
+                        message.role.value,
+                        message.raw_text,
+                        metadata_json,
+                        message.created_at.isoformat() if message.created_at else None,
+                    ),
+                )
                 conn.commit()
                 logger.debug(f"Message {message.message_id} inserted successfully")
                 return True
@@ -236,12 +239,7 @@ class SQLiteManager:
             logger.error(f"Failed to insert message: {e}")
             return False
 
-    def fetch_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: int = 50
-    ) -> List[Message]:
+    def fetch_recent_messages(self, user_id: str, thread_id: str, limit: int = 50) -> List[Message]:
         """
         Fetch recent messages for a user and thread.
 
@@ -267,16 +265,18 @@ class SQLiteManager:
 
                 messages = []
                 for row in rows:
-                    metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                    metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
                     message = Message(
-                        message_id=row['message_id'],
-                        user_id=row['user_id'],
-                        thread_id=row['thread_id'],
-                        session_id=row['session_id'],
-                        role=MessageRole(row['role']),
-                        raw_text=row['raw_text'],
-                        metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=_normalize_datetime(row['created_at'])
+                        message_id=row["message_id"],
+                        user_id=row["user_id"],
+                        thread_id=row["thread_id"],
+                        session_id=row["session_id"],
+                        role=MessageRole(row["role"]),
+                        raw_text=row["raw_text"],
+                        metadata=(
+                            MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                        ),
+                        created_at=_normalize_datetime(row["created_at"]),
                     )
                     messages.append(message)
 
@@ -287,11 +287,7 @@ class SQLiteManager:
             return []
 
     def search_messages_by_topic(
-        self,
-        user_id: str,
-        thread_id: str,
-        topics: List[str],
-        limit: int = 20
+        self, user_id: str, thread_id: str, topics: List[str], limit: int = 20
     ) -> List[Message]:
         """
         Search messages by topics.
@@ -328,16 +324,18 @@ class SQLiteManager:
 
                 messages = []
                 for row in rows:
-                    metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                    metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
                     message = Message(
-                        message_id=row['message_id'],
-                        user_id=row['user_id'],
-                        thread_id=row['thread_id'],
-                        session_id=row['session_id'],
-                        role=MessageRole(row['role']),
-                        raw_text=row['raw_text'],
-                        metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=_normalize_datetime(row['created_at'])
+                        message_id=row["message_id"],
+                        user_id=row["user_id"],
+                        thread_id=row["thread_id"],
+                        session_id=row["session_id"],
+                        role=MessageRole(row["role"]),
+                        raw_text=row["raw_text"],
+                        metadata=(
+                            MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                        ),
+                        created_at=_normalize_datetime(row["created_at"]),
                     )
                     messages.append(message)
 
@@ -355,7 +353,7 @@ class SQLiteManager:
         min_importance: float = 0.0,
         thread_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
     ) -> List[Message]:
         """
         Search messages by relevance using metadata matching and scoring.
@@ -414,14 +412,14 @@ class SQLiteManager:
                 now = datetime.now(timezone.utc)
 
                 for row in rows:
-                    metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                    metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
 
                     # Calculate relevance score
                     score = 0.0
 
                     # Topic matching (3x weight)
                     if topics:
-                        msg_topics = metadata_dict.get('topics', [])
+                        msg_topics = metadata_dict.get("topics", [])
                         topic_matches = len(set(topics) & set(msg_topics))
                         if topic_matches == 0:
                             continue  # Skip if no topic match when topics are specified
@@ -429,36 +427,38 @@ class SQLiteManager:
 
                     # Category matching (2x weight)
                     if categories:
-                        msg_categories = metadata_dict.get('categories', [])
+                        msg_categories = metadata_dict.get("categories", [])
                         category_matches = len(set(categories) & set(msg_categories))
                         score += category_matches * 2.0
 
                     # Intent matching (1.5x weight)
-                    if intent and metadata_dict.get('intent') == intent:
+                    if intent and metadata_dict.get("intent") == intent:
                         score += 1.5
 
                     # Importance score (1x weight)
-                    importance = metadata_dict.get('importance', 0.5)
+                    importance = metadata_dict.get("importance", 0.5)
                     if importance < min_importance:
                         continue  # Skip if below importance threshold
                     score += importance
 
                     # Recency score (0.5x weight)
-                    created_at = _normalize_datetime(row['created_at'])
+                    created_at = _normalize_datetime(row["created_at"])
                     if created_at:
                         age_seconds = (now - created_at).total_seconds()
                         recency = max(0, 1 - (age_seconds / 604800))  # 7 days
                         score += recency * 0.5
 
                     message = Message(
-                        message_id=row['message_id'],
-                        user_id=row['user_id'],
-                        thread_id=row['thread_id'],
-                        session_id=row['session_id'],
-                        role=MessageRole(row['role']),
-                        raw_text=row['raw_text'],
-                        metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=created_at
+                        message_id=row["message_id"],
+                        user_id=row["user_id"],
+                        thread_id=row["thread_id"],
+                        session_id=row["session_id"],
+                        role=MessageRole(row["role"]),
+                        raw_text=row["raw_text"],
+                        metadata=(
+                            MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                        ),
+                        created_at=created_at,
                     )
                     scored_messages.append((score, message))
 
@@ -491,27 +491,25 @@ class SQLiteManager:
                 row = cursor.fetchone()
 
                 if row:
-                    metadata_dict = json.loads(row['metadata']) if row['metadata'] else {}
+                    metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
                     return Message(
-                        message_id=row['message_id'],
-                        user_id=row['user_id'],
-                        thread_id=row['thread_id'],
-                        session_id=row['session_id'],
-                        role=MessageRole(row['role']),
-                        raw_text=row['raw_text'],
-                        metadata=MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata(),
-                        created_at=_normalize_datetime(row['created_at'])
+                        message_id=row["message_id"],
+                        user_id=row["user_id"],
+                        thread_id=row["thread_id"],
+                        session_id=row["session_id"],
+                        role=MessageRole(row["role"]),
+                        raw_text=row["raw_text"],
+                        metadata=(
+                            MessageMetadata(**metadata_dict) if metadata_dict else MessageMetadata()
+                        ),
+                        created_at=_normalize_datetime(row["created_at"]),
                     )
                 return None
         except Exception as e:
             logger.error(f"Failed to get message by ID: {e}")
             return None
 
-    def update_message_metadata(
-        self,
-        message_id: str,
-        metadata: MessageMetadata
-    ) -> bool:
+    def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
         """
         Update the metadata of an existing message.
 
@@ -532,8 +530,7 @@ class SQLiteManager:
         try:
             with self.get_connection() as conn:
                 metadata_json = json.dumps(
-                    metadata.to_dict() if isinstance(metadata, MessageMetadata)
-                    else metadata
+                    metadata.to_dict() if isinstance(metadata, MessageMetadata) else metadata
                 )
                 cursor = conn.execute(update_sql, (metadata_json, message_id))
                 conn.commit()
@@ -550,7 +547,7 @@ class SQLiteManager:
 
     def close(self) -> None:
         """Close database connection."""
-        if hasattr(self._local, 'connection') and self._local.connection:
+        if hasattr(self._local, "connection") and self._local.connection:
             self._local.connection.close()
             self._local.connection = None
             logger.info("SQLite connection closed")
@@ -580,25 +577,30 @@ class SQLiteManager:
 
         try:
             with self.get_connection() as conn:
-                conn.execute(insert_sql, (
-                    summary.summary_id,
-                    summary.user_id,
-                    summary.thread_id,
-                    summary.session_id,
-                    summary.summary,
-                    json.dumps(summary.key_facts),
-                    json.dumps(summary.topics),
-                    json.dumps(summary.categories),
-                    summary.overall_sentiment,
-                    summary.message_count,
-                    summary.first_message_at.isoformat() if summary.first_message_at else None,
-                    summary.last_message_at.isoformat() if summary.last_message_at else None,
-                    summary.summarized_at.isoformat() if summary.summarized_at else None,
-                    json.dumps(summary.entities),
-                    summary.messages_deleted
-                ))
+                conn.execute(
+                    insert_sql,
+                    (
+                        summary.summary_id,
+                        summary.user_id,
+                        summary.thread_id,
+                        summary.session_id,
+                        summary.summary,
+                        json.dumps(summary.key_facts),
+                        json.dumps(summary.topics),
+                        json.dumps(summary.categories),
+                        summary.overall_sentiment,
+                        summary.message_count,
+                        summary.first_message_at.isoformat() if summary.first_message_at else None,
+                        summary.last_message_at.isoformat() if summary.last_message_at else None,
+                        summary.summarized_at.isoformat() if summary.summarized_at else None,
+                        json.dumps(summary.entities),
+                        summary.messages_deleted,
+                    ),
+                )
                 conn.commit()
-                logger.debug(f"Summary {summary.summary_id} inserted for thread {summary.thread_id}")
+                logger.debug(
+                    f"Summary {summary.summary_id} inserted for thread {summary.thread_id}"
+                )
                 return True
         except Exception as e:
             logger.error(f"Failed to insert summary: {e}")
@@ -629,21 +631,21 @@ class SQLiteManager:
 
                 if row:
                     return ThreadSummary(
-                        summary_id=row['summary_id'],
-                        user_id=row['user_id'],
-                        thread_id=row['thread_id'],
-                        session_id=row['session_id'],
-                        summary=row['summary'],
-                        key_facts=json.loads(row['key_facts']) if row['key_facts'] else [],
-                        topics=json.loads(row['topics']) if row['topics'] else [],
-                        categories=json.loads(row['categories']) if row['categories'] else [],
-                        overall_sentiment=row['overall_sentiment'] or 'neutral',
-                        message_count=row['message_count'] or 0,
-                        first_message_at=_normalize_datetime(row['first_message_at']),
-                        last_message_at=_normalize_datetime(row['last_message_at']),
-                        summarized_at=_normalize_datetime(row['summarized_at']),
-                        entities=json.loads(row['entities']) if row['entities'] else {},
-                        messages_deleted=bool(row['messages_deleted'])
+                        summary_id=row["summary_id"],
+                        user_id=row["user_id"],
+                        thread_id=row["thread_id"],
+                        session_id=row["session_id"],
+                        summary=row["summary"],
+                        key_facts=json.loads(row["key_facts"]) if row["key_facts"] else [],
+                        topics=json.loads(row["topics"]) if row["topics"] else [],
+                        categories=json.loads(row["categories"]) if row["categories"] else [],
+                        overall_sentiment=row["overall_sentiment"] or "neutral",
+                        message_count=row["message_count"] or 0,
+                        first_message_at=_normalize_datetime(row["first_message_at"]),
+                        last_message_at=_normalize_datetime(row["last_message_at"]),
+                        summarized_at=_normalize_datetime(row["summarized_at"]),
+                        entities=json.loads(row["entities"]) if row["entities"] else {},
+                        messages_deleted=bool(row["messages_deleted"]),
                     )
                 return None
         except Exception as e:
@@ -651,10 +653,7 @@ class SQLiteManager:
             return None
 
     def get_user_summaries(
-        self,
-        user_id: str,
-        topics: Optional[List[str]] = None,
-        limit: int = 20
+        self, user_id: str, topics: Optional[List[str]] = None, limit: int = 20
     ) -> List[ThreadSummary]:
         """
         Get summaries for a user, optionally filtered by topics.
@@ -695,33 +694,31 @@ class SQLiteManager:
 
                 summaries = []
                 for row in rows:
-                    summaries.append(ThreadSummary(
-                        summary_id=row['summary_id'],
-                        user_id=row['user_id'],
-                        thread_id=row['thread_id'],
-                        session_id=row['session_id'],
-                        summary=row['summary'],
-                        key_facts=json.loads(row['key_facts']) if row['key_facts'] else [],
-                        topics=json.loads(row['topics']) if row['topics'] else [],
-                        categories=json.loads(row['categories']) if row['categories'] else [],
-                        overall_sentiment=row['overall_sentiment'] or 'neutral',
-                        message_count=row['message_count'] or 0,
-                        first_message_at=_normalize_datetime(row['first_message_at']),
-                        last_message_at=_normalize_datetime(row['last_message_at']),
-                        summarized_at=_normalize_datetime(row['summarized_at']),
-                        entities=json.loads(row['entities']) if row['entities'] else {},
-                        messages_deleted=bool(row['messages_deleted'])
-                    ))
+                    summaries.append(
+                        ThreadSummary(
+                            summary_id=row["summary_id"],
+                            user_id=row["user_id"],
+                            thread_id=row["thread_id"],
+                            session_id=row["session_id"],
+                            summary=row["summary"],
+                            key_facts=json.loads(row["key_facts"]) if row["key_facts"] else [],
+                            topics=json.loads(row["topics"]) if row["topics"] else [],
+                            categories=json.loads(row["categories"]) if row["categories"] else [],
+                            overall_sentiment=row["overall_sentiment"] or "neutral",
+                            message_count=row["message_count"] or 0,
+                            first_message_at=_normalize_datetime(row["first_message_at"]),
+                            last_message_at=_normalize_datetime(row["last_message_at"]),
+                            summarized_at=_normalize_datetime(row["summarized_at"]),
+                            entities=json.loads(row["entities"]) if row["entities"] else {},
+                            messages_deleted=bool(row["messages_deleted"]),
+                        )
+                    )
                 return summaries
         except Exception as e:
             logger.error(f"Failed to get user summaries: {e}")
             return []
 
-    def delete_summarized_messages(
-        self,
-        thread_id: str,
-        keep_last_n: int = 0
-    ) -> int:
+    def delete_summarized_messages(self, thread_id: str, keep_last_n: int = 0) -> int:
         """
         Delete raw messages for a summarized thread.
 
@@ -743,10 +740,10 @@ class SQLiteManager:
                     LIMIT ?
                     """
                     cursor = conn.execute(keep_sql, (thread_id, keep_last_n))
-                    keep_ids = [row['message_id'] for row in cursor.fetchall()]
+                    keep_ids = [row["message_id"] for row in cursor.fetchall()]
 
                     if keep_ids:
-                        placeholders = ','.join('?' * len(keep_ids))
+                        placeholders = ",".join("?" * len(keep_ids))
                         delete_sql = f"""
                         DELETE FROM messages
                         WHERE thread_id = ? AND message_id NOT IN ({placeholders})
@@ -769,9 +766,7 @@ class SQLiteManager:
             return 0
 
     def get_threads_for_summarization(
-        self,
-        max_age_days: int = 7,
-        min_messages: int = 5
+        self, max_age_days: int = 7, min_messages: int = 5
     ) -> List[Dict[str, Any]]:
         """
         Get threads that are candidates for summarization.
@@ -799,22 +794,24 @@ class SQLiteManager:
 
         try:
             with self.get_connection() as conn:
-                age_param = f'-{max_age_days} days'
+                age_param = f"-{max_age_days} days"
                 cursor = conn.execute(select_sql, (age_param, min_messages))
                 rows = cursor.fetchall()
 
                 threads = []
                 for row in rows:
                     # Check if already summarized
-                    existing = self.get_summary(row['user_id'], row['thread_id'])
+                    existing = self.get_summary(row["user_id"], row["thread_id"])
                     if existing is None:
-                        threads.append({
-                            'thread_id': row['thread_id'],
-                            'user_id': row['user_id'],
-                            'message_count': row['message_count'],
-                            'first_message': row['first_message'],
-                            'last_message': row['last_message']
-                        })
+                        threads.append(
+                            {
+                                "thread_id": row["thread_id"],
+                                "user_id": row["user_id"],
+                                "message_count": row["message_count"],
+                                "first_message": row["first_message"],
+                                "last_message": row["last_message"],
+                            }
+                        )
                 return threads
         except Exception as e:
             logger.error(f"Failed to get threads for summarization: {e}")
@@ -843,17 +840,23 @@ class SQLiteManager:
 
                 if row:
                     return UserPreferences(
-                        user_id=row['user_id'],
-                        language=row['language'] or 'en',
-                        timezone=row['timezone'] or 'UTC',
-                        communication_style=row['communication_style'] or 'balanced',
-                        interests=json.loads(row['interests']) if row['interests'] else [],
-                        goals=json.loads(row['goals']) if row['goals'] else [],
-                        preferred_name=row['preferred_name'],
-                        custom_context=json.loads(row['custom_context']) if row['custom_context'] else {},
-                        notification_topics=json.loads(row['notification_topics']) if row['notification_topics'] else [],
-                        created_at=_normalize_datetime(row['created_at']),
-                        updated_at=_normalize_datetime(row['updated_at'])
+                        user_id=row["user_id"],
+                        language=row["language"] or "en",
+                        timezone=row["timezone"] or "UTC",
+                        communication_style=row["communication_style"] or "balanced",
+                        interests=json.loads(row["interests"]) if row["interests"] else [],
+                        goals=json.loads(row["goals"]) if row["goals"] else [],
+                        preferred_name=row["preferred_name"],
+                        custom_context=(
+                            json.loads(row["custom_context"]) if row["custom_context"] else {}
+                        ),
+                        notification_topics=(
+                            json.loads(row["notification_topics"])
+                            if row["notification_topics"]
+                            else []
+                        ),
+                        created_at=_normalize_datetime(row["created_at"]),
+                        updated_at=_normalize_datetime(row["updated_at"]),
                     )
                 return None
         except Exception as e:
@@ -899,19 +902,22 @@ class SQLiteManager:
 
         try:
             with self.get_connection() as conn:
-                conn.execute(insert_sql, (
-                    preferences.user_id,
-                    preferences.language,
-                    preferences.timezone,
-                    preferences.communication_style,
-                    json.dumps(preferences.interests),
-                    json.dumps(preferences.goals),
-                    preferences.preferred_name,
-                    json.dumps(preferences.custom_context),
-                    json.dumps(preferences.notification_topics),
-                    preferences.created_at.isoformat() if preferences.created_at else None,
-                    preferences.updated_at.isoformat() if preferences.updated_at else None
-                ))
+                conn.execute(
+                    insert_sql,
+                    (
+                        preferences.user_id,
+                        preferences.language,
+                        preferences.timezone,
+                        preferences.communication_style,
+                        json.dumps(preferences.interests),
+                        json.dumps(preferences.goals),
+                        preferences.preferred_name,
+                        json.dumps(preferences.custom_context),
+                        json.dumps(preferences.notification_topics),
+                        preferences.created_at.isoformat() if preferences.created_at else None,
+                        preferences.updated_at.isoformat() if preferences.updated_at else None,
+                    ),
+                )
                 conn.commit()
                 logger.debug(f"Saved preferences for user {preferences.user_id}")
                 return True
@@ -919,12 +925,7 @@ class SQLiteManager:
             logger.error(f"Failed to save preferences: {e}")
             return False
 
-    def update_preference(
-        self,
-        user_id: str,
-        field: str,
-        value: Any
-    ) -> bool:
+    def update_preference(self, user_id: str, field: str, value: Any) -> bool:
         """
         Update a single preference field.
 

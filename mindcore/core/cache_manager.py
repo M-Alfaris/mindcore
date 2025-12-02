@@ -3,6 +3,7 @@ In-memory cache manager for recent messages.
 
 Uses cachetools for battle-tested caching with TTL and LRU support.
 """
+
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime, timezone
 import threading
@@ -41,7 +42,9 @@ class CacheManager:
         # Track message order per thread for chronological retrieval
         self._order: Dict[Tuple[str, str], List[Tuple[datetime, str]]] = {}
 
-        logger.info(f"Cache manager initialized with max_size={max_size}, ttl_seconds={ttl_seconds}")
+        logger.info(
+            f"Cache manager initialized with max_size={max_size}, ttl_seconds={ttl_seconds}"
+        )
 
     def _get_key(self, user_id: str, thread_id: str) -> Tuple[str, str]:
         """Generate cache key."""
@@ -62,7 +65,7 @@ class CacheManager:
         # Handle string datetimes
         if isinstance(dt, str):
             try:
-                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+                dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 return datetime.now(timezone.utc)
 
@@ -107,11 +110,11 @@ class CacheManager:
 
             # Add new entry and sort (use timestamp() for safe comparison)
             order.append((timestamp, message.message_id))
-            order.sort(key=lambda x: x[0].timestamp() if hasattr(x[0], 'timestamp') else 0)
+            order.sort(key=lambda x: x[0].timestamp() if hasattr(x[0], "timestamp") else 0)
 
             # Trim order list to max_size (in case of edge cases)
             if len(order) > self.max_size * 2:
-                order = order[-self.max_size:]
+                order = order[-self.max_size :]
 
             self._order[key] = order
 
@@ -147,10 +150,7 @@ class CacheManager:
             return True
 
     def get_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: Optional[int] = None
+        self, user_id: str, thread_id: str, limit: Optional[int] = None
     ) -> List[Message]:
         """
         Get recent messages from cache in chronological order.
@@ -212,11 +212,7 @@ class CacheManager:
             self._order.clear()
             logger.info("Cleared entire cache")
 
-    def get_session_metadata(
-        self,
-        user_id: str,
-        thread_id: str
-    ) -> Dict[str, Any]:
+    def get_session_metadata(self, user_id: str, thread_id: str) -> Dict[str, Any]:
         """
         Aggregate metadata from all cached messages in the current session.
 
@@ -238,12 +234,7 @@ class CacheManager:
             key = self._get_key(user_id, thread_id)
 
             if key not in self._thread_caches:
-                return {
-                    'topics': [],
-                    'categories': [],
-                    'intents': [],
-                    'message_count': 0
-                }
+                return {"topics": [], "categories": [], "intents": [], "message_count": 0}
 
             cache = self._thread_caches[key]
 
@@ -254,23 +245,23 @@ class CacheManager:
             for msg_id in cache:
                 try:
                     message = cache[msg_id]
-                    if hasattr(message, 'metadata') and message.metadata:
+                    if hasattr(message, "metadata") and message.metadata:
                         meta = message.metadata
-                        if hasattr(meta, 'topics') and meta.topics:
+                        if hasattr(meta, "topics") and meta.topics:
                             topics.update(meta.topics)
-                        if hasattr(meta, 'categories') and meta.categories:
+                        if hasattr(meta, "categories") and meta.categories:
                             categories.update(meta.categories)
-                        if hasattr(meta, 'intent') and meta.intent:
+                        if hasattr(meta, "intent") and meta.intent:
                             intents.add(meta.intent)
                 except KeyError:
                     # Message was evicted
                     pass
 
             return {
-                'topics': list(topics),
-                'categories': list(categories),
-                'intents': list(intents),
-                'message_count': len(cache)
+                "topics": list(topics),
+                "categories": list(categories),
+                "intents": list(intents),
+                "message_count": len(cache),
             }
 
     def get_stats(self) -> Dict[str, Any]:
@@ -293,5 +284,5 @@ class CacheManager:
                 "total_messages": total_messages,
                 "max_size_per_thread": self.max_size,
                 "ttl_seconds": self.ttl_seconds,
-                "cache_type": "TTLCache" if self.ttl_seconds else "LRUCache"
+                "cache_type": "TTLCache" if self.ttl_seconds else "LRUCache",
             }

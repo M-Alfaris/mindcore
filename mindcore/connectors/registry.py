@@ -4,6 +4,7 @@ Connector Registry for managing external data connectors.
 The registry provides a central place to register, configure,
 and invoke connectors based on conversation topics.
 """
+
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
@@ -137,12 +138,7 @@ class ConnectorRegistry:
             List of connector info dicts
         """
         return [
-            {
-                "name": c.name,
-                "topics": c.topics,
-                "enabled": c.enabled,
-                "cache_ttl": c.cache_ttl
-            }
+            {"name": c.name, "topics": c.topics, "enabled": c.enabled, "cache_ttl": c.cache_ttl}
             for c in self._connectors.values()
         ]
 
@@ -156,11 +152,7 @@ class ConnectorRegistry:
         return list(self._topic_map.keys())
 
     async def lookup(
-        self,
-        user_id: str,
-        topics: List[str],
-        context: Dict[str, Any],
-        timeout: float = 10.0
+        self, user_id: str, topics: List[str], context: Dict[str, Any], timeout: float = 10.0
     ) -> List[ConnectorResult]:
         """
         Lookup data from all relevant connectors.
@@ -201,37 +193,30 @@ class ConnectorRegistry:
             try:
                 # Run all lookups in parallel with timeout
                 task_results = await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=timeout
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=timeout
                 )
 
                 for result in task_results:
                     if isinstance(result, Exception):
                         logger.error(f"Connector lookup failed: {result}")
-                        results.append(ConnectorResult(
-                            data={},
-                            source="unknown",
-                            error=str(result)
-                        ))
+                        results.append(
+                            ConnectorResult(data={}, source="unknown", error=str(result))
+                        )
                     else:
                         results.append(result)
 
             except asyncio.TimeoutError:
                 logger.error(f"Connector lookups timed out after {timeout}s")
-                results.append(ConnectorResult(
-                    data={},
-                    source="timeout",
-                    error=f"Lookups timed out after {timeout}s"
-                ))
+                results.append(
+                    ConnectorResult(
+                        data={}, source="timeout", error=f"Lookups timed out after {timeout}s"
+                    )
+                )
 
         return results
 
     async def _lookup_with_connector(
-        self,
-        connector: BaseConnector,
-        user_id: str,
-        context: Dict[str, Any],
-        cache_key: str
+        self, connector: BaseConnector, user_id: str, context: Dict[str, Any], cache_key: str
     ) -> ConnectorResult:
         """
         Perform lookup with a single connector.
@@ -258,17 +243,9 @@ class ConnectorRegistry:
 
         except Exception as e:
             logger.error(f"Connector {connector.name} failed: {e}")
-            return ConnectorResult(
-                data={},
-                source=connector.name,
-                error=str(e)
-            )
+            return ConnectorResult(data={}, source=connector.name, error=str(e))
 
-    def extract_entities_for_topics(
-        self,
-        text: str,
-        topics: List[str]
-    ) -> Dict[str, Any]:
+    def extract_entities_for_topics(self, text: str, topics: List[str]) -> Dict[str, Any]:
         """
         Extract entities using connectors that handle given topics.
 

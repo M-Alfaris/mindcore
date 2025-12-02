@@ -6,13 +6,11 @@ interface for vector stores that can be used interchangeably.
 
 All vector stores must inherit from VectorStore base class.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import (
-    Dict, Any, List, Optional, Tuple, Callable, Union, Sequence,
-    TypeVar, Generic
-)
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union, Sequence, TypeVar, Generic
 from enum import Enum
 
 from ..utils.logger import get_logger
@@ -28,25 +26,20 @@ class Document:
     This is the standard document format used across all vector stores.
     Compatible with LangChain Document format for interoperability.
     """
+
     page_content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
     id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "page_content": self.page_content,
-            "metadata": self.metadata,
-            "id": self.id
-        }
+        return {"page_content": self.page_content, "metadata": self.metadata, "id": self.id}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Document":
         """Create from dictionary."""
         return cls(
-            page_content=data["page_content"],
-            metadata=data.get("metadata", {}),
-            id=data.get("id")
+            page_content=data["page_content"], metadata=data.get("metadata", {}), id=data.get("id")
         )
 
 
@@ -57,19 +50,18 @@ class SearchResult:
 
     Contains the document and its similarity score.
     """
+
     document: Document
     score: float  # Higher = more similar (normalized 0-1 when possible)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "document": self.document.to_dict(),
-            "score": self.score
-        }
+        return {"document": self.document.to_dict(), "score": self.score}
 
 
 class DistanceMetric(str, Enum):
     """Supported distance/similarity metrics."""
+
     COSINE = "cosine"
     EUCLIDEAN = "euclidean"
     DOT_PRODUCT = "dot_product"
@@ -141,10 +133,7 @@ class VectorStore(ABC):
 
     @abstractmethod
     def add_documents(
-        self,
-        documents: List[Document],
-        ids: Optional[List[str]] = None,
-        **kwargs: Any
+        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
     ) -> List[str]:
         """
         Add documents to the vector store.
@@ -165,7 +154,7 @@ class VectorStore(ABC):
         texts: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[str]:
         """
         Add texts to the vector store.
@@ -183,11 +172,7 @@ class VectorStore(ABC):
 
     @abstractmethod
     def similarity_search(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[Document]:
         """
         Search for similar documents.
@@ -205,11 +190,7 @@ class VectorStore(ABC):
 
     @abstractmethod
     def similarity_search_with_score(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[SearchResult]:
         """
         Search for similar documents with scores.
@@ -230,7 +211,7 @@ class VectorStore(ABC):
         embedding: List[float],
         k: int = 4,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[Document]:
         """
         Search by embedding vector directly.
@@ -257,7 +238,7 @@ class VectorStore(ABC):
         fetch_k: int = 20,
         lambda_mult: float = 0.5,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[Document]:
         """
         Maximal Marginal Relevance search.
@@ -283,7 +264,7 @@ class VectorStore(ABC):
         self,
         ids: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> bool:
         """
         Delete documents from the vector store.
@@ -296,9 +277,7 @@ class VectorStore(ABC):
         Returns:
             True if deletion was successful
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support delete"
-        )
+        raise NotImplementedError(f"{self.__class__.__name__} does not support delete")
 
     def get_by_ids(self, ids: List[str]) -> List[Document]:
         """
@@ -310,16 +289,11 @@ class VectorStore(ABC):
         Returns:
             List of documents (may be fewer if some IDs not found)
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support get_by_ids"
-        )
+        raise NotImplementedError(f"{self.__class__.__name__} does not support get_by_ids")
 
     @classmethod
     def from_documents(
-        cls,
-        documents: List[Document],
-        embedding: EmbeddingFunction,
-        **kwargs: Any
+        cls, documents: List[Document], embedding: EmbeddingFunction, **kwargs: Any
     ) -> "VectorStore":
         """
         Create a vector store from documents.
@@ -332,9 +306,7 @@ class VectorStore(ABC):
         Returns:
             Initialized vector store with documents
         """
-        raise NotImplementedError(
-            f"{cls.__name__} does not support from_documents"
-        )
+        raise NotImplementedError(f"{cls.__name__} does not support from_documents")
 
     @classmethod
     def from_texts(
@@ -342,7 +314,7 @@ class VectorStore(ABC):
         texts: List[str],
         embedding: EmbeddingFunction,
         metadatas: Optional[List[Dict[str, Any]]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "VectorStore":
         """
         Create a vector store from texts.
@@ -356,14 +328,10 @@ class VectorStore(ABC):
         Returns:
             Initialized vector store with texts
         """
-        raise NotImplementedError(
-            f"{cls.__name__} does not support from_texts"
-        )
+        raise NotImplementedError(f"{cls.__name__} does not support from_texts")
 
     def as_retriever(
-        self,
-        search_type: str = "similarity",
-        search_kwargs: Optional[Dict[str, Any]] = None
+        self, search_type: str = "similarity", search_kwargs: Optional[Dict[str, Any]] = None
     ) -> "VectorStoreRetriever":
         """
         Create a retriever from this vector store.
@@ -376,16 +344,11 @@ class VectorStore(ABC):
             VectorStoreRetriever instance
         """
         return VectorStoreRetriever(
-            vectorstore=self,
-            search_type=search_type,
-            search_kwargs=search_kwargs or {}
+            vectorstore=self, search_type=search_type, search_kwargs=search_kwargs or {}
         )
 
     async def aadd_documents(
-        self,
-        documents: List[Document],
-        ids: Optional[List[str]] = None,
-        **kwargs: Any
+        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
     ) -> List[str]:
         """Async version of add_documents."""
         return self.add_documents(documents, ids, **kwargs)
@@ -395,27 +358,19 @@ class VectorStore(ABC):
         texts: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[str]:
         """Async version of add_texts."""
         return self.add_texts(texts, metadatas, ids, **kwargs)
 
     async def asimilarity_search(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[Document]:
         """Async version of similarity_search."""
         return self.similarity_search(query, k, filter, **kwargs)
 
     async def asimilarity_search_with_score(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[SearchResult]:
         """Async version of similarity_search_with_score."""
         return self.similarity_search_with_score(query, k, filter, **kwargs)
@@ -444,7 +399,7 @@ class VectorStoreRetriever:
         self,
         vectorstore: VectorStore,
         search_type: str = "similarity",
-        search_kwargs: Dict[str, Any] = None
+        search_kwargs: Dict[str, Any] = None,
     ):
         """
         Initialize retriever.
@@ -484,7 +439,9 @@ class VectorStoreRetriever:
         if self.search_type == "similarity":
             return await self.vectorstore.asimilarity_search(query, **self.search_kwargs)
         elif self.search_type == "similarity_score_threshold":
-            results = await self.vectorstore.asimilarity_search_with_score(query, **self.search_kwargs)
+            results = await self.vectorstore.asimilarity_search_with_score(
+                query, **self.search_kwargs
+            )
             threshold = self.search_kwargs.get("score_threshold", 0.5)
             return [r.document for r in results if r.score >= threshold]
         else:
@@ -502,9 +459,7 @@ class InMemoryVectorStore(VectorStore):
     name = "in_memory"
 
     def __init__(
-        self,
-        embedding: EmbeddingFunction,
-        metric: DistanceMetric = DistanceMetric.COSINE
+        self, embedding: EmbeddingFunction, metric: DistanceMetric = DistanceMetric.COSINE
     ):
         """
         Initialize in-memory vector store.
@@ -521,10 +476,7 @@ class InMemoryVectorStore(VectorStore):
         self._ids: List[str] = []
 
     def add_documents(
-        self,
-        documents: List[Document],
-        ids: Optional[List[str]] = None,
-        **kwargs: Any
+        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
     ) -> List[str]:
         """Add documents to the store."""
         texts = [doc.page_content for doc in documents]
@@ -537,7 +489,7 @@ class InMemoryVectorStore(VectorStore):
         texts: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> List[str]:
         """Add texts to the store."""
         import uuid
@@ -566,22 +518,14 @@ class InMemoryVectorStore(VectorStore):
         return ids
 
     def similarity_search(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[Document]:
         """Search for similar documents."""
         results = self.similarity_search_with_score(query, k, filter, **kwargs)
         return [r.document for r in results]
 
     def similarity_search_with_score(
-        self,
-        query: str,
-        k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> List[SearchResult]:
         """Search with scores."""
         if not self._embeddings:
@@ -609,9 +553,7 @@ class InMemoryVectorStore(VectorStore):
         results = []
         for idx, score in scores[:k]:
             doc = Document(
-                page_content=self._texts[idx],
-                metadata=self._metadatas[idx],
-                id=self._ids[idx]
+                page_content=self._texts[idx], metadata=self._metadatas[idx], id=self._ids[idx]
             )
             results.append(SearchResult(document=doc, score=score))
 
@@ -621,17 +563,14 @@ class InMemoryVectorStore(VectorStore):
         self,
         ids: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> bool:
         """Delete documents."""
         if ids:
-            indices_to_remove = [
-                i for i, doc_id in enumerate(self._ids) if doc_id in ids
-            ]
+            indices_to_remove = [i for i, doc_id in enumerate(self._ids) if doc_id in ids]
         elif filter:
             indices_to_remove = [
-                i for i, meta in enumerate(self._metadatas)
-                if self._matches_filter(meta, filter)
+                i for i, meta in enumerate(self._metadatas) if self._matches_filter(meta, filter)
             ]
         else:
             return False
@@ -651,19 +590,16 @@ class InMemoryVectorStore(VectorStore):
         for doc_id in ids:
             if doc_id in self._ids:
                 idx = self._ids.index(doc_id)
-                results.append(Document(
-                    page_content=self._texts[idx],
-                    metadata=self._metadatas[idx],
-                    id=doc_id
-                ))
+                results.append(
+                    Document(
+                        page_content=self._texts[idx], metadata=self._metadatas[idx], id=doc_id
+                    )
+                )
         return results
 
     @classmethod
     def from_documents(
-        cls,
-        documents: List[Document],
-        embedding: EmbeddingFunction,
-        **kwargs: Any
+        cls, documents: List[Document], embedding: EmbeddingFunction, **kwargs: Any
     ) -> "InMemoryVectorStore":
         """Create from documents."""
         store = cls(embedding=embedding, **kwargs)
@@ -676,21 +612,18 @@ class InMemoryVectorStore(VectorStore):
         texts: List[str],
         embedding: EmbeddingFunction,
         metadatas: Optional[List[Dict[str, Any]]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "InMemoryVectorStore":
         """Create from texts."""
         store = cls(embedding=embedding, **kwargs)
         store.add_texts(texts, metadatas)
         return store
 
-    def _calculate_similarity(
-        self,
-        vec1: List[float],
-        vec2: List[float]
-    ) -> float:
+    def _calculate_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """Calculate similarity between two vectors."""
         try:
             import numpy as np
+
             v1 = np.array(vec1)
             v2 = np.array(vec2)
 
@@ -719,11 +652,7 @@ class InMemoryVectorStore(VectorStore):
             else:
                 return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
 
-    def _matches_filter(
-        self,
-        metadata: Dict[str, Any],
-        filter: Dict[str, Any]
-    ) -> bool:
+    def _matches_filter(self, metadata: Dict[str, Any], filter: Dict[str, Any]) -> bool:
         """Check if metadata matches filter criteria."""
         for key, value in filter.items():
             if key not in metadata:

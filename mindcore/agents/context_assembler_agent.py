@@ -3,6 +3,7 @@ Context Assembly AI Agent.
 
 Retrieves and assembles relevant historical context using LLM providers.
 """
+
 from typing import List, Dict, Any, TYPE_CHECKING
 
 from .base_agent import BaseAgent
@@ -35,10 +36,7 @@ class ContextAssemblerAgent(BaseAgent):
     """
 
     def __init__(
-        self,
-        llm_provider: "BaseLLMProvider",
-        temperature: float = 0.3,
-        max_tokens: int = 1500
+        self, llm_provider: "BaseLLMProvider", temperature: float = 0.3, max_tokens: int = 1500
     ):
         """
         Initialize context assembler agent.
@@ -111,7 +109,7 @@ Analyze the messages and provide relevant context for the current query."""
 
         api_messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ]
 
         try:
@@ -123,13 +121,15 @@ Analyze the messages and provide relevant context for the current query."""
 
             # Create AssembledContext object
             assembled_context = AssembledContext(
-                assembled_context=context_dict.get('assembled_context', ''),
-                key_points=context_dict.get('key_points', []),
-                relevant_message_ids=context_dict.get('relevant_message_ids', []),
-                metadata=context_dict.get('metadata', {})
+                assembled_context=context_dict.get("assembled_context", ""),
+                key_points=context_dict.get("key_points", []),
+                relevant_message_ids=context_dict.get("relevant_message_ids", []),
+                metadata=context_dict.get("metadata", {}),
             )
 
-            logger.info(f"Successfully assembled context with {len(assembled_context.key_points)} key points")
+            logger.info(
+                f"Successfully assembled context with {len(assembled_context.key_points)} key points"
+            )
             return assembled_context
 
         except Exception as e:
@@ -139,10 +139,7 @@ Analyze the messages and provide relevant context for the current query."""
                 assembled_context="",
                 key_points=[],
                 relevant_message_ids=[],
-                metadata={
-                    "assembly_failed": True,
-                    "error_type": type(e).__name__
-                }
+                metadata={"assembly_failed": True, "error_type": type(e).__name__},
             )
 
     def _format_messages(self, messages: List[Message]) -> str:
@@ -160,9 +157,9 @@ Analyze the messages and provide relevant context for the current query."""
         for msg in messages:
             metadata_str = ""
             if msg.metadata:
-                topics = msg.metadata.topics if hasattr(msg.metadata, 'topics') else []
-                intent = msg.metadata.intent if hasattr(msg.metadata, 'intent') else None
-                importance = msg.metadata.importance if hasattr(msg.metadata, 'importance') else 0.5
+                topics = msg.metadata.topics if hasattr(msg.metadata, "topics") else []
+                intent = msg.metadata.intent if hasattr(msg.metadata, "intent") else None
+                importance = msg.metadata.importance if hasattr(msg.metadata, "importance") else 0.5
 
                 metadata_parts = []
                 if topics:
@@ -173,9 +170,7 @@ Analyze the messages and provide relevant context for the current query."""
 
                 metadata_str = f" [{' | '.join(metadata_parts)}]"
 
-            formatted.append(
-                f"[{msg.message_id}] {msg.role.value}: {msg.raw_text}{metadata_str}"
-            )
+            formatted.append(f"[{msg.message_id}] {msg.role.value}: {msg.raw_text}{metadata_str}")
 
         return "\n".join(formatted)
 

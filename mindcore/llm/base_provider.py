@@ -3,6 +3,7 @@ Base LLM Provider interface for Mindcore.
 
 Provides a unified abstraction layer for different LLM backends.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
@@ -21,6 +22,7 @@ class LLMResponse:
         latency_ms: Response time in milliseconds
         metadata: Additional provider-specific metadata
     """
+
     content: str
     model: str
     tokens_used: Optional[int] = None
@@ -31,16 +33,19 @@ class LLMResponse:
 
 class LLMProviderError(Exception):
     """Base exception for LLM provider errors."""
+
     pass
 
 
 class ModelNotFoundError(LLMProviderError):
     """Raised when the specified model cannot be found."""
+
     pass
 
 
 class GenerationError(LLMProviderError):
     """Raised when text generation fails."""
+
     pass
 
 
@@ -64,7 +69,7 @@ class BaseLLMProvider(ABC):
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
-        json_mode: bool = False
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Generate a response from the LLM.

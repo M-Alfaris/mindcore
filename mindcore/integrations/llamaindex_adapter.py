@@ -10,6 +10,7 @@ Compatible with:
 - llama-index >= 0.10.0
 - llama-index-core >= 0.10.0
 """
+
 from typing import Dict, Any, List, Optional
 from .base_adapter import BaseAdapter
 from ..core.schemas import AssembledContext
@@ -23,11 +24,13 @@ _LLAMAINDEX_CORE_AVAILABLE = False
 
 try:
     import llama_index.core
+
     _LLAMAINDEX_CORE_AVAILABLE = True
     _LLAMAINDEX_AVAILABLE = True
 except ImportError:
     try:
         import llama_index
+
         _LLAMAINDEX_AVAILABLE = True
     except ImportError:
         pass
@@ -36,9 +39,7 @@ except ImportError:
 def require_llamaindex():
     """Check if LlamaIndex is available, raise helpful error if not."""
     if not _LLAMAINDEX_AVAILABLE:
-        raise ImportError(
-            "LlamaIndex is not installed. Install with: pip install llama-index"
-        )
+        raise ImportError("LlamaIndex is not installed. Install with: pip install llama-index")
 
 
 class LlamaIndexAdapter(BaseAdapter):
@@ -82,22 +83,19 @@ class LlamaIndexAdapter(BaseAdapter):
         # LlamaIndex uses ChatMessage objects or dicts
         if isinstance(framework_message, dict):
             return {
-                'role': framework_message.get('role', 'user'),
-                'text': framework_message.get('content', '')
+                "role": framework_message.get("role", "user"),
+                "text": framework_message.get("content", ""),
             }
 
         # If it's a ChatMessage object
         try:
             return {
-                'role': getattr(framework_message, 'role', 'user'),
-                'text': getattr(framework_message, 'content', str(framework_message))
+                "role": getattr(framework_message, "role", "user"),
+                "text": getattr(framework_message, "content", str(framework_message)),
             }
         except Exception:
             # Fallback
-            return {
-                'role': 'user',
-                'text': str(framework_message)
-            }
+            return {"role": "user", "text": str(framework_message)}
 
     def inject_context_into_prompt(self, context: AssembledContext, existing_prompt: str) -> str:
         """
@@ -132,11 +130,7 @@ class LlamaIndexAdapter(BaseAdapter):
         return f"{context_text}\n{existing_prompt}"
 
     def ingest_llamaindex_conversation(
-        self,
-        messages: List[Any],
-        user_id: str,
-        thread_id: str,
-        session_id: str
+        self, messages: List[Any], user_id: str, thread_id: str, session_id: str
     ) -> List:
         """
         Ingest LlamaIndex conversation messages.
@@ -152,7 +146,9 @@ class LlamaIndexAdapter(BaseAdapter):
         """
         return self.ingest_conversation(messages, user_id, thread_id, session_id)
 
-    def create_chat_memory(self, user_id: str, thread_id: str, session_id: str, max_messages: int = 50):
+    def create_chat_memory(
+        self, user_id: str, thread_id: str, session_id: str, max_messages: int = 50
+    ):
         """
         Create a LlamaIndex-compatible chat memory.
 
@@ -165,6 +161,7 @@ class LlamaIndexAdapter(BaseAdapter):
         Returns:
             Chat memory object.
         """
+
         class MindcoreChatMemory:
             """LlamaIndex-compatible chat memory backed by Mindcore."""
 
@@ -182,20 +179,19 @@ class LlamaIndexAdapter(BaseAdapter):
                 )
 
                 # Convert to LlamaIndex format
-                return [
-                    {'role': msg.role.value, 'content': msg.raw_text}
-                    for msg in messages
-                ]
+                return [{"role": msg.role.value, "content": msg.raw_text} for msg in messages]
 
             def add_message(self, role: str, content: str):
                 """Add a message."""
-                self.adapter.mindcore.ingest_message({
-                    'user_id': self.user_id,
-                    'thread_id': self.thread_id,
-                    'session_id': self.session_id,
-                    'role': role,
-                    'text': content
-                })
+                self.adapter.mindcore.ingest_message(
+                    {
+                        "user_id": self.user_id,
+                        "thread_id": self.thread_id,
+                        "session_id": self.session_id,
+                        "role": role,
+                        "text": content,
+                    }
+                )
 
             def reset(self):
                 """Clear memory."""

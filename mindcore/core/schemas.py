@@ -1,6 +1,7 @@
 """
 Data schemas and models for Mindcore framework.
 """
+
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Set, ClassVar
 from datetime import datetime, timezone
@@ -19,48 +20,82 @@ class MetadataSchema:
     """
 
     # Predefined topic categories (domain-specific)
-    topics: List[str] = field(default_factory=lambda: [
-        # General
-        "greeting", "farewell", "thanks", "help", "feedback",
-        # Support
-        "issue", "bug", "error", "problem", "complaint",
-        "refund", "cancellation", "billing", "payment",
-        # Product
-        "feature", "product", "service", "pricing", "demo",
-        # Technical
-        "api", "integration", "setup", "configuration", "documentation",
-        # Account
-        "account", "login", "password", "settings", "profile",
-    ])
+    topics: List[str] = field(
+        default_factory=lambda: [
+            # General
+            "greeting",
+            "farewell",
+            "thanks",
+            "help",
+            "feedback",
+            # Support
+            "issue",
+            "bug",
+            "error",
+            "problem",
+            "complaint",
+            "refund",
+            "cancellation",
+            "billing",
+            "payment",
+            # Product
+            "feature",
+            "product",
+            "service",
+            "pricing",
+            "demo",
+            # Technical
+            "api",
+            "integration",
+            "setup",
+            "configuration",
+            "documentation",
+            # Account
+            "account",
+            "login",
+            "password",
+            "settings",
+            "profile",
+        ]
+    )
 
     # Predefined categories (high-level classification)
-    categories: List[str] = field(default_factory=lambda: [
-        "support",      # Customer support inquiries
-        "billing",      # Payment, refunds, subscriptions
-        "technical",    # API, integrations, bugs
-        "account",      # User account management
-        "product",      # Product features, demos
-        "feedback",     # User feedback, suggestions
-        "general",      # General conversation
-        "urgent",       # High priority issues
-    ])
+    categories: List[str] = field(
+        default_factory=lambda: [
+            "support",  # Customer support inquiries
+            "billing",  # Payment, refunds, subscriptions
+            "technical",  # API, integrations, bugs
+            "account",  # User account management
+            "product",  # Product features, demos
+            "feedback",  # User feedback, suggestions
+            "general",  # General conversation
+            "urgent",  # High priority issues
+        ]
+    )
 
     # Predefined intents
-    intents: List[str] = field(default_factory=lambda: [
-        "ask_question",     # User asking a question
-        "request_action",   # User requesting something to be done
-        "provide_info",     # User providing information
-        "express_opinion",  # User expressing opinion/feedback
-        "complaint",        # User complaining about something
-        "greeting",         # Greeting/farewell
-        "confirmation",     # User confirming something
-        "clarification",    # User asking for clarification
-    ])
+    intents: List[str] = field(
+        default_factory=lambda: [
+            "ask_question",  # User asking a question
+            "request_action",  # User requesting something to be done
+            "provide_info",  # User providing information
+            "express_opinion",  # User expressing opinion/feedback
+            "complaint",  # User complaining about something
+            "greeting",  # Greeting/farewell
+            "confirmation",  # User confirming something
+            "clarification",  # User asking for clarification
+        ]
+    )
 
     # Predefined sentiment values
-    sentiments: List[str] = field(default_factory=lambda: [
-        "positive", "negative", "neutral", "mixed",
-    ])
+    sentiments: List[str] = field(
+        default_factory=lambda: [
+            "positive",
+            "negative",
+            "neutral",
+            "mixed",
+        ]
+    )
 
     def to_prompt_list(self) -> str:
         """Format schema as a prompt-friendly list for the LLM."""
@@ -95,6 +130,7 @@ DEFAULT_METADATA_SCHEMA = MetadataSchema()
 
 class MessageRole(str, Enum):
     """Message role enumeration."""
+
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
@@ -104,6 +140,7 @@ class MessageRole(str, Enum):
 @dataclass
 class MessageMetadata:
     """Metadata enrichment for messages."""
+
     topics: List[str] = field(default_factory=list)
     categories: List[str] = field(default_factory=list)
     importance: float = 0.5
@@ -124,17 +161,20 @@ class MessageMetadata:
     def is_enriched(self) -> bool:
         """Check if metadata was successfully enriched."""
         return not self.enrichment_failed and (
-            bool(self.topics) or bool(self.categories) or
-            bool(self.tags) or bool(self.entities) or
-            self.intent is not None
+            bool(self.topics)
+            or bool(self.categories)
+            or bool(self.tags)
+            or bool(self.entities)
+            or self.intent is not None
         )
 
 
 class KnowledgeVisibility(str, Enum):
     """Visibility levels for knowledge items in multi-agent mode."""
-    PRIVATE = "private"    # Only the owning agent can access
-    SHARED = "shared"      # Shared with specific agents/groups
-    PUBLIC = "public"      # Accessible by all agents in organization
+
+    PRIVATE = "private"  # Only the owning agent can access
+    SHARED = "shared"  # Shared with specific agents/groups
+    PUBLIC = "public"  # Accessible by all agents in organization
 
 
 @dataclass
@@ -146,6 +186,7 @@ class Message:
     - Single-agent: agent_id and visibility are optional/ignored
     - Multi-agent: agent_id identifies owning agent, visibility controls access
     """
+
     message_id: str
     user_id: str
     thread_id: str
@@ -157,7 +198,7 @@ class Message:
 
     # Multi-agent support (optional - ignored in single-agent mode)
     agent_id: Optional[str] = None  # Agent that created/owns this message
-    visibility: str = "private"      # "private", "shared", "public"
+    visibility: str = "private"  # "private", "shared", "public"
     sharing_groups: List[str] = field(default_factory=list)  # Groups with access
 
     def __post_init__(self):
@@ -178,7 +219,11 @@ class Message:
             "session_id": self.session_id,
             "role": self.role.value,
             "raw_text": self.raw_text,
-            "metadata": self.metadata.to_dict() if isinstance(self.metadata, MessageMetadata) else self.metadata,
+            "metadata": (
+                self.metadata.to_dict()
+                if isinstance(self.metadata, MessageMetadata)
+                else self.metadata
+            ),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             # Multi-agent fields
             "agent_id": self.agent_id,
@@ -190,6 +235,7 @@ class Message:
 @dataclass
 class AssembledContext:
     """Assembled context from Context Assembler Agent."""
+
     assembled_context: str
     key_points: List[str]
     relevant_message_ids: List[str]
@@ -203,6 +249,7 @@ class AssembledContext:
 @dataclass
 class ContextRequest:
     """Request for context assembly."""
+
     user_id: str
     thread_id: str
     query: str
@@ -217,6 +264,7 @@ class ContextRequest:
 @dataclass
 class IngestRequest:
     """Request for message ingestion."""
+
     user_id: str
     thread_id: str
     session_id: str
@@ -237,6 +285,7 @@ class ThreadSummary:
     Used to reduce storage and speed up retrieval for older conversations.
     Instead of fetching all messages, the system can retrieve the summary.
     """
+
     summary_id: str
     user_id: str
     thread_id: str
@@ -280,11 +329,13 @@ class ThreadSummary:
             "categories": self.categories,
             "overall_sentiment": self.overall_sentiment,
             "message_count": self.message_count,
-            "first_message_at": self.first_message_at.isoformat() if self.first_message_at else None,
+            "first_message_at": (
+                self.first_message_at.isoformat() if self.first_message_at else None
+            ),
             "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
             "summarized_at": self.summarized_at.isoformat() if self.summarized_at else None,
             "entities": self.entities,
-            "messages_deleted": self.messages_deleted
+            "messages_deleted": self.messages_deleted,
         }
 
     def to_context_string(self) -> str:
@@ -305,6 +356,7 @@ class UserPreferences:
     These can be updated by user request through the AI agent.
     Separate from read-only system data (orders, billing, etc.).
     """
+
     user_id: str
 
     # Communication preferences
@@ -330,9 +382,14 @@ class UserPreferences:
 
     # Define which fields are amendable by AI agent
     AMENDABLE_FIELDS: ClassVar[Set[str]] = {
-        "language", "timezone", "communication_style",
-        "interests", "goals", "preferred_name",
-        "custom_context", "notification_topics"
+        "language",
+        "timezone",
+        "communication_style",
+        "interests",
+        "goals",
+        "preferred_name",
+        "custom_context",
+        "notification_topics",
     }
 
     def __post_init__(self):
@@ -395,7 +452,7 @@ class UserPreferences:
             "custom_context": self.custom_context,
             "notification_topics": self.notification_topics,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def to_context_string(self) -> str:

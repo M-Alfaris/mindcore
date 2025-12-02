@@ -4,6 +4,7 @@ Worker monitoring for background tasks.
 Provides monitoring, metrics, and health checks for background workers
 like the enrichment worker.
 """
+
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
@@ -14,6 +15,7 @@ import time
 
 class WorkerStatus(str, Enum):
     """Worker status states."""
+
     IDLE = "idle"
     PROCESSING = "processing"
     STOPPED = "stopped"
@@ -24,6 +26,7 @@ class WorkerStatus(str, Enum):
 @dataclass
 class WorkerMetrics:
     """Metrics for a worker."""
+
     worker_name: str
     status: WorkerStatus = WorkerStatus.IDLE
     started_at: Optional[datetime] = None
@@ -49,9 +52,7 @@ class WorkerMetrics:
         if len(self._processing_times) > 100:
             self._processing_times.pop(0)
 
-        self.avg_processing_time_ms = (
-            sum(self._processing_times) / len(self._processing_times)
-        )
+        self.avg_processing_time_ms = sum(self._processing_times) / len(self._processing_times)
 
     def record_error(self, error: str) -> None:
         """Record an error."""
@@ -154,7 +155,7 @@ class WorkerMonitor:
             metrics = WorkerMetrics(
                 worker_name=name,
                 status=WorkerStatus.STARTING,
-                started_at=datetime.now(timezone.utc)
+                started_at=datetime.now(timezone.utc),
             )
             self._workers[name] = metrics
             return metrics
@@ -172,10 +173,7 @@ class WorkerMonitor:
     def get_all_metrics(self) -> Dict[str, Dict[str, Any]]:
         """Get metrics for all workers."""
         with self._lock:
-            return {
-                name: metrics.to_dict()
-                for name, metrics in self._workers.items()
-            }
+            return {name: metrics.to_dict() for name, metrics in self._workers.items()}
 
     def get_health(self) -> Dict[str, Any]:
         """
@@ -217,7 +215,7 @@ class WorkerMonitor:
                     "healthy": worker_healthy,
                     "status": metrics.status.value,
                     "issues": issues,
-                    "metrics": metrics.to_dict()
+                    "metrics": metrics.to_dict(),
                 }
 
                 if not worker_healthy:
@@ -227,13 +225,10 @@ class WorkerMonitor:
             return {
                 "healthy": overall_healthy,
                 "timestamp": self._last_health_check.isoformat(),
-                "workers": workers_health
+                "workers": workers_health,
             }
 
-    def add_alert_callback(
-        self,
-        callback: Callable[[str, WorkerMetrics], None]
-    ) -> None:
+    def add_alert_callback(self, callback: Callable[[str, WorkerMetrics], None]) -> None:
         """
         Add a callback for worker alerts.
 

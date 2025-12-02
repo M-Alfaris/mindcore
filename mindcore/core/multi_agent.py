@@ -7,6 +7,7 @@ Supports various memory sharing modes:
 - Shared: Agents can share memory with specified groups
 - Public: All agents can access all memory
 """
+
 from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass, field
 from enum import Enum
@@ -19,22 +20,25 @@ logger = get_logger(__name__)
 
 class MemorySharingMode(str, Enum):
     """Memory sharing modes for multi-agent deployments."""
-    DISABLED = "disabled"      # Single-agent mode (no agent_id required)
-    ISOLATED = "isolated"      # Each agent has private memory only
-    SHARED = "shared"          # Agents can share with specific groups
-    PUBLIC = "public"          # All agents share all memory
+
+    DISABLED = "disabled"  # Single-agent mode (no agent_id required)
+    ISOLATED = "isolated"  # Each agent has private memory only
+    SHARED = "shared"  # Agents can share with specific groups
+    PUBLIC = "public"  # All agents share all memory
 
 
 class AgentVisibility(str, Enum):
     """Visibility levels for agent-created content."""
-    PRIVATE = "private"        # Only owning agent can access
-    SHARED = "shared"          # Agents in same sharing groups can access
-    PUBLIC = "public"          # All agents can access
+
+    PRIVATE = "private"  # Only owning agent can access
+    SHARED = "shared"  # Agents in same sharing groups can access
+    PUBLIC = "public"  # All agents can access
 
 
 @dataclass
 class AgentProfile:
     """Profile for a registered agent."""
+
     agent_id: str
     name: str
     description: Optional[str] = None
@@ -69,6 +73,7 @@ class MultiAgentConfig:
         ...     default_visibility=AgentVisibility.PRIVATE
         ... )
     """
+
     # Core settings
     enabled: bool = False
     mode: MemorySharingMode = MemorySharingMode.DISABLED
@@ -79,13 +84,15 @@ class MultiAgentConfig:
     default_sharing_groups: List[str] = field(default_factory=list)
 
     # Access control
-    allow_cross_agent_context: bool = True  # Allow agents to see other agents' shared/public content
-    allow_anonymous_read: bool = False       # Allow reading without agent_id (single-agent compat)
-    allow_anonymous_write: bool = False      # Allow writing without agent_id
+    allow_cross_agent_context: bool = (
+        True  # Allow agents to see other agents' shared/public content
+    )
+    allow_anonymous_read: bool = False  # Allow reading without agent_id (single-agent compat)
+    allow_anonymous_write: bool = False  # Allow writing without agent_id
 
     # Validation
-    registered_agents_only: bool = False     # Only allow registered agent_ids
-    max_sharing_groups: int = 10             # Maximum sharing groups per message
+    registered_agents_only: bool = False  # Only allow registered agent_ids
+    max_sharing_groups: int = 10  # Maximum sharing groups per message
 
     def validate(self) -> List[str]:
         """Validate configuration, return list of issues."""
@@ -97,7 +104,10 @@ class MultiAgentConfig:
         if self.require_agent_id and self.allow_anonymous_write:
             issues.append("Cannot require agent_id while allowing anonymous writes")
 
-        if self.mode == MemorySharingMode.PUBLIC and self.default_visibility == AgentVisibility.PRIVATE:
+        if (
+            self.mode == MemorySharingMode.PUBLIC
+            and self.default_visibility == AgentVisibility.PRIVATE
+        ):
             issues.append("Public mode typically uses shared/public default visibility")
 
         return issues
@@ -147,7 +157,7 @@ class MultiAgentManager:
         default_visibility: Optional[AgentVisibility] = None,
         can_read_public: bool = True,
         can_write_public: bool = False,
-        **metadata
+        **metadata,
     ) -> AgentProfile:
         """
         Register an agent for multi-agent memory access.
@@ -176,7 +186,7 @@ class MultiAgentManager:
             default_visibility=visibility,
             can_read_public=can_read_public,
             can_write_public=can_write_public,
-            metadata=metadata
+            metadata=metadata,
         )
 
         with self._lock:
@@ -247,7 +257,7 @@ class MultiAgentManager:
         agent_id: Optional[str],
         owner_agent_id: Optional[str],
         visibility: str,
-        sharing_groups: List[str]
+        sharing_groups: List[str],
     ) -> bool:
         """
         Check if an agent can access content.
@@ -301,7 +311,7 @@ class MultiAgentManager:
         agent_id: Optional[str],
         include_own: bool = True,
         include_shared: bool = True,
-        include_public: bool = True
+        include_public: bool = True,
     ) -> Dict[str, Any]:
         """
         Get filter criteria for database queries.
@@ -325,23 +335,17 @@ class MultiAgentManager:
         }
 
         if include_own and agent_id:
-            filter_criteria["visibility_filters"].append({
-                "type": "own",
-                "agent_id": agent_id
-            })
+            filter_criteria["visibility_filters"].append({"type": "own", "agent_id": agent_id})
 
         if include_shared and agent_id:
             profile = self._agents.get(agent_id)
             if profile and profile.sharing_groups:
-                filter_criteria["visibility_filters"].append({
-                    "type": "shared",
-                    "groups": profile.sharing_groups
-                })
+                filter_criteria["visibility_filters"].append(
+                    {"type": "shared", "groups": profile.sharing_groups}
+                )
 
         if include_public:
-            filter_criteria["visibility_filters"].append({
-                "type": "public"
-            })
+            filter_criteria["visibility_filters"].append({"type": "public"})
 
         return filter_criteria
 
@@ -377,10 +381,10 @@ class MultiAgentManager:
                     "agent_id": p.agent_id,
                     "name": p.name,
                     "groups": p.sharing_groups,
-                    "default_visibility": p.default_visibility.value
+                    "default_visibility": p.default_visibility.value,
                 }
                 for p in self._agents.values()
-            ]
+            ],
         }
 
 
@@ -407,10 +411,7 @@ def reset_multi_agent_manager() -> None:
 
 
 def configure_multi_agent(
-    enabled: bool = True,
-    mode: str = "shared",
-    require_agent_id: bool = True,
-    **kwargs
+    enabled: bool = True, mode: str = "shared", require_agent_id: bool = True, **kwargs
 ) -> MultiAgentManager:
     """
     Configure and return multi-agent manager.
@@ -437,10 +438,7 @@ def configure_multi_agent(
     reset_multi_agent_manager()
 
     config = MultiAgentConfig(
-        enabled=enabled,
-        mode=MemorySharingMode(mode),
-        require_agent_id=require_agent_id,
-        **kwargs
+        enabled=enabled, mode=MemorySharingMode(mode), require_agent_id=require_agent_id, **kwargs
     )
 
     return get_multi_agent_manager(config)

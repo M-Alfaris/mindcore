@@ -4,6 +4,7 @@ OpenAI LLM Provider for Mindcore.
 Provides OpenAI API integration as a fallback provider.
 Also supports any OpenAI-compatible API (vLLM, Ollama, LocalAI, etc.) via base_url.
 """
+
 import time
 from typing import List, Dict, Optional, Any
 
@@ -73,7 +74,7 @@ class OpenAIProvider(BaseLLMProvider):
         base_url: Optional[str] = None,
         timeout: int = 60,
         max_retries: int = 3,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Initialize OpenAI provider.
@@ -110,21 +111,12 @@ class OpenAIProvider(BaseLLMProvider):
                 "Set OPENAI_API_KEY environment variable or provide api_key parameter."
             )
 
-    def _init_client(
-        self,
-        api_key: str,
-        base_url: Optional[str] = None,
-        **kwargs: Any
-    ) -> None:
+    def _init_client(self, api_key: str, base_url: Optional[str] = None, **kwargs: Any) -> None:
         """Initialize the OpenAI client."""
         try:
             from openai import OpenAI
 
-            client_kwargs = {
-                "api_key": api_key,
-                "timeout": self.timeout,
-                **kwargs
-            }
+            client_kwargs = {"api_key": api_key, "timeout": self.timeout, **kwargs}
 
             if base_url:
                 client_kwargs["base_url"] = base_url
@@ -140,8 +132,7 @@ class OpenAIProvider(BaseLLMProvider):
                 logger.info(f"OpenAI provider initialized with model: {self.model}")
         except ImportError as e:
             raise LLMProviderError(
-                "openai package is not installed. "
-                "Install it with: pip install openai"
+                "openai package is not installed. " "Install it with: pip install openai"
             ) from e
         except Exception as e:
             logger.error(f"Failed to initialize OpenAI client: {e}")
@@ -152,7 +143,7 @@ class OpenAIProvider(BaseLLMProvider):
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
-        json_mode: bool = False
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Generate a response using OpenAI API.
@@ -219,17 +210,16 @@ class OpenAIProvider(BaseLLMProvider):
                     latency_ms=latency_ms,
                     metadata={
                         "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
-                        "completion_tokens": response.usage.completion_tokens if response.usage else None,
+                        "completion_tokens": (
+                            response.usage.completion_tokens if response.usage else None
+                        ),
                         "finish_reason": response.choices[0].finish_reason,
-                    }
+                    },
                 )
 
             except RateLimitError as e:
                 last_exception = e
-                delay = min(
-                    self.RETRY_DELAY_BASE * (2 ** attempt),
-                    self.RETRY_DELAY_MAX
-                )
+                delay = min(self.RETRY_DELAY_BASE * (2**attempt), self.RETRY_DELAY_MAX)
                 logger.warning(
                     f"Rate limit hit, retrying in {delay:.1f}s "
                     f"(attempt {attempt + 1}/{self.max_retries})"
@@ -238,10 +228,7 @@ class OpenAIProvider(BaseLLMProvider):
 
             except (APIConnectionError, APITimeoutError) as e:
                 last_exception = e
-                delay = min(
-                    self.RETRY_DELAY_BASE * (2 ** attempt),
-                    self.RETRY_DELAY_MAX
-                )
+                delay = min(self.RETRY_DELAY_BASE * (2**attempt), self.RETRY_DELAY_MAX)
                 logger.warning(
                     f"Connection error, retrying in {delay:.1f}s "
                     f"(attempt {attempt + 1}/{self.max_retries}): {e}"
@@ -250,12 +237,9 @@ class OpenAIProvider(BaseLLMProvider):
 
             except APIError as e:
                 # Retry on 5xx server errors
-                if hasattr(e, 'status_code') and e.status_code >= 500:
+                if hasattr(e, "status_code") and e.status_code >= 500:
                     last_exception = e
-                    delay = min(
-                        self.RETRY_DELAY_BASE * (2 ** attempt),
-                        self.RETRY_DELAY_MAX
-                    )
+                    delay = min(self.RETRY_DELAY_BASE * (2**attempt), self.RETRY_DELAY_MAX)
                     logger.warning(
                         f"Server error {e.status_code}, retrying in {delay:.1f}s "
                         f"(attempt {attempt + 1}/{self.max_retries})"
@@ -287,7 +271,7 @@ class OpenAIProvider(BaseLLMProvider):
         tools: List[Dict[str, Any]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
-        tool_choice: str = "auto"
+        tool_choice: str = "auto",
     ) -> Dict[str, Any]:
         """
         Generate a response with tool calling support.
@@ -338,10 +322,7 @@ class OpenAIProvider(BaseLLMProvider):
                 message = response.choices[0].message
                 latency_ms = (time.time() - start_time) * 1000
 
-                result = {
-                    "content": message.content,
-                    "tool_calls": None
-                }
+                result = {"content": message.content, "tool_calls": None}
 
                 # Extract tool calls if present
                 if message.tool_calls:
@@ -351,8 +332,8 @@ class OpenAIProvider(BaseLLMProvider):
                             "type": tc.type,
                             "function": {
                                 "name": tc.function.name,
-                                "arguments": tc.function.arguments
-                            }
+                                "arguments": tc.function.arguments,
+                            },
                         }
                         for tc in message.tool_calls
                     ]
@@ -366,20 +347,20 @@ class OpenAIProvider(BaseLLMProvider):
 
             except RateLimitError as e:
                 last_exception = e
-                delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
+                delay = min(self.RETRY_DELAY_BASE * (2**attempt), self.RETRY_DELAY_MAX)
                 logger.warning(f"Rate limit hit, retrying in {delay:.1f}s")
                 time.sleep(delay)
 
             except (APIConnectionError, APITimeoutError) as e:
                 last_exception = e
-                delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
+                delay = min(self.RETRY_DELAY_BASE * (2**attempt), self.RETRY_DELAY_MAX)
                 logger.warning(f"Connection error, retrying in {delay:.1f}s: {e}")
                 time.sleep(delay)
 
             except APIError as e:
-                if hasattr(e, 'status_code') and e.status_code >= 500:
+                if hasattr(e, "status_code") and e.status_code >= 500:
                     last_exception = e
-                    delay = min(self.RETRY_DELAY_BASE * (2 ** attempt), self.RETRY_DELAY_MAX)
+                    delay = min(self.RETRY_DELAY_BASE * (2**attempt), self.RETRY_DELAY_MAX)
                     logger.warning(f"Server error, retrying in {delay:.1f}s")
                     time.sleep(delay)
                 else:

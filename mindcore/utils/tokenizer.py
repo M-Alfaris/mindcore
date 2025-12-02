@@ -4,11 +4,13 @@ Tokenizer utilities for text processing.
 Supports accurate token counting via tiktoken (optional) with fallback
 to character-based estimation.
 """
+
 from typing import List, Optional
 
 # Try to import tiktoken for accurate token counting
 _tiktoken = None
 _tiktoken_encoding = None
+
 
 def _get_tiktoken_encoding():
     """Lazily load tiktoken encoder."""
@@ -16,6 +18,7 @@ def _get_tiktoken_encoding():
     if _tiktoken is None:
         try:
             import tiktoken
+
             _tiktoken = tiktoken
             # Use cl100k_base (GPT-4, GPT-3.5-turbo)
             _tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
@@ -36,7 +39,8 @@ def simple_tokenize(text: str) -> List[str]:
     """
     # Basic tokenization by splitting on whitespace and punctuation
     import re
-    tokens = re.findall(r'\w+', text.lower())
+
+    tokens = re.findall(r"\w+", text.lower())
     return tokens
 
 
@@ -140,12 +144,57 @@ def extract_keywords(text: str, top_n: int = 5) -> List[str]:
 
     # Remove common stopwords
     stopwords = {
-        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-        'of', 'with', 'is', 'was', 'are', 'were', 'be', 'been', 'being',
-        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-        'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
-        'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his',
-        'her', 'its', 'our', 'their'
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "you",
+        "he",
+        "she",
+        "it",
+        "we",
+        "they",
+        "my",
+        "your",
+        "his",
+        "her",
+        "its",
+        "our",
+        "their",
     }
 
     filtered_tokens = [t for t in tokens if t not in stopwords and len(t) > 2]
@@ -155,5 +204,3 @@ def extract_keywords(text: str, top_n: int = 5) -> List[str]:
 
     # Return top N
     return [word for word, count in counter.most_common(top_n)]
-
-

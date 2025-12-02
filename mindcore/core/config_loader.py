@@ -5,6 +5,7 @@ Supports environment variable substitution in YAML files:
 - ${VAR} - Required variable, empty string if not set
 - ${VAR:default} - Variable with default value
 """
+
 import os
 import re
 from pathlib import Path
@@ -17,7 +18,7 @@ class ConfigLoader:
 
     # Pattern for environment variable substitution: ${VAR} or ${VAR:default}
     # \$ in regex matches literal $ character
-    ENV_VAR_PATTERN = re.compile(r'\$\{([^}:]+)(?::([^}]*))?\}')
+    ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
 
     def __init__(self, config_path: Optional[str] = None):
         """
@@ -72,7 +73,7 @@ class ConfigLoader:
             # Return default configuration
             return self._default_config()
 
-        with open(self.config_path, 'r') as f:
+        with open(self.config_path, "r") as f:
             config = yaml.safe_load(f)
 
         # Resolve environment variables in the config
@@ -113,6 +114,7 @@ class ConfigLoader:
         Returns:
             String with env vars substituted, or typed value if entire string is a var
         """
+
         def replace_match(match):
             var_name = match.group(1)
             default = match.group(2)  # None if no default specified
@@ -191,7 +193,16 @@ class ConfigLoader:
             },
             "logging": {
                 "level": "INFO",
-                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                "json_logs": False,
+                "enable_context_logs": False,
+                "enable_enrichment_logs": False,
+                "enable_tool_logs": False,
+                "enable_database_logs": False,
+                "enable_cache_logs": False,
+                "enable_llm_logs": True,
+                "enable_api_logs": True,
+                "errors_always_logged": True,
+                "warnings_always_logged": True,
             },
         }
 
@@ -206,7 +217,7 @@ class ConfigLoader:
         Returns:
             Configuration value.
         """
-        keys = key.split('.')
+        keys = key.split(".")
         value = self.config
 
         for k in keys:
@@ -285,7 +296,9 @@ class ConfigLoader:
                 "model_path": llama_cpp_config.get("model_path") or llama_defaults["model_path"],
                 "n_ctx": llama_cpp_config.get("n_ctx", llama_defaults["n_ctx"]),
                 "n_threads": llama_cpp_config.get("n_threads", llama_defaults["n_threads"]),
-                "n_gpu_layers": llama_cpp_config.get("n_gpu_layers", llama_defaults["n_gpu_layers"]),
+                "n_gpu_layers": llama_cpp_config.get(
+                    "n_gpu_layers", llama_defaults["n_gpu_layers"]
+                ),
                 "chat_format": llama_cpp_config.get("chat_format", llama_defaults["chat_format"]),
                 "verbose": llama_cpp_config.get("verbose", llama_defaults["verbose"]),
             },
@@ -299,14 +312,53 @@ class ConfigLoader:
             "defaults": {
                 "temperature": gen_defaults.get("temperature", gen_defaults_default["temperature"]),
                 "max_tokens_enrichment": gen_defaults.get(
-                    "max_tokens_enrichment",
-                    gen_defaults_default["max_tokens_enrichment"]
+                    "max_tokens_enrichment", gen_defaults_default["max_tokens_enrichment"]
                 ),
                 "max_tokens_context": gen_defaults.get(
-                    "max_tokens_context",
-                    gen_defaults_default["max_tokens_context"]
+                    "max_tokens_context", gen_defaults_default["max_tokens_context"]
                 ),
             },
+        }
+
+    def get_logging_config(self) -> Dict[str, Any]:
+        """
+        Get logging configuration.
+
+        Returns a dict compatible with LogConfig:
+        - level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        - json_logs: Whether to output JSON logs
+        - enable_*_logs: Category-specific enables
+        - errors_always_logged: Always log errors
+        - warnings_always_logged: Always log warnings
+
+        Returns:
+            Logging configuration dictionary.
+        """
+        log_config = self.config.get("logging", {})
+        defaults = self._default_config()["logging"]
+
+        return {
+            "level": log_config.get("level", defaults["level"]),
+            "json_logs": log_config.get("json_logs", defaults["json_logs"]),
+            "enable_context_logs": log_config.get(
+                "enable_context_logs", defaults["enable_context_logs"]
+            ),
+            "enable_enrichment_logs": log_config.get(
+                "enable_enrichment_logs", defaults["enable_enrichment_logs"]
+            ),
+            "enable_tool_logs": log_config.get("enable_tool_logs", defaults["enable_tool_logs"]),
+            "enable_database_logs": log_config.get(
+                "enable_database_logs", defaults["enable_database_logs"]
+            ),
+            "enable_cache_logs": log_config.get("enable_cache_logs", defaults["enable_cache_logs"]),
+            "enable_llm_logs": log_config.get("enable_llm_logs", defaults["enable_llm_logs"]),
+            "enable_api_logs": log_config.get("enable_api_logs", defaults["enable_api_logs"]),
+            "errors_always_logged": log_config.get(
+                "errors_always_logged", defaults["errors_always_logged"]
+            ),
+            "warnings_always_logged": log_config.get(
+                "warnings_always_logged", defaults["warnings_always_logged"]
+            ),
         }
 
     def reload(self) -> None:

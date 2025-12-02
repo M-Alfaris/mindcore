@@ -84,32 +84,37 @@ from .embeddings import (
 def get_chroma_store():
     """Get ChromaVectorStore (requires: pip install chromadb)."""
     from .chroma import ChromaVectorStore
+
     return ChromaVectorStore
 
 
 def get_pinecone_store():
     """Get PineconeVectorStore (requires: pip install pinecone-client)."""
     from .pinecone import PineconeVectorStore
+
     return PineconeVectorStore
 
 
 def get_pgvector_store():
     """Get PGVectorStore (requires: pip install 'psycopg[binary]' pgvector)."""
     from .pgvector import PGVectorStore
+
     return PGVectorStore
 
 
 # Helper to create informative placeholder for missing dependencies
 def _missing_dep_class(name: str, install_cmd: str):
     """Create a class that raises helpful error when instantiated."""
+
     class MissingDependency:
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                f"{name} requires additional dependencies. "
-                f"Install with: {install_cmd}"
+                f"{name} requires additional dependencies. " f"Install with: {install_cmd}"
             )
+
         def __repr__(self):
             return f"<{name} - not installed>"
+
     MissingDependency.__name__ = name
     MissingDependency.__qualname__ = name
     return MissingDependency
@@ -120,24 +125,21 @@ try:
     from .chroma import ChromaVectorStore
 except ImportError:
     ChromaVectorStore = _missing_dep_class(
-        "ChromaVectorStore",
-        "pip install mindcore[chroma]  # or: pip install chromadb"
+        "ChromaVectorStore", "pip install mindcore[chroma]  # or: pip install chromadb"
     )
 
 try:
     from .pinecone import PineconeVectorStore
 except ImportError:
     PineconeVectorStore = _missing_dep_class(
-        "PineconeVectorStore",
-        "pip install mindcore[pinecone]  # or: pip install pinecone-client"
+        "PineconeVectorStore", "pip install mindcore[pinecone]  # or: pip install pinecone-client"
     )
 
 try:
     from .pgvector import PGVectorStore
 except ImportError:
     PGVectorStore = _missing_dep_class(
-        "PGVectorStore",
-        "pip install mindcore[pgvector]  # or: pip install pgvector"
+        "PGVectorStore", "pip install mindcore[pgvector]  # or: pip install pgvector"
     )
 
 
@@ -150,19 +152,16 @@ __all__ = [
     "DistanceMetric",
     "VectorStoreRetriever",
     "InMemoryVectorStore",
-
     # Embedding providers
     "OpenAIEmbeddings",
     "SentenceTransformerEmbeddings",
     "OllamaEmbeddings",
     "CustomEmbeddings",
     "create_embeddings",
-
     # Vector store implementations (may be None if deps not installed)
     "ChromaVectorStore",
     "PineconeVectorStore",
     "PGVectorStore",
-
     # Lazy loaders
     "get_chroma_store",
     "get_pinecone_store",

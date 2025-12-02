@@ -171,7 +171,7 @@ def _get_sort_key(message: Message) -> float:
 
     if isinstance(dt, str):
         try:
-            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             return 0.0
 
@@ -182,7 +182,7 @@ def _get_sort_key(message: Message) -> float:
 
 
 # Global instance with thread-safe initialization
-_mindcore_instance: Optional['MindcoreClient'] = None
+_mindcore_instance: Optional["MindcoreClient"] = None
 _instance_lock = threading.Lock()
 
 
@@ -227,7 +227,7 @@ class MindcoreClient:
         cache_dir: Optional[str] = None,
         vocabulary: Optional[VocabularyManager] = None,
         multi_agent_config: Optional[MultiAgentConfig] = None,
-        enrichment_workers: Optional[int] = None
+        enrichment_workers: Optional[int] = None,
     ):
         """
         Initialize Mindcore client.
@@ -303,15 +303,14 @@ class MindcoreClient:
         cache_config = self.config.get_cache_config()
         if persistent_cache:
             self.cache = DiskCacheManager(
-                max_size=cache_config.get('max_size', 50),
-                ttl_seconds=cache_config.get('ttl'),
-                cache_dir=cache_dir
+                max_size=cache_config.get("max_size", 50),
+                ttl_seconds=cache_config.get("ttl"),
+                cache_dir=cache_dir,
             )
             logger.info("Using persistent disk-backed cache (diskcache)")
         else:
             self.cache = CacheManager(
-                max_size=cache_config.get('max_size', 50),
-                ttl_seconds=cache_config.get('ttl')
+                max_size=cache_config.get("max_size", 50), ttl_seconds=cache_config.get("ttl")
             )
             logger.info("Using in-memory cache (cachetools)")
 
@@ -320,14 +319,14 @@ class MindcoreClient:
 
         # Get generation defaults
         llm_config = self.config.get_llm_config()
-        defaults = llm_config.get('defaults', {})
+        defaults = llm_config.get("defaults", {})
 
         # Initialize enrichment agent (for background enrichment)
         self._metadata_agent = MetadataAgent(
             llm_provider=self._llm_provider,
-            temperature=defaults.get('temperature', 0.3),
-            max_tokens=defaults.get('max_tokens_enrichment', 800),
-            vocabulary=self.vocabulary
+            temperature=defaults.get("temperature", 0.3),
+            max_tokens=defaults.get("max_tokens_enrichment", 800),
+            vocabulary=self.vocabulary,
         )
 
         # SmartContextAgent is the PRIMARY context retrieval method
@@ -337,9 +336,7 @@ class MindcoreClient:
         self._queue_path = Path(tempfile.gettempdir()) / "mindcore_enrichment_queue"
         self._queue_path.mkdir(parents=True, exist_ok=True)
         self._enrichment_queue = persistqueue.SQLiteQueue(
-            str(self._queue_path),
-            auto_commit=True,
-            multithreading=True
+            str(self._queue_path), auto_commit=True, multithreading=True
         )
 
         # Trivial message detector (skip LLM for greetings, fillers, etc.)
@@ -354,15 +351,12 @@ class MindcoreClient:
 
         # Adaptive preferences learner
         from .core.adaptive_preferences import AdaptivePreferencesLearner
-        self._adaptive_learner = AdaptivePreferencesLearner(
-            self._preferences_manager, self.db
-        )
+
+        self._adaptive_learner = AdaptivePreferencesLearner(self._preferences_manager, self.db)
 
         # Retention policy manager
         self._retention_policy = RetentionPolicyManager(
-            self.db,
-            summarization_agent=None,  # Set later if needed
-            config=RetentionConfig()
+            self.db, summarization_agent=None, config=RetentionConfig()  # Set later if needed
         )
 
         # Cache invalidation manager
@@ -375,13 +369,12 @@ class MindcoreClient:
         # Configure enrichment worker pool size
         # Priority: constructor arg > env var > default (1)
         self._enrichment_workers = enrichment_workers or int(
-            os.environ.get('MINDCORE_ENRICHMENT_WORKERS', '1')
+            os.environ.get("MINDCORE_ENRICHMENT_WORKERS", "1")
         )
         self._enrichment_workers = max(1, min(self._enrichment_workers, 16))  # Clamp 1-16
 
         self._enrichment_executor = ThreadPoolExecutor(
-            max_workers=self._enrichment_workers,
-            thread_name_prefix="mindcore_enrichment"
+            max_workers=self._enrichment_workers, thread_name_prefix="mindcore_enrichment"
         )
         self._enrichment_running = True
 
@@ -399,8 +392,7 @@ class MindcoreClient:
 
         db_type = "SQLite" if use_sqlite else "PostgreSQL"
         logger.info(
-            f"Mindcore initialized with {db_type} and "
-            f"{self._llm_provider.name} LLM provider"
+            f"Mindcore initialized with {db_type} and " f"{self._llm_provider.name} LLM provider"
         )
 
     def _create_llm_provider(self, provider_type_str: Optional[str]) -> BaseLLMProvider:
@@ -410,34 +402,34 @@ class MindcoreClient:
         if provider_type_str:
             provider_type = get_provider_type(provider_type_str)
         else:
-            provider_type = get_provider_type(llm_config.get('provider', 'auto'))
+            provider_type = get_provider_type(llm_config.get("provider", "auto"))
 
         llama_config = {}
-        if llm_config['llama_cpp'].get('model_path'):
+        if llm_config["llama_cpp"].get("model_path"):
             llama_config = {
-                'model_path': llm_config['llama_cpp']['model_path'],
-                'n_ctx': llm_config['llama_cpp'].get('n_ctx', 4096),
-                'n_threads': llm_config['llama_cpp'].get('n_threads'),
-                'n_gpu_layers': llm_config['llama_cpp'].get('n_gpu_layers', 0),
-                'chat_format': llm_config['llama_cpp'].get('chat_format'),
-                'verbose': llm_config['llama_cpp'].get('verbose', False),
+                "model_path": llm_config["llama_cpp"]["model_path"],
+                "n_ctx": llm_config["llama_cpp"].get("n_ctx", 4096),
+                "n_threads": llm_config["llama_cpp"].get("n_threads"),
+                "n_gpu_layers": llm_config["llama_cpp"].get("n_gpu_layers", 0),
+                "chat_format": llm_config["llama_cpp"].get("chat_format"),
+                "verbose": llm_config["llama_cpp"].get("verbose", False),
             }
 
         openai_config = {}
-        if llm_config['openai'].get('api_key'):
+        if llm_config["openai"].get("api_key"):
             openai_config = {
-                'api_key': llm_config['openai']['api_key'],
-                'base_url': llm_config['openai'].get('base_url'),
-                'model': llm_config['openai'].get('model', 'gpt-4o-mini'),
-                'timeout': llm_config['openai'].get('timeout', 60),
-                'max_retries': llm_config['openai'].get('max_retries', 3),
+                "api_key": llm_config["openai"]["api_key"],
+                "base_url": llm_config["openai"].get("base_url"),
+                "model": llm_config["openai"].get("model", "gpt-4o-mini"),
+                "timeout": llm_config["openai"].get("timeout", 60),
+                "max_retries": llm_config["openai"].get("max_retries", 3),
             }
 
         try:
             return create_provider(
                 provider_type=provider_type,
                 llama_config=llama_config if llama_config else None,
-                openai_config=openai_config if openai_config else None
+                openai_config=openai_config if openai_config else None,
             )
         except ValueError as e:
             logger.error(f"Failed to create LLM provider: {e}")
@@ -473,7 +465,7 @@ class MindcoreClient:
         agent_id: Optional[str] = None,
         visibility: Optional[str] = None,
         sharing_groups: Optional[List[str]] = None,
-        **metadata
+        **metadata,
     ) -> Message:
         """
         Ingest a message with background enrichment.
@@ -534,12 +526,12 @@ class MindcoreClient:
         if not is_valid:
             raise ValueError(error_msg)
         message_dict = {
-            'user_id': user_id,
-            'thread_id': thread_id,
-            'session_id': session_id,
-            'role': role,
-            'text': text,
-            'message_id': message_id,
+            "user_id": user_id,
+            "thread_id": thread_id,
+            "session_id": session_id,
+            "role": role,
+            "text": text,
+            "message_id": message_id,
         }
 
         # Validate message
@@ -549,12 +541,16 @@ class MindcoreClient:
             raise ValueError(f"Invalid message: {error_msg}")
 
         # Resolve visibility and sharing groups for multi-agent mode
-        resolved_visibility = visibility or self._multi_agent_manager.get_default_visibility(agent_id)
-        resolved_groups = sharing_groups or self._multi_agent_manager.get_default_sharing_groups(agent_id)
+        resolved_visibility = visibility or self._multi_agent_manager.get_default_visibility(
+            agent_id
+        )
+        resolved_groups = sharing_groups or self._multi_agent_manager.get_default_sharing_groups(
+            agent_id
+        )
 
         # Create message with empty metadata (no LLM call)
         message = Message(
-            message_id=message_dict.get('message_id') or generate_message_id(),
+            message_id=message_dict.get("message_id") or generate_message_id(),
             user_id=user_id,
             thread_id=thread_id,
             session_id=session_id,
@@ -576,12 +572,12 @@ class MindcoreClient:
 
         # Queue for background enrichment
         enrichment_task = {
-            'message_id': message.message_id,
-            'user_id': message.user_id,
-            'thread_id': message.thread_id,
-            'session_id': message.session_id,
-            'role': message.role.value,
-            'text': message.raw_text,
+            "message_id": message.message_id,
+            "user_id": message.user_id,
+            "thread_id": message.thread_id,
+            "session_id": message.session_id,
+            "role": message.role.value,
+            "text": message.raw_text,
         }
         self._enrichment_queue.put(enrichment_task)
 
@@ -599,12 +595,12 @@ class MindcoreClient:
         Deprecated: Use ingest() instead for cleaner API.
         """
         return self.ingest(
-            user_id=message_dict['user_id'],
-            thread_id=message_dict['thread_id'],
-            session_id=message_dict['session_id'],
-            role=message_dict['role'],
-            text=message_dict['text'],
-            message_id=message_dict.get('message_id')
+            user_id=message_dict["user_id"],
+            thread_id=message_dict["thread_id"],
+            session_id=message_dict["session_id"],
+            role=message_dict["role"],
+            text=message_dict["text"],
+            message_id=message_dict.get("message_id"),
         )
 
     def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
@@ -632,8 +628,9 @@ class MindcoreClient:
                 try:
                     task = self._enrichment_queue.get(block=True, timeout=1.0)
                     self._metrics.set_active_workers(
-                        self._metrics._gauges.get('active_workers', 0) + 1
-                        if not self._metrics.enabled else 1
+                        self._metrics._gauges.get("active_workers", 0) + 1
+                        if not self._metrics.enabled
+                        else 1
                     )
                 except Exception:
                     continue
@@ -641,7 +638,7 @@ class MindcoreClient:
                 if task is None:
                     continue
 
-                message_id = task.get('message_id')
+                message_id = task.get("message_id")
                 if not message_id:
                     logger.warning("Enrichment worker: task missing message_id")
                     self._enrichment_queue.task_done()
@@ -659,7 +656,7 @@ class MindcoreClient:
                 start_time = time.time()
 
                 try:
-                    text = task.get('text', '')
+                    text = task.get("text", "")
 
                     # Check if trivial message (skip LLM call)
                     trivial_result = self._trivial_detector.detect(text)
@@ -668,11 +665,11 @@ class MindcoreClient:
                         # Auto-enrich without LLM
                         enriched_message = self._trivial_detector.auto_enrich(
                             text=text,
-                            user_id=task['user_id'],
-                            thread_id=task['thread_id'],
-                            session_id=task['session_id'],
-                            role=task['role'],
-                            message_id=message_id
+                            user_id=task["user_id"],
+                            thread_id=task["thread_id"],
+                            session_id=task["session_id"],
+                            role=task["role"],
+                            message_id=message_id,
                         )
                         self._worker_metrics.record_trivial_skip()
                         logger.debug(
@@ -681,19 +678,20 @@ class MindcoreClient:
                         )
                     else:
                         # Full LLM enrichment
-                        enriched_message = self._metadata_agent.process({
-                            'message_id': task['message_id'],
-                            'user_id': task['user_id'],
-                            'thread_id': task['thread_id'],
-                            'session_id': task['session_id'],
-                            'role': task['role'],
-                            'text': text,
-                        })
+                        enriched_message = self._metadata_agent.process(
+                            {
+                                "message_id": task["message_id"],
+                                "user_id": task["user_id"],
+                                "thread_id": task["thread_id"],
+                                "session_id": task["session_id"],
+                                "role": task["role"],
+                                "text": text,
+                            }
+                        )
 
                     # Update database
                     self.db.update_message_metadata(
-                        message_id=message_id,
-                        metadata=enriched_message.metadata
+                        message_id=message_id, metadata=enriched_message.metadata
                     )
 
                     # Notify cache invalidation manager (updates cache and indexes)
@@ -702,26 +700,23 @@ class MindcoreClient:
                     # Learn from message metadata (adaptive preferences)
                     if not trivial_result.is_trivial:
                         self._adaptive_learner.process_message_metadata(
-                            user_id=enriched_message.user_id,
-                            metadata=enriched_message.metadata
+                            user_id=enriched_message.user_id, metadata=enriched_message.metadata
                         )
 
                     # Record metrics
                     duration_ms = (time.time() - start_time) * 1000
                     self._worker_metrics.record_processing(duration_ms)
                     self._metrics.record_enrichment(
-                        duration_ms=duration_ms,
-                        trivial=trivial_result.is_trivial
+                        duration_ms=duration_ms, trivial=trivial_result.is_trivial
                     )
                     logger.debug(f"Background enrichment completed for {message_id}")
 
                 except Exception as e:
                     logger.error(f"Background enrichment failed for {message_id}: {e}")
                     self._worker_metrics.record_error(str(e))
-                    self._metrics.record_error('enrichment')
+                    self._metrics.record_error("enrichment")
                     failed_metadata = MessageMetadata(
-                        enrichment_failed=True,
-                        enrichment_error=str(e)
+                        enrichment_failed=True, enrichment_error=str(e)
                     )
                     self.db.update_message_metadata(message_id, failed_metadata)
 
@@ -749,7 +744,7 @@ class MindcoreClient:
         agent_id: Optional[str] = None,
         agent_ids: Optional[List[str]] = None,
         include_shared: bool = True,
-        include_public: bool = True
+        include_public: bool = True,
     ) -> AssembledContext:
         """
         Get intelligently assembled context for a query.
@@ -817,7 +812,7 @@ class MindcoreClient:
             agent_id=agent_id,
             include_own=True,
             include_shared=include_shared,
-            include_public=include_public
+            include_public=include_public,
         )
 
         # If specific agent_ids provided, add them to filter
@@ -826,10 +821,7 @@ class MindcoreClient:
 
         agent = self._get_smart_context_agent()
         context = agent.process(
-            query=query,
-            user_id=user_id,
-            thread_id=thread_id,
-            additional_context=additional_context
+            query=query, user_id=user_id, thread_id=thread_id, additional_context=additional_context
         )
 
         # Record metrics
@@ -861,7 +853,7 @@ class MindcoreClient:
             topics: List[str],
             categories: List[str],
             intent: Optional[str],
-            limit: int
+            limit: int,
         ) -> List[Message]:
             try:
                 return self.db.search_by_relevance(
@@ -870,7 +862,7 @@ class MindcoreClient:
                     categories=categories if categories else None,
                     intent=intent,
                     thread_id=thread_id,
-                    limit=limit
+                    limit=limit,
                 )
             except Exception as e:
                 logger.error(f"Error searching history: {e}")
@@ -886,19 +878,19 @@ class MindcoreClient:
         tools = ContextTools(
             get_recent_messages=get_recent_messages,
             search_history=search_history,
-            get_session_metadata=get_session_metadata
+            get_session_metadata=get_session_metadata,
         )
 
         llm_config = self.config.get_llm_config()
-        defaults = llm_config.get('defaults', {})
+        defaults = llm_config.get("defaults", {})
 
         self._smart_context_agent = SmartContextAgent(
             llm_provider=self._llm_provider,
             context_tools=tools,
             temperature=0.2,
-            max_tokens=defaults.get('max_tokens_context', 1500),
+            max_tokens=defaults.get("max_tokens_context", 1500),
             vocabulary=self.vocabulary,
-            max_tool_rounds=3
+            max_tool_rounds=3,
         )
 
         logger.info("SmartContextAgent initialized with database/cache tools")
@@ -911,7 +903,7 @@ class MindcoreClient:
     @property
     def enrichment_worker_count(self) -> int:
         """Get the number of enrichment worker threads."""
-        return getattr(self, '_enrichment_workers', 1)
+        return getattr(self, "_enrichment_workers", 1)
 
     def get_worker_health(self) -> Dict[str, Any]:
         """
@@ -928,7 +920,7 @@ class MindcoreClient:
             42
         """
         health = self._worker_monitor.get_health()
-        health['worker_pool_size'] = self._enrichment_workers
+        health["worker_pool_size"] = self._enrichment_workers
         return health
 
     def get_enrichment_metrics(self) -> Dict[str, Any]:
@@ -954,12 +946,7 @@ class MindcoreClient:
         """Get a single message by ID."""
         return self.db.get_message_by_id(message_id)
 
-    def get_recent_messages(
-        self,
-        user_id: str,
-        thread_id: str,
-        limit: int = 20
-    ) -> List[Message]:
+    def get_recent_messages(self, user_id: str, thread_id: str, limit: int = 20) -> List[Message]:
         """Get recent messages from cache/database."""
         cached = self.cache.get_recent_messages(user_id, thread_id, limit)
         if len(cached) >= limit:
@@ -998,9 +985,7 @@ class MindcoreClient:
     # -------------------------------------------------------------------------
 
     def run_tier_migration(
-        self,
-        user_id: Optional[str] = None,
-        dry_run: bool = False
+        self, user_id: Optional[str] = None, dry_run: bool = False
     ) -> Dict[str, Any]:
         """
         Run tier migration for memory management.
@@ -1042,11 +1027,7 @@ class MindcoreClient:
         return self._retention_policy.get_decayed_importance(message)
 
     def get_context_window(
-        self,
-        user_id: str,
-        thread_id: str,
-        max_messages: int = 50,
-        min_importance: float = 0.1
+        self, user_id: str, thread_id: str, max_messages: int = 50, min_importance: float = 0.1
     ) -> List[Message]:
         """
         Get optimized context window for a conversation.
@@ -1084,7 +1065,7 @@ class MindcoreClient:
         default_visibility: str = "private",
         can_read_public: bool = True,
         can_write_public: bool = False,
-        **metadata
+        **metadata,
     ) -> AgentProfile:
         """
         Register an agent for multi-agent memory sharing.
@@ -1120,7 +1101,7 @@ class MindcoreClient:
             default_visibility=visibility_enum,
             can_read_public=can_read_public,
             can_write_public=can_write_public,
-            **metadata
+            **metadata,
         )
 
     def unregister_agent(self, agent_id: str) -> bool:
@@ -1223,7 +1204,7 @@ class MindcoreClient:
         Returns:
             Dictionary with cache and invalidation stats
         """
-        cache_stats = self.cache.get_stats() if hasattr(self.cache, 'get_stats') else {}
+        cache_stats = self.cache.get_stats() if hasattr(self.cache, "get_stats") else {}
         invalidation_stats = self._cache_invalidation.get_stats()
 
         return {
@@ -1300,28 +1281,28 @@ class MindcoreClient:
     def close(self) -> None:
         """Close all connections and cleanup resources."""
         # Stop background enrichment workers
-        if hasattr(self, '_enrichment_running'):
+        if hasattr(self, "_enrichment_running"):
             self._enrichment_running = False
-            if hasattr(self, '_enrichment_futures'):
+            if hasattr(self, "_enrichment_futures"):
                 for future in self._enrichment_futures:
                     try:
                         future.result(timeout=5.0)
                     except Exception:
                         pass
-            if hasattr(self, '_enrichment_executor'):
+            if hasattr(self, "_enrichment_executor"):
                 self._enrichment_executor.shutdown(wait=True)
-            workers = getattr(self, '_enrichment_workers', 1)
+            workers = getattr(self, "_enrichment_workers", 1)
             logger.info(f"Background enrichment worker(s) stopped ({workers} threads)")
 
         # Close persistent queue
-        if hasattr(self, '_enrichment_queue') and hasattr(self._enrichment_queue, 'close'):
+        if hasattr(self, "_enrichment_queue") and hasattr(self._enrichment_queue, "close"):
             self._enrichment_queue.close()
 
         # Close cache
-        if hasattr(self, 'cache') and hasattr(self.cache, 'close'):
+        if hasattr(self, "cache") and hasattr(self.cache, "close"):
             self.cache.close()
 
-        if hasattr(self, '_llm_provider') and self._llm_provider:
+        if hasattr(self, "_llm_provider") and self._llm_provider:
             self._llm_provider.close()
         self.db.close()
         logger.info("Mindcore client closed")
@@ -1332,9 +1313,7 @@ Mindcore = MindcoreClient
 
 
 def initialize(
-    config_path: Optional[str] = None,
-    use_sqlite: bool = False,
-    llm_provider: Optional[str] = None
+    config_path: Optional[str] = None, use_sqlite: bool = False, llm_provider: Optional[str] = None
 ) -> MindcoreClient:
     """Initialize global Mindcore instance (thread-safe singleton)."""
     global _mindcore_instance
@@ -1343,9 +1322,7 @@ def initialize(
         with _instance_lock:
             if _mindcore_instance is None:
                 _mindcore_instance = MindcoreClient(
-                    config_path=config_path,
-                    use_sqlite=use_sqlite,
-                    llm_provider=llm_provider
+                    config_path=config_path, use_sqlite=use_sqlite, llm_provider=llm_provider
                 )
 
     return _mindcore_instance
@@ -1400,12 +1377,14 @@ from .knowledge_store import (
 def get_vector_stores():
     """Get vector store classes (requires optional dependencies)."""
     from . import vectorstores
+
     return vectorstores
 
 
 def get_connectors():
     """Get connector classes."""
     from . import connectors
+
     return connectors
 
 
@@ -1413,13 +1392,11 @@ def get_connectors():
 __all__ = [
     # Version
     "__version__",
-
     # Main client
     "MindcoreClient",
     "Mindcore",
     "initialize",
     "get_client",
-
     # Modular Context Layer
     "ContextLayer",
     "ContextLayerConfig",
@@ -1427,14 +1404,12 @@ __all__ = [
     "BasicContextLayer",
     "VectorContextLayer",
     "FullContextLayer",
-
     # Knowledge Store
     "KnowledgeStore",
     "SimpleKnowledgeStore",
     "KnowledgeItem",
     "AgentConfig",
     "StoreMode",
-
     # AI Agents
     "MetadataAgent",
     "SmartContextAgent",
@@ -1444,7 +1419,6 @@ __all__ = [
     "TrivialMessageDetector",
     "TrivialCategory",
     "get_trivial_detector",
-
     # VocabularyManager
     "VocabularyManager",
     "VocabularySource",
@@ -1453,35 +1427,29 @@ __all__ = [
     "CommunicationStyle",
     "EntityType",
     "get_vocabulary",
-
     # Worker Monitoring
     "WorkerMonitor",
     "WorkerMetrics",
     "WorkerStatus",
     "get_worker_monitor",
-
     # Adaptive Preferences
     "AdaptivePreferencesLearner",
     "AdaptiveConfig",
     "get_adaptive_learner",
-
     # Retention Policy
     "RetentionPolicyManager",
     "RetentionConfig",
     "MemoryTier",
     "get_retention_policy",
-
     # Cache Invalidation
     "CacheInvalidationManager",
     "InvalidationReason",
     "get_cache_invalidation",
-
     # Prometheus Metrics
     "MindcoreMetrics",
     "get_prometheus_metrics",
     "start_metrics_server",
     "is_prometheus_available",
-
     # Multi-Agent Support
     "MultiAgentConfig",
     "MultiAgentManager",
@@ -1490,7 +1458,6 @@ __all__ = [
     "AgentProfile",
     "get_multi_agent_manager",
     "configure_multi_agent",
-
     # LLM Providers
     "BaseLLMProvider",
     "LLMResponse",
@@ -1500,7 +1467,6 @@ __all__ = [
     "ProviderType",
     "create_provider",
     "get_provider_type",
-
     # Core data structures
     "Message",
     "MessageMetadata",
@@ -1510,14 +1476,12 @@ __all__ = [
     "IngestRequest",
     "ThreadSummary",
     "UserPreferences",
-
     # Core managers
     "ConfigLoader",
     "DatabaseManager",
     "SQLiteManager",
     "CacheManager",
     "PreferencesManager",
-
     # Lazy imports
     "get_vector_stores",
     "get_connectors",

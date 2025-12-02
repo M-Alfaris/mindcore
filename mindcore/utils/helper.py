@@ -1,6 +1,7 @@
 """
 Helper utilities for Mindcore framework.
 """
+
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
@@ -104,7 +105,7 @@ def validate_message_dict(message_dict: Dict[str, Any]) -> bool:
     Returns:
         True if valid, False otherwise.
     """
-    required_fields = ['user_id', 'thread_id', 'session_id', 'role', 'text']
+    required_fields = ["user_id", "thread_id", "session_id", "role", "text"]
 
     for field in required_fields:
         if field not in message_dict:
@@ -125,14 +126,14 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
     """
     parts = []
 
-    if context.get('assembled_context'):
+    if context.get("assembled_context"):
         parts.append("## Historical Context")
-        parts.append(context['assembled_context'])
+        parts.append(context["assembled_context"])
         parts.append("")
 
-    if context.get('key_points'):
+    if context.get("key_points"):
         parts.append("## Key Points")
-        for point in context['key_points']:
+        for point in context["key_points"]:
             parts.append(f"- {point}")
         parts.append("")
 

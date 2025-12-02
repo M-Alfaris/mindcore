@@ -7,6 +7,7 @@ This module provides:
 - Rate limiting utilities (using limits library - Redis-ready)
 - Security best practices enforcement
 """
+
 import re
 from typing import Dict, Any, Optional, Tuple
 
@@ -32,7 +33,7 @@ class SecurityValidator:
 
     # ID validation pattern - alphanumeric with allowed special chars
     # This is the PRIMARY security measure for IDs since we use parameterized queries
-    ID_PATTERN = re.compile(r'^[a-zA-Z0-9_\-:\.@]+$')
+    ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-:\.@]+$")
 
     @classmethod
     def validate_message_dict(cls, message_dict: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
@@ -53,15 +54,24 @@ class SecurityValidator:
 
         # Validate user_id
         if not cls._validate_id(message_dict["user_id"]):
-            return False, "Invalid user_id: must be alphanumeric with _, -, :, ., @ and max 255 chars"
+            return (
+                False,
+                "Invalid user_id: must be alphanumeric with _, -, :, ., @ and max 255 chars",
+            )
 
         # Validate thread_id
         if not cls._validate_id(message_dict["thread_id"]):
-            return False, "Invalid thread_id: must be alphanumeric with _, -, :, ., @ and max 255 chars"
+            return (
+                False,
+                "Invalid thread_id: must be alphanumeric with _, -, :, ., @ and max 255 chars",
+            )
 
         # Validate session_id
         if not cls._validate_id(message_dict["session_id"]):
-            return False, "Invalid session_id: must be alphanumeric with _, -, :, ., @ and max 255 chars"
+            return (
+                False,
+                "Invalid session_id: must be alphanumeric with _, -, :, ., @ and max 255 chars",
+            )
 
         # Validate role
         if message_dict["role"] not in cls.ALLOWED_ROLES:
@@ -125,18 +135,20 @@ class SecurityValidator:
             Sanitized text.
         """
         # Remove null bytes
-        text = text.replace('\x00', '')
+        text = text.replace("\x00", "")
 
         # Strip leading/trailing whitespace
         text = text.strip()
 
         # Normalize line endings
-        text = text.replace('\r\n', '\n').replace('\r', '\n')
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
 
         return text
 
     @classmethod
-    def validate_query_params(cls, user_id: str, thread_id: str, query: str) -> Tuple[bool, Optional[str]]:
+    def validate_query_params(
+        cls, user_id: str, thread_id: str, query: str
+    ) -> Tuple[bool, Optional[str]]:
         """
         Validate context query parameters.
 
@@ -177,10 +189,7 @@ class RateLimiter:
     """
 
     def __init__(
-        self,
-        max_requests: int = 100,
-        window_seconds: int = 60,
-        storage_uri: Optional[str] = None
+        self, max_requests: int = 100, window_seconds: int = 60, storage_uri: Optional[str] = None
     ):
         """
         Initialize rate limiter.
@@ -304,7 +313,7 @@ class SecurityAuditor:
         # In production, integrate with tools like safety, pip-audit
         return {
             "status": "manual_review_required",
-            "recommendation": "Run 'pip-audit' or 'safety check' in CI/CD pipeline"
+            "recommendation": "Run 'pip-audit' or 'safety check' in CI/CD pipeline",
         }
 
     @staticmethod
@@ -329,9 +338,7 @@ _rate_limiter: Optional[RateLimiter] = None
 
 
 def get_rate_limiter(
-    max_requests: int = 100,
-    window_seconds: int = 60,
-    storage_uri: Optional[str] = None
+    max_requests: int = 100, window_seconds: int = 60, storage_uri: Optional[str] = None
 ) -> RateLimiter:
     """
     Get global rate limiter instance.
@@ -354,8 +361,6 @@ def get_rate_limiter(
     global _rate_limiter
     if _rate_limiter is None:
         _rate_limiter = RateLimiter(
-            max_requests=max_requests,
-            window_seconds=window_seconds,
-            storage_uri=storage_uri
+            max_requests=max_requests, window_seconds=window_seconds, storage_uri=storage_uri
         )
     return _rate_limiter
