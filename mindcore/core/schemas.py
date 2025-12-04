@@ -134,6 +134,16 @@ class MessageRole(str, Enum):
     TOOL = "tool"
 
 
+class EnrichmentSource(str, Enum):
+    """Source of enrichment for tracking and debugging."""
+
+    LLM = "llm"  # Full LLM enrichment
+    TRIVIAL = "trivial"  # Auto-enriched trivial message
+    FALLBACK = "fallback"  # Fallback/default enrichment
+    CACHED = "cached"  # Retrieved from cache
+    MANUAL = "manual"  # Manually set metadata
+
+
 @dataclass
 class MessageMetadata:
     """Metadata enrichment for messages."""
@@ -149,6 +159,11 @@ class MessageMetadata:
     # Enrichment status tracking
     enrichment_failed: bool = False
     enrichment_error: str | None = None
+    # Confidence and quality metrics (new)
+    confidence_score: float = 0.0  # 0.0-1.0, overall enrichment confidence
+    enrichment_source: str = "unknown"  # llm, trivial, fallback, cached, manual
+    enrichment_latency_ms: float | None = None  # Time taken for enrichment
+    vocabulary_match_rate: float = 1.0  # % of LLM outputs that matched vocabulary
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -164,6 +179,16 @@ class MessageMetadata:
             or bool(self.entities)
             or self.intent is not None
         )
+
+    @property
+    def is_high_confidence(self) -> bool:
+        """Check if enrichment has high confidence (>= 0.7)."""
+        return self.confidence_score >= 0.7
+
+    @property
+    def is_low_confidence(self) -> bool:
+        """Check if enrichment has low confidence (< 0.3)."""
+        return self.confidence_score < 0.3
 
 
 class KnowledgeVisibility(str, Enum):

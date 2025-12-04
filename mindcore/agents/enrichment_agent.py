@@ -2,11 +2,13 @@
 
 Enriches messages with intelligent metadata using LLM providers.
 Uses VocabularyManager for controlled vocabulary.
+Includes confidence scoring for quality monitoring.
 """
 
+import time
 from typing import TYPE_CHECKING, Any
 
-from mindcore.core.schemas import Message, MessageMetadata
+from mindcore.core.schemas import EnrichmentSource, Message, MessageMetadata
 from mindcore.core.vocabulary import VocabularyManager, get_vocabulary
 from mindcore.utils.helper import generate_message_id
 from mindcore.utils.logger import get_logger
@@ -119,9 +121,11 @@ Rules:
         Returns:
             Enriched Message object. Check message.metadata.enrichment_failed
             to determine if enrichment was successful.
+            Check message.metadata.confidence_score for quality assessment.
         """
         text = message_dict.get("text", "")
         role = message_dict.get("role", "user")
+        start_time = time.time()
 
         logger.debug(f"Enriching message ({self.provider_name}): {text[:100]}...")
 
@@ -150,18 +154,45 @@ Rules:
             validated_categories = self.vocabulary.validate_categories(raw_categories)
             validated_intent = self.vocabulary.resolve_intent(raw_intent) if raw_intent else None
 
+            # Calculate vocabulary match rate for confidence scoring
+            vocab_match_stats = self._calculate_vocabulary_match_rate(
+                raw_topics=raw_topics,
+                validated_topics=validated_topics,
+                raw_categories=raw_categories,
+                validated_categories=validated_categories,
+                raw_intent=raw_intent,
+                validated_intent=validated_intent,
+            )
+
             # Validate sentiment
             sentiment_overall = raw_sentiment.get("overall", "neutral")
-            if not self.vocabulary.is_valid_sentiment(sentiment_overall):
+            sentiment_valid = self.vocabulary.is_valid_sentiment(sentiment_overall)
+            if not sentiment_valid:
                 sentiment_overall = "neutral"
 
             # If no valid topics found, default to "general"
+            used_default_topics = False
             if not validated_topics:
                 validated_topics = ["general"]
+                used_default_topics = True
 
             # If no valid categories found, default to "general"
+            used_default_categories = False
             if not validated_categories:
                 validated_categories = ["general"]
+                used_default_categories = True
+
+            # Calculate confidence score
+            latency_ms = (time.time() - start_time) * 1000
+            confidence_score = self._calculate_confidence_score(
+                vocab_match_rate=vocab_match_stats["match_rate"],
+                used_default_topics=used_default_topics,
+                used_default_categories=used_default_categories,
+                sentiment_valid=sentiment_valid,
+                has_entities=bool(metadata_dict.get("entities")),
+                has_key_phrases=bool(metadata_dict.get("key_phrases")),
+                text_length=len(text),
+            )
 
             # Create MessageMetadata object with validated values
             metadata = MessageMetadata(
@@ -178,16 +209,32 @@ Rules:
                 key_phrases=metadata_dict.get("key_phrases", []),
                 enrichment_failed=False,
                 enrichment_error=None,
+                # New confidence fields
+                confidence_score=confidence_score,
+                enrichment_source=EnrichmentSource.LLM.value,
+                enrichment_latency_ms=latency_ms,
+                vocabulary_match_rate=vocab_match_stats["match_rate"],
             )
 
-            logger.info(f"Successfully enriched message with topics: {metadata.topics}")
+            logger.info(
+                f"Enriched message: topics={metadata.topics}, "
+                f"confidence={confidence_score:.2f}, latency={latency_ms:.0f}ms"
+            )
 
         except Exception as e:
             error_msg = str(e)
+            latency_ms = (time.time() - start_time) * 1000
             logger.warning(f"Enrichment failed: {error_msg}")
 
-            # Create metadata that indicates failure
-            metadata = MessageMetadata(enrichment_failed=True, enrichment_error=error_msg)
+            # Create metadata that indicates failure with zero confidence
+            metadata = MessageMetadata(
+                enrichment_failed=True,
+                enrichment_error=error_msg,
+                confidence_score=0.0,
+                enrichment_source=EnrichmentSource.FALLBACK.value,
+                enrichment_latency_ms=latency_ms,
+                vocabulary_match_rate=0.0,
+            )
 
         # Create Message object
         return Message(
@@ -199,6 +246,112 @@ Rules:
             raw_text=text,
             metadata=metadata,
         )
+
+    def _calculate_vocabulary_match_rate(
+        self,
+        raw_topics: list[str],
+        validated_topics: list[str],
+        raw_categories: list[str],
+        validated_categories: list[str],
+        raw_intent: str | None,
+        validated_intent: str | None,
+    ) -> dict[str, Any]:
+        """Calculate how well LLM outputs matched the controlled vocabulary.
+
+        Returns:
+            Dictionary with match statistics.
+        """
+        total_items = 0
+        matched_items = 0
+
+        # Topics matching
+        if raw_topics:
+            total_items += len(raw_topics)
+            matched_items += len(validated_topics)
+
+        # Categories matching
+        if raw_categories:
+            total_items += len(raw_categories)
+            matched_items += len(validated_categories)
+
+        # Intent matching
+        if raw_intent:
+            total_items += 1
+            if validated_intent:
+                matched_items += 1
+
+        match_rate = matched_items / total_items if total_items > 0 else 1.0
+
+        return {
+            "match_rate": match_rate,
+            "total_items": total_items,
+            "matched_items": matched_items,
+            "topics_matched": len(validated_topics),
+            "topics_total": len(raw_topics) if raw_topics else 0,
+            "categories_matched": len(validated_categories),
+            "categories_total": len(raw_categories) if raw_categories else 0,
+            "intent_matched": validated_intent is not None if raw_intent else True,
+        }
+
+    def _calculate_confidence_score(
+        self,
+        vocab_match_rate: float,
+        used_default_topics: bool,
+        used_default_categories: bool,
+        sentiment_valid: bool,
+        has_entities: bool,
+        has_key_phrases: bool,
+        text_length: int,
+    ) -> float:
+        """Calculate overall confidence score for the enrichment.
+
+        Factors considered:
+        - Vocabulary match rate (40% weight)
+        - Whether defaults were used (20% weight)
+        - Sentiment validity (10% weight)
+        - Richness of extraction (20% weight)
+        - Text length appropriateness (10% weight)
+
+        Returns:
+            Confidence score between 0.0 and 1.0.
+        """
+        score = 0.0
+
+        # Vocabulary match rate (40% weight) - most important
+        score += vocab_match_rate * 0.40
+
+        # Default usage penalty (20% weight)
+        default_score = 1.0
+        if used_default_topics:
+            default_score -= 0.5
+        if used_default_categories:
+            default_score -= 0.5
+        score += max(0.0, default_score) * 0.20
+
+        # Sentiment validity (10% weight)
+        score += (1.0 if sentiment_valid else 0.5) * 0.10
+
+        # Richness of extraction (20% weight)
+        richness_score = 0.0
+        if has_entities:
+            richness_score += 0.5
+        if has_key_phrases:
+            richness_score += 0.5
+        score += richness_score * 0.20
+
+        # Text length appropriateness (10% weight)
+        # Very short texts (<10 chars) or very long texts (>5000 chars) get lower confidence
+        if text_length < 10:
+            length_score = 0.3
+        elif text_length < 50:
+            length_score = 0.7
+        elif text_length <= 5000:
+            length_score = 1.0
+        else:
+            length_score = 0.8
+        score += length_score * 0.10
+
+        return min(1.0, max(0.0, score))
 
     def enrich_batch(self, messages: list) -> list:
         """Enrich multiple messages.

@@ -100,6 +100,18 @@ tokens = [
 metrics = [
     "prometheus-client>=0.17.0",
 ]
+# Observability package (alerts, quality monitoring)
+observability = [
+    "prometheus-client>=0.17.0",
+]
+# Distributed workers (Celery)
+celery = [
+    "celery[redis]>=5.3.0",
+]
+# Celery with RabbitMQ
+celery-rabbitmq = [
+    "celery[rabbitmq]>=5.3.0",
+]
 dev = [
     # Testing
     "pytest>=7.0.0",
@@ -121,6 +133,8 @@ all = [
     "mindcore[vectors]",
     "mindcore[rbac]",
     "mindcore[metrics]",
+    "mindcore[observability]",
+    "mindcore[celery]",
 ]
 
 [project.urls]

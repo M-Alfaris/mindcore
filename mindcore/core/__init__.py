@@ -50,6 +50,7 @@ from .schemas import (
     DEFAULT_METADATA_SCHEMA,  # Deprecated: use get_vocabulary() instead
     AssembledContext,
     ContextRequest,
+    EnrichmentSource,
     IngestRequest,
     KnowledgeVisibility,
     Message,
@@ -133,6 +134,7 @@ __all__ = [
     "DatabaseConnectionError",
     "DatabaseManager",
     "DiskCacheManager",
+    "EnrichmentSource",
     "EntityType",
     "IngestRequest",
     "Intent",

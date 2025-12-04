@@ -2,6 +2,12 @@
 
 from .base_agent import AgentInitializationError, APICallError, BaseAgent
 from .context_assembler_agent import ContextAssemblerAgent
+from .deterministic_context_agent import (
+    ContextToolCallbacks,
+    DeterministicContextAgent,
+    FetchedData,
+    QueryIntent as DeterministicQueryIntent,
+)
 from .enrichment_agent import EnrichmentAgent
 from .retrieval_query_agent import QueryIntent, RetrievalQueryAgent
 from .smart_context_agent import ContextTools, SmartContextAgent
@@ -20,8 +26,13 @@ __all__ = [
     "AgentInitializationError",
     "BaseAgent",
     "ContextAssemblerAgent",
+    "ContextToolCallbacks",
     "ContextTools",
+    # Deterministic 2-call context agent
+    "DeterministicContextAgent",
+    "DeterministicQueryIntent",
     "EnrichmentAgent",
+    "FetchedData",
     "QueryIntent",
     "RetrievalQueryAgent",
     "SmartContextAgent",
