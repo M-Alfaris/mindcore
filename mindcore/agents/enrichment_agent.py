@@ -1,27 +1,27 @@
-"""
-Metadata Enrichment AI Agent.
+"""Metadata Enrichment AI Agent.
 
 Enriches messages with intelligent metadata using LLM providers.
 Uses VocabularyManager for controlled vocabulary.
 """
 
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from mindcore.core.schemas import Message, MessageMetadata
+from mindcore.core.vocabulary import VocabularyManager, get_vocabulary
+from mindcore.utils.helper import generate_message_id
+from mindcore.utils.logger import get_logger
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, MessageMetadata
-from ..core.vocabulary import get_vocabulary, VocabularyManager
-from ..utils.logger import get_logger
-from ..utils.helper import generate_message_id
+
 
 if TYPE_CHECKING:
-    from ..llm import BaseLLMProvider
+    from mindcore.llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
 
 class EnrichmentAgent(BaseAgent):
-    """
-    AI agent that enriches messages with metadata.
+    """AI agent that enriches messages with metadata.
 
     Analyzes message content and generates:
     - Topics (from controlled vocabulary)
@@ -56,10 +56,9 @@ class EnrichmentAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.3,
         max_tokens: int = 800,
-        vocabulary: Optional[VocabularyManager] = None,
+        vocabulary: VocabularyManager | None = None,
     ):
-        """
-        Initialize enrichment agent.
+        """Initialize enrichment agent.
 
         Args:
             llm_provider: LLM provider instance
@@ -105,9 +104,8 @@ Rules:
 - For billing queries, use topics like "billing", "payment", "invoice", "refund"
 - Be concise and accurate. Return ONLY valid JSON."""
 
-    def process(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Enrich a message with metadata.
+    def process(self, message_dict: dict[str, Any]) -> Message:
+        """Enrich a message with metadata.
 
         Args:
             message_dict: Dictionary containing message fields:
@@ -192,7 +190,7 @@ Rules:
             metadata = MessageMetadata(enrichment_failed=True, enrichment_error=error_msg)
 
         # Create Message object
-        message = Message(
+        return Message(
             message_id=message_dict.get("message_id") or generate_message_id(),
             user_id=message_dict["user_id"],
             thread_id=message_dict["thread_id"],
@@ -202,11 +200,8 @@ Rules:
             metadata=metadata,
         )
 
-        return message
-
     def enrich_batch(self, messages: list) -> list:
-        """
-        Enrich multiple messages.
+        """Enrich multiple messages.
 
         Args:
             messages: List of message dictionaries.
@@ -220,7 +215,7 @@ Rules:
                 enriched_msg = self.process(msg_dict)
                 enriched.append(enriched_msg)
             except Exception as e:
-                logger.error(f"Failed to enrich message: {e}")
+                logger.exception(f"Failed to enrich message: {e}")
                 continue
 
         logger.info(f"Enriched {len(enriched)}/{len(messages)} messages")

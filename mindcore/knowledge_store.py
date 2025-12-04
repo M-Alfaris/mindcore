@@ -1,5 +1,4 @@
-"""
-Knowledge Store - Unified Interface for Single or Multi-Agent Systems
+"""Knowledge Store - Unified Interface for Single or Multi-Agent Systems.
 ======================================================================
 
 A simple, unified interface for storing and retrieving knowledge that
@@ -60,13 +59,14 @@ Growing to Multi-Agent:
     ... )
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
 from enum import Enum
-import uuid
+from typing import Any
 
 from .utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -80,8 +80,7 @@ class StoreMode(str, Enum):
 
 @dataclass
 class AgentConfig:
-    """
-    Agent configuration for multi-agent mode.
+    """Agent configuration for multi-agent mode.
 
     In simple mode, this is auto-generated with defaults.
     """
@@ -89,12 +88,12 @@ class AgentConfig:
     agent_id: str
     name: str
     organization_id: str
-    groups: List[str] = field(default_factory=list)
-    roles: List[str] = field(default_factory=list)
-    api_key: Optional[str] = None  # Only set on registration
+    groups: list[str] = field(default_factory=list)
+    roles: list[str] = field(default_factory=list)
+    api_key: str | None = None  # Only set on registration
     is_default: bool = False  # True for the auto-created simple mode agent
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "agent_id": self.agent_id,
             "name": self.name,
@@ -107,8 +106,7 @@ class AgentConfig:
 
 @dataclass
 class KnowledgeItem:
-    """
-    A piece of knowledge in the store.
+    """A piece of knowledge in the store.
 
     Can be a message, document, fact, or any other knowledge type.
     """
@@ -116,26 +114,26 @@ class KnowledgeItem:
     item_id: str
     item_type: str  # "message", "document", "fact", "summary"
     content: str
-    user_id: Optional[str] = None
-    thread_id: Optional[str] = None
+    user_id: str | None = None
+    thread_id: str | None = None
 
     # Multi-agent fields (optional in simple mode)
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     visibility: str = "private"  # "private", "shared", "public"
-    sharing_groups: List[str] = field(default_factory=list)
+    sharing_groups: list[str] = field(default_factory=list)
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: Optional[datetime] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
 
     # Vector embedding (if vector store enabled)
-    embedding: Optional[List[float]] = None
+    embedding: list[float] | None = None
 
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now(timezone.utc)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "item_id": self.item_id,
             "item_type": self.item_type,
@@ -151,8 +149,7 @@ class KnowledgeItem:
 
 
 class KnowledgeStore:
-    """
-    Unified knowledge store for single or multi-agent systems.
+    """Unified knowledge store for single or multi-agent systems.
 
     This is the main entry point for storing and retrieving knowledge.
     It automatically handles:
@@ -180,16 +177,16 @@ class KnowledgeStore:
         # Database settings
         database_path: str = "mindcore.db",
         use_postgresql: bool = False,
-        postgresql_url: Optional[str] = None,
+        postgresql_url: str | None = None,
         # Multi-agent settings
         multi_agent: bool = False,
         organization_id: str = "default",
         # Vector store settings (optional)
         enable_vector_search: bool = False,
         vector_store_type: str = "memory",  # "memory", "chroma", "pinecone"
-        vector_store_config: Optional[Dict[str, Any]] = None,
+        vector_store_config: dict[str, Any] | None = None,
         embedding_provider: str = "openai",
-        embedding_config: Optional[Dict[str, Any]] = None,
+        embedding_config: dict[str, Any] | None = None,
         # Cache settings
         enable_cache: bool = True,
         cache_type: str = "disk",  # "memory", "disk"
@@ -197,8 +194,7 @@ class KnowledgeStore:
         enable_enrichment: bool = True,
         llm_provider: str = "auto",
     ):
-        """
-        Initialize the knowledge store.
+        """Initialize the knowledge store.
 
         Args:
             database_path: Path to SQLite database (ignored if use_postgresql=True)
@@ -255,16 +251,15 @@ class KnowledgeStore:
     # Initialization Helpers
     # =========================================================================
 
-    def _init_database(self, path: str, use_pg: bool, pg_url: Optional[str]):
+    def _init_database(self, path: str, use_pg: bool, pg_url: str | None):
         """Initialize database connection."""
         if use_pg and pg_url:
             from .core import DatabaseManager
 
             return DatabaseManager({"url": pg_url})
-        else:
-            from .core import SQLiteManager
+        from .core import SQLiteManager
 
-            return SQLiteManager(path)
+        return SQLiteManager(path)
 
     def _init_cache(self, enabled: bool, cache_type: str):
         """Initialize cache."""
@@ -274,24 +269,23 @@ class KnowledgeStore:
             from .core import DiskCacheManager
 
             return DiskCacheManager()
-        else:
-            from .core import CacheManager
+        from .core import CacheManager
 
-            return CacheManager()
+        return CacheManager()
 
-    def _init_embedding(self, provider: str, config: Dict[str, Any]):
+    def _init_embedding(self, provider: str, config: dict[str, Any]):
         """Initialize embedding function."""
         from .vectorstores import create_embeddings
 
         return create_embeddings(provider=provider, **config)
 
-    def _init_vector_store(self, store_type: str, config: Dict[str, Any]):
+    def _init_vector_store(self, store_type: str, config: dict[str, Any]):
         """Initialize vector store."""
         from .vectorstores import InMemoryVectorStore
 
         if store_type == "memory":
             return InMemoryVectorStore(embedding=self._embedding)
-        elif store_type == "chroma":
+        if store_type == "chroma":
             from .vectorstores import get_chroma_store
 
             ChromaVectorStore = get_chroma_store()
@@ -300,7 +294,7 @@ class KnowledgeStore:
                 collection_name=config.get("collection_name", "mindcore"),
                 persist_directory=config.get("persist_directory"),
             )
-        elif store_type == "pinecone":
+        if store_type == "pinecone":
             from .vectorstores import get_pinecone_store
 
             PineconeVectorStore = get_pinecone_store()
@@ -309,8 +303,7 @@ class KnowledgeStore:
                 api_key=config.get("api_key"),
                 index_name=config.get("index_name", "mindcore"),
             )
-        else:
-            return InMemoryVectorStore(embedding=self._embedding)
+        return InMemoryVectorStore(embedding=self._embedding)
 
     def _init_access_control(self):
         """Initialize access control manager."""
@@ -321,8 +314,8 @@ class KnowledgeStore:
     def _init_enrichment(self, llm_provider: str):
         """Initialize enrichment agent."""
         try:
-            from .llm import create_provider
             from .agents import EnrichmentAgent
+            from .llm import create_provider
 
             provider = create_provider(llm_provider)
             return EnrichmentAgent(llm_provider=provider)
@@ -348,12 +341,11 @@ class KnowledgeStore:
     def register_agent(
         self,
         name: str,
-        groups: Optional[List[str]] = None,
-        roles: Optional[List[str]] = None,
-        agent_id: Optional[str] = None,
+        groups: list[str] | None = None,
+        roles: list[str] | None = None,
+        agent_id: str | None = None,
     ) -> AgentConfig:
-        """
-        Register a new agent.
+        """Register a new agent.
 
         Only available in multi-agent mode.
 
@@ -395,7 +387,7 @@ class KnowledgeStore:
         logger.info(f"Registered agent: {name} ({agent_id})")
         return config
 
-    def get_agent(self, agent_id: str) -> Optional[AgentConfig]:
+    def get_agent(self, agent_id: str) -> AgentConfig | None:
         """Get agent configuration by ID."""
         if self._mode != StoreMode.MULTI_AGENT:
             return self._default_agent if agent_id == "default-agent" else None
@@ -421,17 +413,16 @@ class KnowledgeStore:
         user_id: str,
         text: str,
         role: str = "user",
-        thread_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        thread_id: str | None = None,
+        session_id: str | None = None,
         # Multi-agent options (ignored in simple mode)
-        agent_id: Optional[str] = None,
+        agent_id: str | None = None,
         visibility: str = "private",
-        sharing_groups: Optional[List[str]] = None,
+        sharing_groups: list[str] | None = None,
         # Additional metadata
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> KnowledgeItem:
-        """
-        Add a message to the knowledge store.
+        """Add a message to the knowledge store.
 
         This is the primary way to store conversation messages.
 
@@ -525,15 +516,14 @@ class KnowledgeStore:
     def add_document(
         self,
         content: str,
-        title: Optional[str] = None,
-        source: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        title: str | None = None,
+        source: str | None = None,
+        agent_id: str | None = None,
         visibility: str = "public",
-        sharing_groups: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        sharing_groups: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> KnowledgeItem:
-        """
-        Add a document/knowledge base article.
+        """Add a document/knowledge base article.
 
         Documents are typically shared knowledge that multiple agents can access.
 
@@ -581,15 +571,14 @@ class KnowledgeStore:
         self,
         user_id: str,
         query: str,
-        thread_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        thread_id: str | None = None,
+        agent_id: str | None = None,
         max_messages: int = 20,
         max_semantic_results: int = 5,
         include_shared: bool = True,
         include_public: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Get relevant context for a query.
+    ) -> dict[str, Any]:
+        """Get relevant context for a query.
 
         Combines recent messages, semantic search, and shared knowledge.
 
@@ -645,13 +634,12 @@ class KnowledgeStore:
     def search(
         self,
         query: str,
-        agent_id: Optional[str] = None,
-        item_type: Optional[str] = None,
+        agent_id: str | None = None,
+        item_type: str | None = None,
         k: int = 10,
-        filter_metadata: Optional[Dict[str, Any]] = None,
-    ) -> List[KnowledgeItem]:
-        """
-        Search the knowledge store.
+        filter_metadata: dict[str, Any] | None = None,
+    ) -> list[KnowledgeItem]:
+        """Search the knowledge store.
 
         Uses semantic search if vector store is enabled,
         otherwise falls back to metadata-based search.
@@ -673,12 +661,9 @@ class KnowledgeStore:
 
         if self._vector_store:
             return self._semantic_search(query, agent_id, k)
-        else:
-            return self._metadata_search(query, agent_id, item_type, k, filter_metadata)
+        return self._metadata_search(query, agent_id, item_type, k, filter_metadata)
 
-    def get_message(
-        self, message_id: str, agent_id: Optional[str] = None
-    ) -> Optional[KnowledgeItem]:
+    def get_message(self, message_id: str, agent_id: str | None = None) -> KnowledgeItem | None:
         """Get a specific message by ID."""
         # Access control check in multi-agent mode
         if self._mode == StoreMode.MULTI_AGENT and self._access_control:
@@ -700,11 +685,10 @@ class KnowledgeStore:
         self,
         item_id: str,
         target_agent_id: str,
-        sharing_agent_id: Optional[str] = None,
+        sharing_agent_id: str | None = None,
         can_reshare: bool = False,
     ) -> bool:
-        """
-        Share a knowledge item with another agent.
+        """Share a knowledge item with another agent.
 
         Only available in multi-agent mode.
 
@@ -738,10 +722,9 @@ class KnowledgeStore:
         )
 
     def share_with_group(
-        self, item_id: str, group_name: str, sharing_agent_id: Optional[str] = None
+        self, item_id: str, group_name: str, sharing_agent_id: str | None = None
     ) -> bool:
-        """
-        Share a knowledge item with a group.
+        """Share a knowledge item with a group.
 
         Args:
             item_id: Item to share
@@ -786,7 +769,7 @@ class KnowledgeStore:
             )
             self._db.insert_message(message)
 
-    def _load_item(self, item_id: str) -> Optional[KnowledgeItem]:
+    def _load_item(self, item_id: str) -> KnowledgeItem | None:
         """Load item from database."""
         message = self._db.get_message_by_id(item_id)
         if message:
@@ -829,7 +812,7 @@ class KnowledgeStore:
         if not self._cache or item.item_type != "message":
             return
 
-        from .core.schemas import Message, MessageMetadata, MessageRole
+        from .core.schemas import Message, MessageRole
 
         message = Message(
             message_id=item.item_id,
@@ -844,7 +827,7 @@ class KnowledgeStore:
 
     def _get_recent_messages(
         self, user_id: str, thread_id: str, agent_id: str, limit: int
-    ) -> List[KnowledgeItem]:
+    ) -> list[KnowledgeItem]:
         """Get recent messages for a thread."""
         # Try cache first
         if self._cache:
@@ -885,7 +868,7 @@ class KnowledgeStore:
         k: int,
         include_shared: bool = True,
         include_public: bool = True,
-    ) -> List[KnowledgeItem]:
+    ) -> list[KnowledgeItem]:
         """Perform semantic search."""
         if not self._vector_store:
             return []
@@ -925,10 +908,10 @@ class KnowledgeStore:
         self,
         query: str,
         agent_id: str,
-        item_type: Optional[str],
+        item_type: str | None,
         k: int,
-        filter_metadata: Optional[Dict[str, Any]],
-    ) -> List[KnowledgeItem]:
+        filter_metadata: dict[str, Any] | None,
+    ) -> list[KnowledgeItem]:
         """Search by metadata (fallback when no vector store)."""
         # This would use database text search
         # For now, return empty - implement based on database capabilities
@@ -958,7 +941,7 @@ class KnowledgeStore:
         """Get the default agent."""
         return self._default_agent
 
-    def health_check(self) -> Dict[str, bool]:
+    def health_check(self) -> dict[str, bool]:
         """Check health of all components."""
         status = {
             "database": True,

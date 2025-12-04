@@ -1,5 +1,4 @@
-"""
-Connector Registry for managing external data connectors.
+"""Connector Registry for managing external data connectors.
 
 The registry provides a central place to register, configure,
 and invoke connectors based on conversation topics.
@@ -7,17 +6,18 @@ and invoke connectors based on conversation topics.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base import BaseConnector, ConnectorResult
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class ConnectorRegistry:
-    """
-    Registry of external data connectors.
+    """Registry of external data connectors.
 
     Manages connector registration, topic mapping, and coordinated
     lookups across multiple connectors.
@@ -43,24 +43,22 @@ class ConnectorRegistry:
     """
 
     def __init__(self, cache_enabled: bool = True, default_cache_ttl: int = 300):
-        """
-        Initialize connector registry.
+        """Initialize connector registry.
 
         Args:
             cache_enabled: Whether to cache connector results
             default_cache_ttl: Default cache TTL in seconds
         """
-        self._connectors: Dict[str, BaseConnector] = {}
-        self._topic_map: Dict[str, BaseConnector] = {}
-        self._cache: Dict[str, tuple] = {}  # (result, expiry_time)
+        self._connectors: dict[str, BaseConnector] = {}
+        self._topic_map: dict[str, BaseConnector] = {}
+        self._cache: dict[str, tuple] = {}  # (result, expiry_time)
         self._cache_enabled = cache_enabled
         self._default_cache_ttl = default_cache_ttl
 
         logger.info("ConnectorRegistry initialized")
 
     def register(self, connector: BaseConnector) -> None:
-        """
-        Register a connector.
+        """Register a connector.
 
         Args:
             connector: Connector instance to register
@@ -84,8 +82,7 @@ class ConnectorRegistry:
         logger.info(f"Registered connector: {connector.name} (topics: {connector.topics})")
 
     def unregister(self, name: str) -> bool:
-        """
-        Unregister a connector by name.
+        """Unregister a connector by name.
 
         Args:
             name: Connector name to unregister
@@ -106,9 +103,8 @@ class ConnectorRegistry:
         logger.info(f"Unregistered connector: {name}")
         return True
 
-    def get_connector(self, name: str) -> Optional[BaseConnector]:
-        """
-        Get a connector by name.
+    def get_connector(self, name: str) -> BaseConnector | None:
+        """Get a connector by name.
 
         Args:
             name: Connector name
@@ -118,9 +114,8 @@ class ConnectorRegistry:
         """
         return self._connectors.get(name)
 
-    def get_connector_for_topic(self, topic: str) -> Optional[BaseConnector]:
-        """
-        Get the connector that handles a specific topic.
+    def get_connector_for_topic(self, topic: str) -> BaseConnector | None:
+        """Get the connector that handles a specific topic.
 
         Args:
             topic: Topic name
@@ -130,9 +125,8 @@ class ConnectorRegistry:
         """
         return self._topic_map.get(topic)
 
-    def list_connectors(self) -> List[Dict[str, Any]]:
-        """
-        List all registered connectors.
+    def list_connectors(self) -> list[dict[str, Any]]:
+        """List all registered connectors.
 
         Returns:
             List of connector info dicts
@@ -142,9 +136,8 @@ class ConnectorRegistry:
             for c in self._connectors.values()
         ]
 
-    def list_topics(self) -> List[str]:
-        """
-        List all registered topics.
+    def list_topics(self) -> list[str]:
+        """List all registered topics.
 
         Returns:
             List of topic names
@@ -152,10 +145,9 @@ class ConnectorRegistry:
         return list(self._topic_map.keys())
 
     async def lookup(
-        self, user_id: str, topics: List[str], context: Dict[str, Any], timeout: float = 10.0
-    ) -> List[ConnectorResult]:
-        """
-        Lookup data from all relevant connectors.
+        self, user_id: str, topics: list[str], context: dict[str, Any], timeout: float = 10.0
+    ) -> list[ConnectorResult]:
+        """Lookup data from all relevant connectors.
 
         Invokes connectors that match the given topics and returns
         their results. Connectors are invoked in parallel.
@@ -206,7 +198,7 @@ class ConnectorRegistry:
                         results.append(result)
 
             except asyncio.TimeoutError:
-                logger.error(f"Connector lookups timed out after {timeout}s")
+                logger.exception(f"Connector lookups timed out after {timeout}s")
                 results.append(
                     ConnectorResult(
                         data={}, source="timeout", error=f"Lookups timed out after {timeout}s"
@@ -216,10 +208,9 @@ class ConnectorRegistry:
         return results
 
     async def _lookup_with_connector(
-        self, connector: BaseConnector, user_id: str, context: Dict[str, Any], cache_key: str
+        self, connector: BaseConnector, user_id: str, context: dict[str, Any], cache_key: str
     ) -> ConnectorResult:
-        """
-        Perform lookup with a single connector.
+        """Perform lookup with a single connector.
 
         Args:
             connector: Connector to use
@@ -242,12 +233,11 @@ class ConnectorRegistry:
             return result
 
         except Exception as e:
-            logger.error(f"Connector {connector.name} failed: {e}")
+            logger.exception(f"Connector {connector.name} failed: {e}")
             return ConnectorResult(data={}, source=connector.name, error=str(e))
 
-    def extract_entities_for_topics(self, text: str, topics: List[str]) -> Dict[str, Any]:
-        """
-        Extract entities using connectors that handle given topics.
+    def extract_entities_for_topics(self, text: str, topics: list[str]) -> dict[str, Any]:
+        """Extract entities using connectors that handle given topics.
 
         Args:
             text: Text to extract entities from
@@ -282,13 +272,13 @@ class ConnectorRegistry:
 
         return entities
 
-    def _get_cache_key(self, connector_name: str, user_id: str, context: Dict[str, Any]) -> str:
+    def _get_cache_key(self, connector_name: str, user_id: str, context: dict[str, Any]) -> str:
         """Generate cache key for a lookup."""
         # Use sorted context keys for consistent hashing
         context_str = str(sorted(context.items()))
         return f"{connector_name}:{user_id}:{hash(context_str)}"
 
-    def _get_cached(self, cache_key: str) -> Optional[ConnectorResult]:
+    def _get_cached(self, cache_key: str) -> ConnectorResult | None:
         """Get cached result if not expired."""
         if not self._cache_enabled:
             return None
@@ -298,9 +288,8 @@ class ConnectorRegistry:
             result, expiry = cached
             if datetime.now(timezone.utc).timestamp() < expiry:
                 return result
-            else:
-                # Expired, remove from cache
-                del self._cache[cache_key]
+            # Expired, remove from cache
+            del self._cache[cache_key]
 
         return None
 
@@ -312,9 +301,8 @@ class ConnectorRegistry:
         expiry = datetime.now(timezone.utc).timestamp() + ttl
         self._cache[cache_key] = (result, expiry)
 
-    def clear_cache(self, connector_name: Optional[str] = None) -> int:
-        """
-        Clear cached results.
+    def clear_cache(self, connector_name: str | None = None) -> int:
+        """Clear cached results.
 
         Args:
             connector_name: If provided, only clear cache for this connector
@@ -327,14 +315,12 @@ class ConnectorRegistry:
             for key in keys_to_remove:
                 del self._cache[key]
             return len(keys_to_remove)
-        else:
-            count = len(self._cache)
-            self._cache.clear()
-            return count
+        count = len(self._cache)
+        self._cache.clear()
+        return count
 
-    async def health_check(self) -> Dict[str, bool]:
-        """
-        Check health of all registered connectors.
+    async def health_check(self) -> dict[str, bool]:
+        """Check health of all registered connectors.
 
         Returns:
             Dict mapping connector names to health status
@@ -344,6 +330,6 @@ class ConnectorRegistry:
             try:
                 results[name] = await connector.health_check()
             except Exception as e:
-                logger.error(f"Health check failed for {name}: {e}")
+                logger.exception(f"Health check failed for {name}: {e}")
                 results[name] = False
         return results

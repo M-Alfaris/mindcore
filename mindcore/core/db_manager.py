@@ -1,54 +1,43 @@
-"""
-Database manager for PostgreSQL persistence.
+"""Database manager for PostgreSQL persistence.
 
+Uses psycopg v3 (modern async-capable driver).
 Supports both direct PostgreSQL connections and PgBouncer pooled connections.
 When using PgBouncer, set MINDCORE_DB_USE_PGBOUNCER=true for optimal settings.
 """
 
 import os
-import json
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
+from datetime import datetime, timezone
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .schemas import Message, MessageMetadata, MessageRole
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
-# Try psycopg v3 first (modern, async-capable), fall back to psycopg2
+# Require psycopg v3
 try:
     import psycopg
     from psycopg.rows import dict_row
+    from psycopg.types.json import Jsonb
     from psycopg_pool import ConnectionPool
-
-    _PSYCOPG_VERSION = 3
-    logger.debug("Using psycopg v3")
 except ImportError:
-    try:
-        import psycopg2 as psycopg
-        from psycopg2.extras import RealDictCursor
-        from psycopg2.pool import ThreadedConnectionPool
-
-        _PSYCOPG_VERSION = 2
-        logger.debug("Using psycopg2 (legacy)")
-    except ImportError:
-        raise ImportError(
-            "No PostgreSQL driver found. Install with:\n"
-            "  pip install 'psycopg[binary]'  # Recommended (v3)\n"
-            "  pip install psycopg2-binary    # Legacy (v2)"
-        )
+    raise ImportError(
+        "psycopg v3 not found. Install with:\n"
+        "  pip install 'psycopg[binary,pool]'\n"
+        "Or install mindcore with PostgreSQL support:\n"
+        "  pip install 'mindcore[postgres]'"
+    )
 
 
 class DatabaseConnectionError(Exception):
     """Raised when database connection fails."""
 
-    pass
 
-
-def _normalize_datetime(dt: Any) -> Optional[datetime]:
-    """
-    Normalize datetime to be timezone-aware (UTC).
+def _normalize_datetime(dt: Any) -> datetime | None:
+    """Normalize datetime to be timezone-aware (UTC).
 
     PostgreSQL returns naive datetimes, but Mindcore creates messages with
     timezone-aware datetimes. This function ensures consistency by converting
@@ -81,9 +70,8 @@ def _normalize_datetime(dt: Any) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
-def get_db_config_from_env() -> Dict[str, Any]:
-    """
-    Get database configuration from environment variables.
+def get_db_config_from_env() -> dict[str, Any]:
+    """Get database configuration from environment variables.
 
     Environment variables:
         MINDCORE_DB_HOST: Database host (default: localhost)
@@ -117,9 +105,9 @@ def get_db_config_from_env() -> Dict[str, Any]:
 
 
 class DatabaseManager:
-    """
-    Manages PostgreSQL database connections and operations.
+    """Manages PostgreSQL database connections and operations.
 
+    Uses psycopg v3 with ConnectionPool for efficient connection management.
     Supports both direct PostgreSQL and PgBouncer connections.
     When using PgBouncer (transaction mode), the app uses a minimal
     connection pool since PgBouncer handles the actual pooling.
@@ -133,9 +121,8 @@ class DatabaseManager:
     Or pass db_config dict directly.
     """
 
-    def __init__(self, db_config: Optional[Dict[str, Any]] = None):
-        """
-        Initialize database manager.
+    def __init__(self, db_config: dict[str, Any] | None = None):
+        """Initialize database manager.
 
         Args:
             db_config: Database configuration dictionary. If None, reads from
@@ -145,61 +132,44 @@ class DatabaseManager:
             DatabaseConnectionError: If connection pool cannot be created.
         """
         self.config = db_config or get_db_config_from_env()
-        self._pool = None
+        self._pool: ConnectionPool | None = None
         self._use_pgbouncer = self.config.get("use_pgbouncer", False)
         self._initialize_pool()
 
     def _initialize_pool(self) -> None:
         """Initialize connection pool."""
         try:
-            if _PSYCOPG_VERSION == 3:
-                # psycopg v3 with ConnectionPool
-                conninfo = (
-                    f"host={self.config.get('host', 'localhost')} "
-                    f"port={self.config.get('port', 5432)} "
-                    f"dbname={self.config.get('database', 'mindcore')} "
-                    f"user={self.config.get('user', 'postgres')} "
-                    f"password={self.config.get('password', 'postgres')}"
-                )
+            conninfo = (
+                f"host={self.config.get('host', 'localhost')} "
+                f"port={self.config.get('port', 5432)} "
+                f"dbname={self.config.get('database', 'mindcore')} "
+                f"user={self.config.get('user', 'postgres')} "
+                f"password={self.config.get('password', 'postgres')}"
+            )
 
-                self._pool = ConnectionPool(
-                    conninfo=conninfo,
-                    min_size=self.config.get("min_connections", 1),
-                    max_size=self.config.get("max_connections", 10),
-                    # PgBouncer compatibility: don't use prepared statements in transaction mode
-                    kwargs={"prepare_threshold": None} if self._use_pgbouncer else {},
-                )
-                logger.info(
-                    f"Database pool initialized (psycopg3, "
-                    f"pgbouncer={self._use_pgbouncer}, "
-                    f"min={self.config.get('min_connections', 1)}, "
-                    f"max={self.config.get('max_connections', 10)})"
-                )
-            else:
-                # psycopg2 with ThreadedConnectionPool
-                self._pool = ThreadedConnectionPool(
-                    minconn=self.config.get("min_connections", 1),
-                    maxconn=self.config.get("max_connections", 10),
-                    host=self.config.get("host", "localhost"),
-                    port=self.config.get("port", 5432),
-                    database=self.config.get("database", "mindcore"),
-                    user=self.config.get("user", "postgres"),
-                    password=self.config.get("password", "postgres"),
-                )
-                logger.info(
-                    f"Database pool initialized (psycopg2, "
-                    f"min={self.config.get('min_connections', 1)}, "
-                    f"max={self.config.get('max_connections', 10)})"
-                )
+            # PgBouncer compatibility: don't use prepared statements in transaction mode
+            pool_kwargs = {"prepare_threshold": None} if self._use_pgbouncer else {}
+
+            self._pool = ConnectionPool(
+                conninfo=conninfo,
+                min_size=self.config.get("min_connections", 1),
+                max_size=self.config.get("max_connections", 10),
+                kwargs=pool_kwargs,
+            )
+            logger.info(
+                f"Database pool initialized (psycopg3, "
+                f"pgbouncer={self._use_pgbouncer}, "
+                f"min={self.config.get('min_connections', 1)}, "
+                f"max={self.config.get('max_connections', 10)})"
+            )
 
         except Exception as e:
-            logger.error(f"Failed to initialize database pool: {e}")
+            logger.exception(f"Failed to initialize database pool: {e}")
             raise DatabaseConnectionError(f"Database initialization failed: {e}") from e
 
     @contextmanager
     def get_connection(self):
-        """
-        Context manager for database connections.
+        """Context manager for database connections.
 
         Yields:
             Database connection from pool.
@@ -210,59 +180,12 @@ class DatabaseManager:
         if self._pool is None:
             raise DatabaseConnectionError("Database pool is not initialized")
 
-        conn = None
         try:
-            if _PSYCOPG_VERSION == 3:
-                # psycopg v3
-                with self._pool.connection() as conn:
-                    yield conn
-                return  # Connection returned to pool automatically
-            else:
-                # psycopg2
-                conn = self._pool.getconn()
-                if conn is None:
-                    raise DatabaseConnectionError("Failed to obtain connection from pool")
-
-                # Test if connection is still valid
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT 1")
-                except psycopg.OperationalError:
-                    # Connection is stale, try to get a fresh one
-                    self._pool.putconn(conn, close=True)
-                    conn = self._pool.getconn()
-                    if conn is None:
-                        raise DatabaseConnectionError("Failed to obtain fresh connection")
-
+            with self._pool.connection() as conn:
                 yield conn
-
-        except Exception as e:
-            logger.error(f"Database error: {e}")
-            if _PSYCOPG_VERSION == 2 and conn:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
+        except psycopg.Error as e:
+            logger.exception(f"Database error: {e}")
             raise DatabaseConnectionError(f"Database error: {e}") from e
-        finally:
-            if _PSYCOPG_VERSION == 2 and conn:
-                try:
-                    self._pool.putconn(conn)
-                except Exception as e:
-                    logger.warning(f"Error returning connection to pool: {e}")
-
-    def _get_cursor(self, conn):
-        """Get a cursor with dict row factory."""
-        if _PSYCOPG_VERSION == 3:
-            return conn.cursor(row_factory=dict_row)
-        else:
-            return conn.cursor(cursor_factory=RealDictCursor)
-
-    def _execute(self, conn, sql: str, params: tuple = None):
-        """Execute SQL and return cursor."""
-        with self._get_cursor(conn) as cursor:
-            cursor.execute(sql, params)
-            return cursor
 
     def initialize_schema(self) -> None:
         """Create database schema if it doesn't exist."""
@@ -310,15 +233,13 @@ class DatabaseManager:
             ON messages(agent_id) WHERE agent_id IS NOT NULL;
         """
 
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(schema_sql)
-                conn.commit()
-                logger.info("Database schema initialized")
+        with self.get_connection() as conn, conn.cursor() as cursor:
+            cursor.execute(schema_sql)
+            conn.commit()
+            logger.info("Database schema initialized")
 
     def insert_message(self, message: Message) -> bool:
-        """
-        Insert a message into the database.
+        """Insert a message into the database.
 
         Args:
             message: Message object to insert.
@@ -344,56 +265,32 @@ class DatabaseManager:
                 else message.metadata
             )
 
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    if _PSYCOPG_VERSION == 3:
-                        from psycopg.types.json import Jsonb
-
-                        cursor.execute(
-                            insert_sql,
-                            (
-                                message.message_id,
-                                message.user_id,
-                                message.thread_id,
-                                message.session_id,
-                                message.role.value,
-                                message.raw_text,
-                                Jsonb(metadata_dict),
-                                message.created_at,
-                                getattr(message, "agent_id", None),
-                                getattr(message, "visibility", "private"),
-                                getattr(message, "sharing_groups", []),
-                            ),
-                        )
-                    else:
-                        from psycopg2.extras import Json
-
-                        cursor.execute(
-                            insert_sql,
-                            (
-                                message.message_id,
-                                message.user_id,
-                                message.thread_id,
-                                message.session_id,
-                                message.role.value,
-                                message.raw_text,
-                                Json(metadata_dict),
-                                message.created_at,
-                                getattr(message, "agent_id", None),
-                                getattr(message, "visibility", "private"),
-                                getattr(message, "sharing_groups", []),
-                            ),
-                        )
-                    conn.commit()
-                    logger.debug(f"Message {message.message_id} inserted successfully")
-                    return True
+            with self.get_connection() as conn, conn.cursor() as cursor:
+                cursor.execute(
+                    insert_sql,
+                    (
+                        message.message_id,
+                        message.user_id,
+                        message.thread_id,
+                        message.session_id,
+                        message.role.value,
+                        message.raw_text,
+                        Jsonb(metadata_dict),
+                        message.created_at,
+                        getattr(message, "agent_id", None),
+                        getattr(message, "visibility", "private"),
+                        getattr(message, "sharing_groups", []),
+                    ),
+                )
+                conn.commit()
+                logger.debug(f"Message {message.message_id} inserted successfully")
+                return True
         except Exception as e:
-            logger.error(f"Failed to insert message: {e}")
+            logger.exception(f"Failed to insert message: {e}")
             return False
 
     def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
-        """
-        Update message metadata.
+        """Update message metadata.
 
         Args:
             message_id: Message identifier.
@@ -409,25 +306,16 @@ class DatabaseManager:
                 metadata.to_dict() if isinstance(metadata, MessageMetadata) else metadata
             )
 
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    if _PSYCOPG_VERSION == 3:
-                        from psycopg.types.json import Jsonb
-
-                        cursor.execute(update_sql, (Jsonb(metadata_dict), message_id))
-                    else:
-                        from psycopg2.extras import Json
-
-                        cursor.execute(update_sql, (Json(metadata_dict), message_id))
-                    conn.commit()
-                    return cursor.rowcount > 0
+            with self.get_connection() as conn, conn.cursor() as cursor:
+                cursor.execute(update_sql, (Jsonb(metadata_dict), message_id))
+                conn.commit()
+                return cursor.rowcount > 0
         except Exception as e:
-            logger.error(f"Failed to update message metadata: {e}")
+            logger.exception(f"Failed to update message metadata: {e}")
             return False
 
-    def fetch_recent_messages(self, user_id: str, thread_id: str, limit: int = 50) -> List[Message]:
-        """
-        Fetch recent messages for a user and thread.
+    def fetch_recent_messages(self, user_id: str, thread_id: str, limit: int = 50) -> list[Message]:
+        """Fetch recent messages for a user and thread.
 
         Args:
             user_id: User identifier.
@@ -446,7 +334,7 @@ class DatabaseManager:
 
         try:
             with self.get_connection() as conn:
-                with self._get_cursor(conn) as cursor:
+                with conn.cursor(row_factory=dict_row) as cursor:
                     cursor.execute(select_sql, (user_id, thread_id, limit))
                     rows = cursor.fetchall()
 
@@ -474,14 +362,13 @@ class DatabaseManager:
                     logger.debug(f"Fetched {len(messages)} messages for {user_id}/{thread_id}")
                     return messages
         except Exception as e:
-            logger.error(f"Failed to fetch messages: {e}")
+            logger.exception(f"Failed to fetch messages: {e}")
             return []
 
     def search_messages_by_topic(
-        self, user_id: str, thread_id: str, topics: List[str], limit: int = 20
-    ) -> List[Message]:
-        """
-        Search messages by topics.
+        self, user_id: str, thread_id: str, topics: list[str], limit: int = 20
+    ) -> list[Message]:
+        """Search messages by topics.
 
         Args:
             user_id: User identifier.
@@ -503,7 +390,7 @@ class DatabaseManager:
 
         try:
             with self.get_connection() as conn:
-                with self._get_cursor(conn) as cursor:
+                with conn.cursor(row_factory=dict_row) as cursor:
                     cursor.execute(search_sql, (user_id, thread_id, topics, limit))
                     rows = cursor.fetchall()
 
@@ -527,22 +414,21 @@ class DatabaseManager:
 
                     return messages
         except Exception as e:
-            logger.error(f"Failed to search messages by topic: {e}")
+            logger.exception(f"Failed to search messages by topic: {e}")
             return []
 
     def search_by_relevance(
         self,
         user_id: str,
-        topics: Optional[List[str]] = None,
-        categories: Optional[List[str]] = None,
-        intent: Optional[str] = None,
+        topics: list[str] | None = None,
+        categories: list[str] | None = None,
+        intent: str | None = None,
         min_importance: float = 0.0,
-        thread_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        thread_id: str | None = None,
+        session_id: str | None = None,
         limit: int = 20,
-    ) -> List[Message]:
-        """
-        Search messages by relevance using metadata matching and scoring.
+    ) -> list[Message]:
+        """Search messages by relevance using metadata matching and scoring.
 
         Uses GIN indexes for fast topic/category matching. Scores results by:
         - Topic overlap (3x weight)
@@ -566,7 +452,7 @@ class DatabaseManager:
         """
         # Build dynamic query with relevance scoring
         conditions = ["user_id = %s"]
-        params: List[Any] = [user_id]
+        params: list[Any] = [user_id]
 
         # Optional filters
         if thread_id:
@@ -629,10 +515,7 @@ class DatabaseManager:
         )
 
         # Combine scores
-        if score_parts:
-            relevance_score = " + ".join(score_parts)
-        else:
-            relevance_score = "1.0"
+        relevance_score = " + ".join(score_parts) if score_parts else "1.0"
 
         where_clause = " AND ".join(conditions)
         params.append(limit)
@@ -647,7 +530,7 @@ class DatabaseManager:
 
         try:
             with self.get_connection() as conn:
-                with self._get_cursor(conn) as cursor:
+                with conn.cursor(row_factory=dict_row) as cursor:
                     cursor.execute(search_sql, params)
                     rows = cursor.fetchall()
 
@@ -672,12 +555,11 @@ class DatabaseManager:
                     logger.debug(f"Found {len(messages)} relevant messages for user {user_id}")
                     return messages
         except Exception as e:
-            logger.error(f"Failed to search by relevance: {e}")
+            logger.exception(f"Failed to search by relevance: {e}")
             return []
 
-    def get_message_by_id(self, message_id: str) -> Optional[Message]:
-        """
-        Get a single message by ID.
+    def get_message_by_id(self, message_id: str) -> Message | None:
+        """Get a single message by ID.
 
         Args:
             message_id: Message identifier.
@@ -689,7 +571,7 @@ class DatabaseManager:
 
         try:
             with self.get_connection() as conn:
-                with self._get_cursor(conn) as cursor:
+                with conn.cursor(row_factory=dict_row) as cursor:
                     cursor.execute(select_sql, (message_id,))
                     row = cursor.fetchone()
 
@@ -710,12 +592,11 @@ class DatabaseManager:
                         )
                     return None
         except Exception as e:
-            logger.error(f"Failed to get message by ID: {e}")
+            logger.exception(f"Failed to get message by ID: {e}")
             return None
 
-    def health_check(self) -> Dict[str, Any]:
-        """
-        Check database connectivity and return status.
+    def health_check(self) -> dict[str, Any]:
+        """Check database connectivity and return status.
 
         Returns:
             Dict with status, latency, and pool info.
@@ -725,17 +606,16 @@ class DatabaseManager:
         start = time.time()
 
         try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                    cursor.fetchone()
+            with self.get_connection() as conn, conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
 
             latency_ms = (time.time() - start) * 1000
 
             return {
                 "status": "healthy",
                 "latency_ms": round(latency_ms, 2),
-                "driver": f"psycopg{_PSYCOPG_VERSION}",
+                "driver": "psycopg3",
                 "pgbouncer": self._use_pgbouncer,
                 "pool_min": self.config.get("min_connections", 1),
                 "pool_max": self.config.get("max_connections", 10),
@@ -744,14 +624,11 @@ class DatabaseManager:
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "driver": f"psycopg{_PSYCOPG_VERSION}",
+                "driver": "psycopg3",
             }
 
     def close(self) -> None:
         """Close all database connections."""
         if self._pool:
-            if _PSYCOPG_VERSION == 3:
-                self._pool.close()
-            else:
-                self._pool.closeall()
+            self._pool.close()
             logger.info("Database connection pool closed")

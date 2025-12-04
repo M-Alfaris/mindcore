@@ -1,9 +1,9 @@
-"""
-Tests for Enrichment Agent.
-"""
+"""Tests for Enrichment Agent."""
+
+from unittest.mock import Mock, patch
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from mindcore.agents import EnrichmentAgent
 from mindcore.core.schemas import MessageMetadata
 from mindcore.llm import LLMResponse

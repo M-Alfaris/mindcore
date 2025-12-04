@@ -1,5 +1,4 @@
-"""
-PostgreSQL with pgvector extension integration.
+"""PostgreSQL with pgvector extension integration.
 
 pgvector adds vector similarity search to PostgreSQL with:
 - Native PostgreSQL integration
@@ -10,19 +9,20 @@ pgvector adds vector similarity search to PostgreSQL with:
 Install: pip install psycopg[binary] pgvector
 """
 
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
-import uuid
 import json
+import uuid
+from typing import Any
 
-from .base import VectorStore, Document, SearchResult, EmbeddingFunction, DistanceMetric
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
+from .base import DistanceMetric, Document, EmbeddingFunction, SearchResult, VectorStore
+
 
 logger = get_logger(__name__)
 
 
 class PGVectorStore(VectorStore):
-    """
-    PostgreSQL + pgvector vector store integration.
+    """PostgreSQL + pgvector vector store integration.
 
     Provides vector similarity search within PostgreSQL, allowing
     hybrid queries combining vector similarity with SQL conditions.
@@ -51,15 +51,14 @@ class PGVectorStore(VectorStore):
     def __init__(
         self,
         embedding: EmbeddingFunction,
-        connection_string: Optional[str] = None,
-        connection: Optional[Any] = None,
+        connection_string: str | None = None,
+        connection: Any | None = None,
         collection_name: str = "mindcore_vectors",
         distance_strategy: DistanceMetric = DistanceMetric.COSINE,
         pre_delete_collection: bool = False,
         use_jsonb: bool = True,
     ):
-        """
-        Initialize pgvector store.
+        """Initialize pgvector store.
 
         Args:
             embedding: Embedding function to use
@@ -139,8 +138,8 @@ class PGVectorStore(VectorStore):
             self._conn.commit()
 
     def add_documents(
-        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
-    ) -> List[str]:
+        self, documents: list[Document], ids: list[str] | None = None, **kwargs: Any
+    ) -> list[str]:
         """Add documents to pgvector."""
         texts = [doc.page_content for doc in documents]
         metadatas = [doc.metadata for doc in documents]
@@ -152,11 +151,11 @@ class PGVectorStore(VectorStore):
 
     def add_texts(
         self,
-        texts: List[str],
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
+        texts: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[str]:
+    ) -> list[str]:
         """Add texts to pgvector."""
         if not texts:
             return []
@@ -183,7 +182,9 @@ class PGVectorStore(VectorStore):
         """
 
         with self._conn.cursor() as cur:
-            for doc_id, text, embedding, metadata in zip(ids, texts, embeddings, metadatas):
+            for doc_id, text, embedding, metadata in zip(
+                ids, texts, embeddings, metadatas, strict=False
+            ):
                 meta_value = json.dumps(metadata) if self._use_jsonb else str(metadata)
                 cur.execute(sql, (doc_id, text, embedding, meta_value))
 
@@ -193,15 +194,15 @@ class PGVectorStore(VectorStore):
         return ids
 
     def similarity_search(
-        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
-    ) -> List[Document]:
+        self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
+    ) -> list[Document]:
         """Search for similar documents."""
         results = self.similarity_search_with_score(query, k, filter, **kwargs)
         return [r.document for r in results]
 
     def similarity_search_with_score(
-        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
-    ) -> List[SearchResult]:
+        self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
+    ) -> list[SearchResult]:
         """Search with similarity scores."""
         # Embed query
         query_embedding = self.embedding.embed_query(query)
@@ -210,32 +211,32 @@ class PGVectorStore(VectorStore):
 
     def similarity_search_by_vector(
         self,
-        embedding: List[float],
+        embedding: list[float],
         k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Search by embedding vector."""
         results = self._search_by_vector_with_score(embedding, k, filter)
         return [r.document for r in results]
 
     def _search_by_vector_with_score(
-        self, embedding: List[float], k: int, filter: Optional[Dict[str, Any]]
-    ) -> List[SearchResult]:
+        self, embedding: list[float], k: int, filter: dict[str, Any] | None
+    ) -> list[SearchResult]:
         """Internal search implementation."""
         # Build distance expression based on strategy
         if self._distance_strategy == DistanceMetric.COSINE:
-            distance_expr = f"embedding <=> %s::vector"
-            score_expr = f"1 - (embedding <=> %s::vector)"
+            distance_expr = "embedding <=> %s::vector"
+            score_expr = "1 - (embedding <=> %s::vector)"
         elif self._distance_strategy == DistanceMetric.EUCLIDEAN:
-            distance_expr = f"embedding <-> %s::vector"
-            score_expr = f"1 / (1 + (embedding <-> %s::vector))"
+            distance_expr = "embedding <-> %s::vector"
+            score_expr = "1 / (1 + (embedding <-> %s::vector))"
         elif self._distance_strategy in (DistanceMetric.DOT_PRODUCT, DistanceMetric.INNER_PRODUCT):
-            distance_expr = f"embedding <#> %s::vector"
-            score_expr = f"(embedding <#> %s::vector) * -1"  # Negate for similarity
+            distance_expr = "embedding <#> %s::vector"
+            score_expr = "(embedding <#> %s::vector) * -1"  # Negate for similarity
         else:
-            distance_expr = f"embedding <=> %s::vector"
-            score_expr = f"1 - (embedding <=> %s::vector)"
+            distance_expr = "embedding <=> %s::vector"
+            score_expr = "1 - (embedding <=> %s::vector)"
 
         # Build WHERE clause from filter
         where_clause = ""
@@ -285,7 +286,7 @@ class PGVectorStore(VectorStore):
         """
 
         # Execute query
-        params = [embedding, embedding] + filter_params + [embedding, k]
+        params = [embedding, embedding, *filter_params, embedding, k]
 
         with self._conn.cursor() as cur:
             cur.execute(sql, params)
@@ -311,8 +312,8 @@ class PGVectorStore(VectorStore):
 
     def delete(
         self,
-        ids: Optional[List[str]] = None,
-        filter: Optional[Dict[str, Any]] = None,
+        ids: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> bool:
         """Delete documents from pgvector."""
@@ -341,11 +342,11 @@ class PGVectorStore(VectorStore):
             logger.debug("Deleted documents from pgvector")
             return True
         except Exception as e:
-            logger.error(f"Failed to delete from pgvector: {e}")
+            logger.exception(f"Failed to delete from pgvector: {e}")
             self._conn.rollback()
             return False
 
-    def get_by_ids(self, ids: List[str]) -> List[Document]:
+    def get_by_ids(self, ids: list[str]) -> list[Document]:
         """Get documents by IDs."""
         if not ids:
             return []
@@ -379,7 +380,7 @@ class PGVectorStore(VectorStore):
     @classmethod
     def from_documents(
         cls,
-        documents: List[Document],
+        documents: list[Document],
         embedding: EmbeddingFunction,
         connection_string: str,
         collection_name: str = "mindcore_vectors",
@@ -398,9 +399,9 @@ class PGVectorStore(VectorStore):
     @classmethod
     def from_texts(
         cls,
-        texts: List[str],
+        texts: list[str],
         embedding: EmbeddingFunction,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
+        metadatas: list[dict[str, Any]] | None = None,
         connection_string: str = "",
         collection_name: str = "mindcore_vectors",
         **kwargs: Any,
@@ -416,8 +417,7 @@ class PGVectorStore(VectorStore):
         return store
 
     def create_index(self, index_type: str = "ivfflat", lists: int = 100, probes: int = 10) -> None:
-        """
-        Create an index for faster similarity search.
+        """Create an index for faster similarity search.
 
         Args:
             index_type: "ivfflat" or "hnsw"
@@ -470,7 +470,7 @@ class PGVectorStore(VectorStore):
                 cur.execute("SELECT 1")
             return True
         except Exception as e:
-            logger.error(f"pgvector health check failed: {e}")
+            logger.exception(f"pgvector health check failed: {e}")
             return False
 
     def close(self) -> None:

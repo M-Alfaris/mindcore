@@ -1,17 +1,17 @@
-"""
-Base agent class for Mindcore AI agents.
+"""Base agent class for Mindcore AI agents.
 
 Uses the LLM provider abstraction layer for all inference.
 """
 
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 
 if TYPE_CHECKING:
-    from ..llm import BaseLLMProvider
+    from mindcore.llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
@@ -19,18 +19,13 @@ logger = get_logger(__name__)
 class AgentInitializationError(Exception):
     """Raised when agent initialization fails."""
 
-    pass
-
 
 class APICallError(Exception):
     """Raised when LLM call fails."""
 
-    pass
-
 
 class BaseAgent(ABC):
-    """
-    Abstract base class for AI agents.
+    """Abstract base class for AI agents.
 
     Uses the LLM provider abstraction layer for all inference operations.
     Supports llama.cpp, OpenAI, and automatic fallback between them.
@@ -48,8 +43,7 @@ class BaseAgent(ABC):
     def __init__(
         self, llm_provider: "BaseLLMProvider", temperature: float = 0.3, max_tokens: int = 1000
     ):
-        """
-        Initialize base agent.
+        """Initialize base agent.
 
         Args:
             llm_provider: LLM provider instance from mindcore.llm
@@ -70,7 +64,7 @@ class BaseAgent(ABC):
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-        logger.info(f"Initialized {self.__class__.__name__} with " f"{llm_provider.name} provider")
+        logger.info(f"Initialized {self.__class__.__name__} with {llm_provider.name} provider")
 
     @property
     def provider_name(self) -> str:
@@ -86,11 +80,10 @@ class BaseAgent(ABC):
         self,
         messages: list,
         json_mode: bool = False,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> str:
-        """
-        Call the LLM provider.
+        """Call the LLM provider.
 
         Args:
             messages: List of message dictionaries with 'role' and 'content'.
@@ -118,12 +111,11 @@ class BaseAgent(ABC):
             )
             return response.content
         except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+            logger.exception(f"LLM call failed: {e}")
             raise APICallError(f"LLM call failed: {e}") from e
 
-    def _parse_json_response(self, response: str) -> Dict[str, Any]:
-        """
-        Parse JSON response from LLM.
+    def _parse_json_response(self, response: str) -> dict[str, Any]:
+        """Parse JSON response from LLM.
 
         Handles various formats including:
         - Plain JSON
@@ -171,7 +163,7 @@ class BaseAgent(ABC):
             except json.JSONDecodeError:
                 pass
 
-            logger.error(f"Failed to parse JSON response: {e}")
+            logger.exception(f"Failed to parse JSON response: {e}")
             logger.debug(f"Response was: {original_response[:500]}...")
             raise ValueError(
                 f"Failed to parse LLM response as JSON. Response started with: "
@@ -180,10 +172,8 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def process(self, *args, **kwargs) -> Any:
-        """
-        Process method to be implemented by subclasses.
+        """Process method to be implemented by subclasses.
 
         Returns:
             Processing result.
         """
-        pass

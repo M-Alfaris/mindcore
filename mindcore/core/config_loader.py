@@ -1,5 +1,4 @@
-"""
-Configuration loader for Mindcore framework.
+"""Configuration loader for Mindcore framework.
 
 Supports environment variable substitution in YAML files:
 - ${VAR} - Required variable, empty string if not set
@@ -9,7 +8,8 @@ Supports environment variable substitution in YAML files:
 import os
 import re
 from pathlib import Path
-from typing import Dict, Any, Optional, Union
+from typing import Any
+
 import yaml
 
 
@@ -20,19 +20,17 @@ class ConfigLoader:
     # \$ in regex matches literal $ character
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
 
-    def __init__(self, config_path: Optional[str] = None):
-        """
-        Initialize config loader.
+    def __init__(self, config_path: str | None = None):
+        """Initialize config loader.
 
         Args:
             config_path: Path to config.yaml file. If None, looks in default locations.
         """
         self.config_path = self._resolve_config_path(config_path)
-        self.config: Dict[str, Any] = self._load_config()
+        self.config: dict[str, Any] = self._load_config()
 
-    def _resolve_config_path(self, config_path: Optional[str]) -> Path:
-        """
-        Resolve the configuration file path.
+    def _resolve_config_path(self, config_path: str | None) -> Path:
+        """Resolve the configuration file path.
 
         Args:
             config_path: Optional path to config file.
@@ -62,9 +60,8 @@ class ConfigLoader:
         # Return default location even if it doesn't exist
         return Path(__file__).parent.parent / "config.yaml"
 
-    def _load_config(self) -> Dict[str, Any]:
-        """
-        Load configuration from YAML file.
+    def _load_config(self) -> dict[str, Any]:
+        """Load configuration from YAML file.
 
         Returns:
             Configuration dictionary with environment variables resolved.
@@ -73,7 +70,7 @@ class ConfigLoader:
             # Return default configuration
             return self._default_config()
 
-        with open(self.config_path, "r") as f:
+        with open(self.config_path) as f:
             config = yaml.safe_load(f)
 
         # Resolve environment variables in the config
@@ -82,8 +79,7 @@ class ConfigLoader:
         return config or self._default_config()
 
     def _resolve_env_vars(self, obj: Any) -> Any:
-        """
-        Recursively resolve environment variables in config values.
+        """Recursively resolve environment variables in config values.
 
         Supports:
         - ${VAR} - Returns env var value or empty string
@@ -97,16 +93,14 @@ class ConfigLoader:
         """
         if isinstance(obj, dict):
             return {k: self._resolve_env_vars(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return [self._resolve_env_vars(item) for item in obj]
-        elif isinstance(obj, str):
+        if isinstance(obj, str):
             return self._substitute_env_vars(obj)
-        else:
-            return obj
+        return obj
 
-    def _substitute_env_vars(self, value: str) -> Union[str, int, float, None]:
-        """
-        Substitute environment variables in a string value.
+    def _substitute_env_vars(self, value: str) -> str | int | float | None:
+        """Substitute environment variables in a string value.
 
         Args:
             value: String potentially containing ${VAR} or ${VAR:default}
@@ -122,10 +116,9 @@ class ConfigLoader:
 
             if env_value is not None:
                 return env_value
-            elif default is not None:
+            if default is not None:
                 return default
-            else:
-                return ""
+            return ""
 
         result = self.ENV_VAR_PATTERN.sub(replace_match, value)
 
@@ -144,9 +137,8 @@ class ConfigLoader:
 
         return result if result else None
 
-    def _default_config(self) -> Dict[str, Any]:
-        """
-        Return default configuration.
+    def _default_config(self) -> dict[str, Any]:
+        """Return default configuration.
 
         Returns:
             Default configuration dictionary.
@@ -207,8 +199,7 @@ class ConfigLoader:
         }
 
     def get(self, key: str, default: Any = None) -> Any:
-        """
-        Get configuration value by key.
+        """Get configuration value by key.
 
         Args:
             key: Configuration key (supports dot notation, e.g., 'database.host').
@@ -230,13 +221,12 @@ class ConfigLoader:
 
         return value
 
-    def get_database_config(self) -> Dict[str, Any]:
+    def get_database_config(self) -> dict[str, Any]:
         """Get database configuration."""
         return self.config.get("database", {})
 
-    def get_openai_config(self) -> Dict[str, Any]:
-        """
-        Get OpenAI configuration from llm.openai section.
+    def get_openai_config(self) -> dict[str, Any]:
+        """Get OpenAI configuration from llm.openai section.
 
         Returns:
             OpenAI configuration dictionary with api_key, model, temperature, max_tokens.
@@ -254,17 +244,16 @@ class ConfigLoader:
             "max_retries": llm_openai.get("max_retries") or defaults.get("max_retries", 3),
         }
 
-    def get_cache_config(self) -> Dict[str, Any]:
+    def get_cache_config(self) -> dict[str, Any]:
         """Get cache configuration."""
         return self.config.get("cache", {})
 
-    def get_api_config(self) -> Dict[str, Any]:
+    def get_api_config(self) -> dict[str, Any]:
         """Get API configuration."""
         return self.config.get("api", {})
 
-    def get_llm_config(self) -> Dict[str, Any]:
-        """
-        Get LLM provider configuration.
+    def get_llm_config(self) -> dict[str, Any]:
+        """Get LLM provider configuration.
 
         Returns a structured dict with:
         - provider: "auto", "llama_cpp", or "openai"
@@ -320,9 +309,8 @@ class ConfigLoader:
             },
         }
 
-    def get_logging_config(self) -> Dict[str, Any]:
-        """
-        Get logging configuration.
+    def get_logging_config(self) -> dict[str, Any]:
+        """Get logging configuration.
 
         Returns a dict compatible with LogConfig:
         - level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)

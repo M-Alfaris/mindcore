@@ -1,0 +1,126 @@
+# Pre-commit hooks configuration for Mindcore
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+default_language_version:
+  python: python3.10
+
+repos:
+  # ==========================================================================
+  # General hooks
+  # ==========================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Prevent commits to main/master
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "master"]
+      # Check for files that would conflict on case-insensitive filesystems
+      - id: check-case-conflict
+      # Check for merge conflict strings
+      - id: check-merge-conflict
+      # Check that executables have shebangs
+      - id: check-executables-have-shebangs
+      # Check JSON files are valid
+      - id: check-json
+      # Check YAML files are valid
+      - id: check-yaml
+        args: ["--unsafe"]  # Allow custom tags
+      # Check TOML files are valid
+      - id: check-toml
+      # Ensure files end with a newline
+      - id: end-of-file-fixer
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      # Check for large files
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      # Check for private keys
+      - id: detect-private-key
+      # Check Python AST is valid
+      - id: check-ast
+      # Check for debugger imports
+      - id: debug-statements
+      # Fix mixed line endings
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ==========================================================================
+  # Ruff - Fast Python linter and formatter (replaces black, flake8, isort)
+  # ==========================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.2
+    hooks:
+      # Linter
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      # Formatter (replaces black)
+      - id: ruff-format
+
+  # ==========================================================================
+  # Security scanning
+  # ==========================================================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml", "-r", "mindcore/"]
+        additional_dependencies: ["bandit[toml]"]
+        exclude: "^mindcore/tests/"
+
+  # ==========================================================================
+  # Type checking (optional - can be slow)
+  # ==========================================================================
+  # Uncomment to enable mypy in pre-commit (runs on every commit)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.13.0
+  #   hooks:
+  #     - id: mypy
+  #       additional_dependencies:
+  #         - types-PyYAML
+  #         - types-cachetools
+  #         - pydantic
+
+  # ==========================================================================
+  # Commit message linting
+  # ==========================================================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.1.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # ==========================================================================
+  # Markdown linting
+  # ==========================================================================
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.43.0
+    hooks:
+      - id: markdownlint
+        args: ["--fix", "--disable", "MD013", "MD033", "MD041", "--"]
+
+  # ==========================================================================
+  # Shell script linting (if you have shell scripts)
+  # ==========================================================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+# CI configuration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ""
+  autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

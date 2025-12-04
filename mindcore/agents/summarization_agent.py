@@ -1,20 +1,21 @@
-"""
-Summarization Agent for compressing threads into summaries.
+"""Summarization Agent for compressing threads into summaries.
 
 Generates concise summaries from conversation threads, extracting
 key facts, topics, entities, and sentiment for efficient retrieval.
 """
 
 import uuid
-from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+from mindcore.core.schemas import DEFAULT_METADATA_SCHEMA, Message, MetadataSchema, ThreadSummary
+from mindcore.utils.logger import get_logger
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, ThreadSummary, MetadataSchema, DEFAULT_METADATA_SCHEMA
-from ..utils.logger import get_logger
+
 
 if TYPE_CHECKING:
-    from ..llm import BaseLLMProvider
+    from mindcore.llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
@@ -50,8 +51,7 @@ Respond ONLY with valid JSON in this exact format:
 
 
 class SummarizationAgent(BaseAgent):
-    """
-    Agent for compressing conversation threads into summaries.
+    """Agent for compressing conversation threads into summaries.
 
     Uses LLM to generate intelligent summaries that preserve key information
     while reducing storage and speeding up context retrieval.
@@ -75,10 +75,9 @@ class SummarizationAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.2,
         max_tokens: int = 1500,
-        metadata_schema: Optional[MetadataSchema] = None,
+        metadata_schema: MetadataSchema | None = None,
     ):
-        """
-        Initialize summarization agent.
+        """Initialize summarization agent.
 
         Args:
             llm_provider: LLM provider instance
@@ -91,13 +90,12 @@ class SummarizationAgent(BaseAgent):
 
     def process(
         self,
-        messages: List[Message],
+        messages: list[Message],
         thread_id: str,
         user_id: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> ThreadSummary:
-        """
-        Process messages and generate a thread summary.
+        """Process messages and generate a thread summary.
 
         Args:
             messages: List of Message objects to summarize
@@ -112,13 +110,12 @@ class SummarizationAgent(BaseAgent):
 
     def summarize_thread(
         self,
-        messages: List[Message],
+        messages: list[Message],
         thread_id: str,
         user_id: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> ThreadSummary:
-        """
-        Generate a summary from a list of messages.
+        """Generate a summary from a list of messages.
 
         Extracts:
         - Overall summary (1-3 paragraphs)
@@ -204,11 +201,11 @@ class SummarizationAgent(BaseAgent):
             return summary
 
         except Exception as e:
-            logger.error(f"Failed to generate summary for thread {thread_id}: {e}")
+            logger.exception(f"Failed to generate summary for thread {thread_id}: {e}")
             # Return a minimal summary on error
             return self._create_fallback_summary(messages, thread_id, user_id, session_id, str(e))
 
-    def _format_messages(self, messages: List[Message]) -> str:
+    def _format_messages(self, messages: list[Message]) -> str:
         """Format messages for the LLM prompt."""
         formatted = []
         for msg in messages[:100]:  # Limit to prevent context overflow
@@ -230,7 +227,7 @@ class SummarizationAgent(BaseAgent):
         return "\n".join(formatted)
 
     def _create_empty_summary(
-        self, thread_id: str, user_id: str, session_id: Optional[str]
+        self, thread_id: str, user_id: str, session_id: str | None
     ) -> ThreadSummary:
         """Create an empty summary for threads with no messages."""
         return ThreadSummary(
@@ -249,10 +246,10 @@ class SummarizationAgent(BaseAgent):
 
     def _create_fallback_summary(
         self,
-        messages: List[Message],
+        messages: list[Message],
         thread_id: str,
         user_id: str,
-        session_id: Optional[str],
+        session_id: str | None,
         error: str,
     ) -> ThreadSummary:
         """Create a fallback summary when LLM fails."""
@@ -294,10 +291,9 @@ class SummarizationAgent(BaseAgent):
         )
 
     def summarize_multiple_threads(
-        self, threads_data: List[dict], db_manager
-    ) -> List[ThreadSummary]:
-        """
-        Summarize multiple threads.
+        self, threads_data: list[dict], db_manager
+    ) -> list[ThreadSummary]:
+        """Summarize multiple threads.
 
         Args:
             threads_data: List of dicts with thread_id, user_id keys

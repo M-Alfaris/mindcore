@@ -1,18 +1,17 @@
-"""
-Base adapter class for framework integrations.
-"""
+"""Base adapter class for framework integrations."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-from ..core.schemas import Message, AssembledContext
-from ..utils.logger import get_logger
+from typing import Any
+
+from mindcore.core.schemas import AssembledContext, Message
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class BaseAdapter(ABC):
-    """
-    Base adapter for integrating Mindcore with AI frameworks.
+    """Base adapter for integrating Mindcore with AI frameworks.
 
     Provides standard interface for:
     - Message conversion
@@ -21,8 +20,7 @@ class BaseAdapter(ABC):
     """
 
     def __init__(self, mindcore_instance):
-        """
-        Initialize adapter.
+        """Initialize adapter.
 
         Args:
             mindcore_instance: Instance of Mindcore.
@@ -30,9 +28,8 @@ class BaseAdapter(ABC):
         self.mindcore = mindcore_instance
 
     @abstractmethod
-    def format_message_for_ingestion(self, framework_message: Any) -> Dict[str, Any]:
-        """
-        Convert framework-specific message to Mindcore format.
+    def format_message_for_ingestion(self, framework_message: Any) -> dict[str, Any]:
+        """Convert framework-specific message to Mindcore format.
 
         Args:
             framework_message: Message in framework format.
@@ -40,12 +37,10 @@ class BaseAdapter(ABC):
         Returns:
             Message dict for Mindcore ingestion.
         """
-        pass
 
     @abstractmethod
     def inject_context_into_prompt(self, context: AssembledContext, existing_prompt: str) -> str:
-        """
-        Inject assembled context into framework prompt.
+        """Inject assembled context into framework prompt.
 
         Args:
             context: Assembled context from Mindcore.
@@ -54,13 +49,11 @@ class BaseAdapter(ABC):
         Returns:
             Enhanced prompt with context.
         """
-        pass
 
     def ingest_conversation(
-        self, messages: List[Any], user_id: str, thread_id: str, session_id: str
-    ) -> List[Message]:
-        """
-        Ingest a conversation history.
+        self, messages: list[Any], user_id: str, thread_id: str, session_id: str
+    ) -> list[Message]:
+        """Ingest a conversation history.
 
         Args:
             messages: List of framework messages.
@@ -97,8 +90,7 @@ class BaseAdapter(ABC):
     def get_enhanced_context(
         self, user_id: str, thread_id: str, query: str, max_messages: int = 50
     ) -> AssembledContext:
-        """
-        Get assembled context.
+        """Get assembled context.
 
         Args:
             user_id: User identifier.

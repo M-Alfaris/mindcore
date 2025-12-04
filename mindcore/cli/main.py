@@ -1,5 +1,4 @@
-"""
-Mindcore CLI - Main command-line interface.
+"""Mindcore CLI - Main command-line interface.
 
 Provides commands for:
 - Downloading and managing GGUF models
@@ -10,7 +9,7 @@ Provides commands for:
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+
 
 try:
     import click
@@ -19,11 +18,11 @@ except ImportError:
     sys.exit(1)
 
 from .models import (
-    RECOMMENDED_MODELS,
     DEFAULT_MODEL,
-    get_model_info,
-    get_default_models_dir,
+    RECOMMENDED_MODELS,
     format_model_table,
+    get_default_models_dir,
+    get_model_info,
 )
 
 
@@ -40,8 +39,7 @@ def get_version() -> str:
 @click.group()
 @click.version_option(version=get_version(), prog_name="mindcore")
 def cli():
-    """
-    Mindcore CLI - Intelligent Memory Management for AI Agents
+    r"""Mindcore CLI - Intelligent Memory Management for AI Agents.
 
     Download models, check status, and manage your Mindcore installation.
 
@@ -51,7 +49,6 @@ def cli():
       export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
       python -c "from mindcore import MindcoreClient; print('Ready!')"
     """
-    pass
 
 
 @cli.command("download-model")
@@ -70,9 +67,8 @@ def cli():
     help="Directory to save model (default: ~/.mindcore/models)",
 )
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing model file")
-def download_model(model: str, output_dir: Optional[str], force: bool):
-    """
-    Download a GGUF model for local inference.
+def download_model(model: str, output_dir: str | None, force: bool):
+    r"""Download a GGUF model for local inference.
 
     \b
     Examples:
@@ -86,10 +82,7 @@ def download_model(model: str, output_dir: Optional[str], force: bool):
         sys.exit(1)
 
     # Determine output directory
-    if output_dir:
-        models_dir = Path(output_dir)
-    else:
-        models_dir = Path(get_default_models_dir())
+    models_dir = Path(output_dir) if output_dir else Path(get_default_models_dir())
 
     # Create directory if needed
     models_dir.mkdir(parents=True, exist_ok=True)
@@ -99,7 +92,7 @@ def download_model(model: str, output_dir: Optional[str], force: bool):
     # Check if file exists
     if output_path.exists() and not force:
         click.echo(f"Model already exists: {output_path}")
-        click.echo(f"Use --force to overwrite")
+        click.echo("Use --force to overwrite")
         click.echo()
         click.echo("To use this model, set:")
         click.echo(f"  export MINDCORE_LLAMA_MODEL_PATH={output_path}")
@@ -138,30 +131,31 @@ def _download_with_progress(url: str, output_path: Path) -> None:
     """Download file with progress bar."""
     try:
         import urllib.request
-        import shutil
 
         # Get file size
         with urllib.request.urlopen(url) as response:
             total_size = int(response.headers.get("content-length", 0))
 
             # Download with progress bar
-            with click.progressbar(
-                length=total_size,
-                label="Downloading",
-                show_eta=True,
-                show_percent=True,
-            ) as bar:
-                with open(output_path, "wb") as out_file:
-                    downloaded = 0
-                    chunk_size = 1024 * 1024  # 1MB chunks
+            with (
+                click.progressbar(
+                    length=total_size,
+                    label="Downloading",
+                    show_eta=True,
+                    show_percent=True,
+                ) as bar,
+                open(output_path, "wb") as out_file,
+            ):
+                downloaded = 0
+                chunk_size = 1024 * 1024  # 1MB chunks
 
-                    while True:
-                        chunk = response.read(chunk_size)
-                        if not chunk:
-                            break
-                        out_file.write(chunk)
-                        downloaded += len(chunk)
-                        bar.update(len(chunk))
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    out_file.write(chunk)
+                    downloaded += len(chunk)
+                    bar.update(len(chunk))
 
     except urllib.error.URLError as e:
         raise RuntimeError(f"Failed to download: {e}")
@@ -170,8 +164,7 @@ def _download_with_progress(url: str, output_path: Path) -> None:
 @cli.command("list-models")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed model information")
 def list_models(verbose: bool):
-    """
-    List available models for download.
+    r"""List available models for download.
 
     \b
     Examples:
@@ -201,8 +194,7 @@ def list_models(verbose: bool):
 
 @cli.command("status")
 def status():
-    """
-    Check Mindcore installation and configuration status.
+    """Check Mindcore installation and configuration status.
 
     Shows:
     - Installed version
@@ -288,8 +280,7 @@ def status():
 @cli.command("config")
 @click.option("--show", is_flag=True, help="Show current configuration")
 def config(show: bool):
-    """
-    Show or manage Mindcore configuration.
+    r"""Show or manage Mindcore configuration.
 
     \b
     Examples:

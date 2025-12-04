@@ -1,5 +1,4 @@
-"""
-Framework integrations for seamless Mindcore integration with popular AI frameworks.
+"""Framework integrations for seamless Mindcore integration with popular AI frameworks.
 
 This module provides ready-to-use integrations for:
 - LangChain 0.1+/1.x (via langchain-core)
@@ -14,9 +13,10 @@ Usage:
     integration = LangChainIntegration(client)
 """
 
+from .base_adapter import BaseAdapter as BaseIntegration
 from .langchain_adapter import LangChainAdapter as LangChainIntegration
 from .llamaindex_adapter import LlamaIndexAdapter as LlamaIndexIntegration
-from .base_adapter import BaseAdapter as BaseIntegration
+
 
 __all__ = [
     "BaseIntegration",

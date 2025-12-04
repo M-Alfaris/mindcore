@@ -1,5 +1,4 @@
-"""
-LlamaIndex integration adapter for Mindcore.
+"""LlamaIndex integration adapter for Mindcore.
 
 Provides seamless integration with LlamaIndex 0.10+:
 - Chat history integration
@@ -11,10 +10,13 @@ Compatible with:
 - llama-index-core >= 0.10.0
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+from mindcore.core.schemas import AssembledContext
+from mindcore.utils.logger import get_logger
+
 from .base_adapter import BaseAdapter
-from ..core.schemas import AssembledContext
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -43,8 +45,7 @@ def require_llamaindex():
 
 
 class LlamaIndexAdapter(BaseAdapter):
-    """
-    Adapter for integrating Mindcore with LlamaIndex 0.10+.
+    """Adapter for integrating Mindcore with LlamaIndex 0.10+.
 
     Usage:
         from llama_index.core.chat_engine import SimpleChatEngine
@@ -70,9 +71,8 @@ class LlamaIndexAdapter(BaseAdapter):
         )
     """
 
-    def format_message_for_ingestion(self, framework_message: Any) -> Dict[str, Any]:
-        """
-        Convert LlamaIndex message to Mindcore format.
+    def format_message_for_ingestion(self, framework_message: Any) -> dict[str, Any]:
+        """Convert LlamaIndex message to Mindcore format.
 
         Args:
             framework_message: LlamaIndex ChatMessage or dict.
@@ -98,8 +98,7 @@ class LlamaIndexAdapter(BaseAdapter):
             return {"role": "user", "text": str(framework_message)}
 
     def inject_context_into_prompt(self, context: AssembledContext, existing_prompt: str) -> str:
-        """
-        Inject assembled context into LlamaIndex prompt.
+        """Inject assembled context into LlamaIndex prompt.
 
         Args:
             context: Assembled context from Mindcore.
@@ -130,10 +129,9 @@ class LlamaIndexAdapter(BaseAdapter):
         return f"{context_text}\n{existing_prompt}"
 
     def ingest_llamaindex_conversation(
-        self, messages: List[Any], user_id: str, thread_id: str, session_id: str
-    ) -> List:
-        """
-        Ingest LlamaIndex conversation messages.
+        self, messages: list[Any], user_id: str, thread_id: str, session_id: str
+    ) -> list:
+        """Ingest LlamaIndex conversation messages.
 
         Args:
             messages: List of LlamaIndex ChatMessage objects or dicts.
@@ -149,8 +147,7 @@ class LlamaIndexAdapter(BaseAdapter):
     def create_chat_memory(
         self, user_id: str, thread_id: str, session_id: str, max_messages: int = 50
     ):
-        """
-        Create a LlamaIndex-compatible chat memory.
+        """Create a LlamaIndex-compatible chat memory.
 
         Args:
             user_id: User identifier.

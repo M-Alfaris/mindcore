@@ -1,5 +1,4 @@
-"""
-Smart Context Agent with Tool Calling.
+"""Smart Context Agent with Tool Calling.
 
 Single LLM call that uses tools to fetch relevant context.
 Uses VocabularyManager for controlled vocabulary in tool parameters.
@@ -12,16 +11,19 @@ LLM calls.
 """
 
 import json
-from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from mindcore.core.schemas import AssembledContext, Message, ThreadSummary, UserPreferences
+from mindcore.core.vocabulary import VocabularyManager, get_vocabulary
+from mindcore.utils.logger import LogCategory, get_logger
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, AssembledContext, ThreadSummary, UserPreferences
-from ..core.vocabulary import get_vocabulary, VocabularyManager
-from ..utils.logger import get_logger, LogCategory
+
 
 if TYPE_CHECKING:
-    from ..llm import BaseLLMProvider
+    from mindcore.llm import BaseLLMProvider
 
 logger = get_logger(__name__, category=LogCategory.CONTEXT)
 
@@ -33,30 +35,28 @@ MIN_MESSAGES_FOR_HISTORY_SEARCH = 5  # Minimum messages before searching history
 
 @dataclass
 class ContextTools:
-    """
-    Tools available to the SmartContextAgent.
+    """Tools available to the SmartContextAgent.
 
     These are callbacks that the agent can invoke to fetch data.
     """
 
-    get_recent_messages: Callable[[str, str, int], List[Message]]
+    get_recent_messages: Callable[[str, str, int], list[Message]]
     search_history: Callable[
-        [str, Optional[str], List[str], List[str], Optional[str], int], List[Message]
+        [str, str | None, list[str], list[str], str | None, int], list[Message]
     ]
-    get_session_metadata: Callable[[str, str], Dict[str, Any]]
+    get_session_metadata: Callable[[str, str], dict[str, Any]]
     # New tools for enhanced context
-    get_historical_summaries: Optional[
-        Callable[[str, Optional[List[str]], int], List[ThreadSummary]]
-    ] = None
-    get_user_preferences: Optional[Callable[[str], UserPreferences]] = None
-    update_user_preference: Optional[Callable[[str, str, Any, str], tuple]] = None
+    get_historical_summaries: Callable[[str, list[str] | None, int], list[ThreadSummary]] | None = (
+        None
+    )
+    get_user_preferences: Callable[[str], UserPreferences] | None = None
+    update_user_preference: Callable[[str, str, Any, str], tuple] | None = None
     # External connector tools
-    lookup_external_data: Optional[Callable[[str, List[str], Dict[str, Any]], List[Any]]] = None
+    lookup_external_data: Callable[[str, list[str], dict[str, Any]], list[Any]] | None = None
 
 
-def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
-    """
-    Build tool definitions with vocabulary-constrained parameters.
+def _build_context_tools(vocabulary: VocabularyManager) -> list[dict[str, Any]]:
+    """Build tool definitions with vocabulary-constrained parameters.
 
     Args:
         vocabulary: VocabularyManager instance for enum constraints.
@@ -228,8 +228,7 @@ def _build_context_tools(vocabulary: VocabularyManager) -> List[Dict[str, Any]]:
 
 
 class SmartContextAgent(BaseAgent):
-    """
-    Intelligent context assembly agent using tool calling.
+    """Intelligent context assembly agent using tool calling.
 
     This is the PRIMARY context retrieval method for Mindcore.
 
@@ -266,11 +265,10 @@ class SmartContextAgent(BaseAgent):
         context_tools: ContextTools,
         temperature: float = 0.2,
         max_tokens: int = 1500,
-        vocabulary: Optional[VocabularyManager] = None,
+        vocabulary: VocabularyManager | None = None,
         max_tool_rounds: int = 3,
     ):
-        """
-        Initialize smart context agent.
+        """Initialize smart context agent.
 
         Args:
             llm_provider: LLM provider instance (should support tool calling)
@@ -356,7 +354,7 @@ Guidelines:
 - Focus on information that helps answer the user's query"""
 
     def _execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], user_id: str, thread_id: str
+        self, tool_name: str, arguments: dict[str, Any], user_id: str, thread_id: str
     ) -> str:
         """Execute a tool and return the result as a string."""
         try:
@@ -369,7 +367,7 @@ Guidelines:
                 )
                 return result
 
-            elif tool_name == "search_history":
+            if tool_name == "search_history":
                 # Validate topics/categories against vocabulary
                 raw_topics = arguments.get("topics", [])
                 raw_categories = arguments.get("categories", [])
@@ -396,12 +394,12 @@ Guidelines:
                 )
                 return result
 
-            elif tool_name == "get_session_metadata":
+            if tool_name == "get_session_metadata":
                 metadata = self.tools.get_session_metadata(user_id, thread_id)
                 logger.debug("Tool executed: get_session_metadata", has_metadata=bool(metadata))
                 return json.dumps(metadata, indent=2)
 
-            elif tool_name == "get_historical_summaries":
+            if tool_name == "get_historical_summaries":
                 if self.tools.get_historical_summaries is None:
                     logger.debug("Tool not available: get_historical_summaries")
                     return "Historical summaries feature is not enabled."
@@ -415,7 +413,7 @@ Guidelines:
                 )
                 return self._format_summaries(summaries)
 
-            elif tool_name == "get_user_preferences":
+            if tool_name == "get_user_preferences":
                 if self.tools.get_user_preferences is None:
                     logger.debug("Tool not available: get_user_preferences")
                     return "User preferences feature is not enabled."
@@ -425,7 +423,7 @@ Guidelines:
                 )
                 return self._format_preferences(prefs)
 
-            elif tool_name == "update_user_preference":
+            if tool_name == "update_user_preference":
                 if self.tools.update_user_preference is None:
                     logger.debug("Tool not available: update_user_preference")
                     return "User preference updates are not enabled."
@@ -441,7 +439,7 @@ Guidelines:
                 )
                 return json.dumps({"success": success, "message": message})
 
-            elif tool_name == "lookup_external_data":
+            if tool_name == "lookup_external_data":
                 if self.tools.lookup_external_data is None:
                     logger.debug("Tool not available: lookup_external_data")
                     return "External data lookup is not enabled. Configure connectors to enable."
@@ -456,21 +454,20 @@ Guidelines:
                 )
                 return self._format_external_results(results)
 
-            else:
-                logger.warning("Unknown tool requested", tool_name=tool_name)
-                return f"Unknown tool: {tool_name}"
+            logger.warning("Unknown tool requested", tool_name=tool_name)
+            return f"Unknown tool: {tool_name}"
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Tool execution error",
                 tool=tool_name,
                 error=str(e),
                 error_type=type(e).__name__,
                 arguments=arguments,
             )
-            return f"Error executing {tool_name}: {str(e)}"
+            return f"Error executing {tool_name}: {e!s}"
 
-    def _format_messages(self, messages: List[Message]) -> str:
+    def _format_messages(self, messages: list[Message]) -> str:
         """Format messages for the LLM."""
         if not messages:
             return "No messages found."
@@ -485,7 +482,7 @@ Guidelines:
 
         return "\n".join(formatted)
 
-    def _format_summaries(self, summaries: List[ThreadSummary]) -> str:
+    def _format_summaries(self, summaries: list[ThreadSummary]) -> str:
         """Format thread summaries for the LLM."""
         if not summaries:
             return "No historical summaries found."
@@ -529,7 +526,7 @@ Guidelines:
 
         return "\n".join(parts)
 
-    def _format_external_results(self, results: List[Any]) -> str:
+    def _format_external_results(self, results: list[Any]) -> str:
         """Format external connector results for the LLM."""
         if not results:
             return "No external data found."
@@ -560,10 +557,9 @@ Guidelines:
         return "\n\n".join(formatted)
 
     def process(
-        self, query: str, user_id: str, thread_id: str, additional_context: Optional[str] = None
+        self, query: str, user_id: str, thread_id: str, additional_context: str | None = None
     ) -> AssembledContext:
-        """
-        Assemble context for a query using tool calling.
+        """Assemble context for a query using tool calling.
 
         Args:
             query: User's query that needs context
@@ -644,7 +640,9 @@ Guidelines:
                                 {"tool_call_id": tool_call["id"], "role": "tool", "content": result}
                             )
                         except (KeyError, TypeError) as e:
-                            logger.error("Malformed tool call", error=str(e), tool_call=tool_call)
+                            logger.exception(
+                                "Malformed tool call", error=str(e), tool_call=tool_call
+                            )
                             tool_results.append(
                                 {
                                     "tool_call_id": tool_call.get("id", "unknown"),
@@ -673,7 +671,7 @@ Guidelines:
                     return self._parse_final_response(response.get("content", ""), query)
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Error in tool calling round",
                     round=round_num + 1,
                     error=str(e),
@@ -688,9 +686,8 @@ Guidelines:
             message_count=conversation_state.get("message_count", 0),
         )
 
-    def _assess_conversation_state(self, user_id: str, thread_id: str) -> Dict[str, Any]:
-        """
-        Assess the current conversation state to determine context strategy.
+    def _assess_conversation_state(self, user_id: str, thread_id: str) -> dict[str, Any]:
+        """Assess the current conversation state to determine context strategy.
 
         Returns dict with:
         - is_early_conversation: True if not enough history for full context
@@ -730,7 +727,7 @@ Guidelines:
             }
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to assess conversation state",
                 error=str(e),
                 user_id=user_id,
@@ -751,11 +748,10 @@ Guidelines:
         query: str,
         user_id: str,
         thread_id: str,
-        state: Dict[str, Any],
-        additional_context: Optional[str] = None,
+        state: dict[str, Any],
+        additional_context: str | None = None,
     ) -> AssembledContext:
-        """
-        Handle context assembly for early conversations without LLM tool calling.
+        """Handle context assembly for early conversations without LLM tool calling.
 
         For new conversations with minimal history, we skip the expensive LLM
         tool-calling loop and directly return available context.
@@ -814,8 +810,7 @@ Guidelines:
     def _create_fallback_context(
         self, query: str, reason: str, message_count: int = 0
     ) -> AssembledContext:
-        """
-        Create a fallback context when tool calling fails or is exhausted.
+        """Create a fallback context when tool calling fails or is exhausted.
 
         Provides a helpful response instead of a generic error.
         """
@@ -841,48 +836,44 @@ Guidelines:
                         "message_count": message_count,
                     },
                 )
-            else:
-                # Unexpected failure with sufficient history
-                logger.warning(
-                    "Tool calling exhausted with sufficient history",
-                    message_count=message_count,
-                    reason=reason,
-                )
-                return AssembledContext(
-                    assembled_context="Context assembly encountered an issue. Proceeding with available information.",
-                    key_points=[],
-                    relevant_message_ids=[],
-                    metadata={
-                        "context_source": "fallback",
-                        "confidence": "low",
-                        "reason": reason,
-                        "error": "Tool calling exhausted without producing final response",
-                    },
-                )
-        else:
-            logger.error("Context assembly failed", reason=reason, message_count=message_count)
+            # Unexpected failure with sufficient history
+            logger.warning(
+                "Tool calling exhausted with sufficient history",
+                message_count=message_count,
+                reason=reason,
+            )
             return AssembledContext(
-                assembled_context="Unable to assemble context due to an error.",
+                assembled_context="Context assembly encountered an issue. Proceeding with available information.",
                 key_points=[],
                 relevant_message_ids=[],
-                metadata={"context_source": "error", "confidence": "none", "error": reason},
+                metadata={
+                    "context_source": "fallback",
+                    "confidence": "low",
+                    "reason": reason,
+                    "error": "Tool calling exhausted without producing final response",
+                },
             )
+        logger.error("Context assembly failed", reason=reason, message_count=message_count)
+        return AssembledContext(
+            assembled_context="Unable to assemble context due to an error.",
+            key_points=[],
+            relevant_message_ids=[],
+            metadata={"context_source": "error", "confidence": "none", "error": reason},
+        )
 
-    def _call_llm_with_tools(self, messages: List[Dict]) -> Dict[str, Any]:
-        """
-        Call the LLM with tool definitions.
+    def _call_llm_with_tools(self, messages: list[dict]) -> dict[str, Any]:
+        """Call the LLM with tool definitions.
 
         Returns dict with 'content' and optionally 'tool_calls'.
         """
         try:
             # Use the provider's native tool support
-            response = self._llm_provider.generate_with_tools(
+            return self._llm_provider.generate_with_tools(
                 messages=messages,
                 tools=self._tool_definitions,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
-            return response
         except AttributeError:
             # Provider doesn't support tools, fall back to regular generation
             logger.warning("LLM provider doesn't support tools, using fallback")

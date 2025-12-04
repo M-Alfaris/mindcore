@@ -1,20 +1,21 @@
-"""
-Adaptive User Preferences Learner.
+"""Adaptive User Preferences Learner.
 
 Automatically learns and updates user preferences based on enriched
 message metadata, without explicit user instruction.
 """
 
-from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from collections import Counter
 import threading
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from .schemas import UserPreferences, MessageMetadata
+from mindcore.utils.logger import get_logger
+
 from .preferences_manager import PreferencesManager
-from .vocabulary import Intent, Sentiment, CommunicationStyle, get_vocabulary
-from ..utils.logger import get_logger
+from .schemas import MessageMetadata
+from .vocabulary import get_vocabulary
+
 
 logger = get_logger(__name__)
 
@@ -51,8 +52,7 @@ class AdaptiveConfig:
 
 
 class AdaptivePreferencesLearner:
-    """
-    Learns user preferences from message metadata.
+    """Learns user preferences from message metadata.
 
     Analyzes patterns in enriched message metadata to infer and update
     user preferences automatically.
@@ -74,10 +74,9 @@ class AdaptivePreferencesLearner:
         self,
         preferences_manager: PreferencesManager,
         db_manager,
-        config: Optional[AdaptiveConfig] = None,
+        config: AdaptiveConfig | None = None,
     ):
-        """
-        Initialize the adaptive preferences learner.
+        """Initialize the adaptive preferences learner.
 
         Args:
             preferences_manager: PreferencesManager instance
@@ -91,11 +90,10 @@ class AdaptivePreferencesLearner:
         self._lock = threading.Lock()
 
         # In-memory signal buffers per user (for real-time learning)
-        self._signal_buffers: Dict[str, List[PreferenceSignal]] = {}
+        self._signal_buffers: dict[str, list[PreferenceSignal]] = {}
 
     def process_message_metadata(self, user_id: str, metadata: MessageMetadata) -> None:
-        """
-        Process enriched message metadata and extract preference signals.
+        """Process enriched message metadata and extract preference signals.
 
         Args:
             user_id: User identifier
@@ -115,7 +113,7 @@ class AdaptivePreferencesLearner:
 
         logger.debug(f"Extracted {len(signals)} signals for user {user_id}")
 
-    def _extract_signals(self, metadata: MessageMetadata) -> List[PreferenceSignal]:
+    def _extract_signals(self, metadata: MessageMetadata) -> list[PreferenceSignal]:
         """Extract preference signals from message metadata."""
         signals = []
         base_weight = metadata.importance if hasattr(metadata, "importance") else 0.5
@@ -133,7 +131,7 @@ class AdaptivePreferencesLearner:
 
         # Communication style signals from sentiment and intent
         sentiment = getattr(metadata, "sentiment", None)
-        intent = getattr(metadata, "intent", None)
+        getattr(metadata, "intent", None)
 
         if sentiment:
             # Handle both string and dict formats for sentiment
@@ -187,7 +185,7 @@ class AdaptivePreferencesLearner:
 
         return signals
 
-    def _infer_style_from_sentiment(self, sentiment: str) -> Optional[str]:
+    def _infer_style_from_sentiment(self, sentiment: str) -> str | None:
         """Infer communication style from sentiment patterns."""
         # This is a simplified inference - could be more sophisticated
         style_map = {
@@ -197,9 +195,8 @@ class AdaptivePreferencesLearner:
         }
         return style_map.get(sentiment)
 
-    def apply_updates(self, user_id: str, force: bool = False) -> List[Tuple[str, str, Any]]:
-        """
-        Apply learned preferences based on accumulated signals.
+    def apply_updates(self, user_id: str, force: bool = False) -> list[tuple[str, str, Any]]:
+        """Apply learned preferences based on accumulated signals.
 
         Args:
             user_id: User identifier
@@ -257,8 +254,8 @@ class AdaptivePreferencesLearner:
         return updates
 
     def _compute_topic_updates(
-        self, user_id: str, signals: List[PreferenceSignal]
-    ) -> List[Tuple[str, str, Any]]:
+        self, user_id: str, signals: list[PreferenceSignal]
+    ) -> list[tuple[str, str, Any]]:
         """Compute topic-based preference updates."""
         updates = []
 
@@ -292,8 +289,8 @@ class AdaptivePreferencesLearner:
         return updates
 
     def _compute_style_update(
-        self, user_id: str, signals: List[PreferenceSignal]
-    ) -> Optional[Tuple[str, str, str]]:
+        self, user_id: str, signals: list[PreferenceSignal]
+    ) -> tuple[str, str, str] | None:
         """Compute communication style update."""
         # Weight-adjusted style counts
         style_weights = Counter()
@@ -322,8 +319,8 @@ class AdaptivePreferencesLearner:
         return None
 
     def _compute_interest_updates(
-        self, user_id: str, signals: List[PreferenceSignal]
-    ) -> List[Tuple[str, str, Any]]:
+        self, user_id: str, signals: list[PreferenceSignal]
+    ) -> list[tuple[str, str, Any]]:
         """Compute interest updates from entity and keyword signals."""
         updates = []
 
@@ -353,9 +350,8 @@ class AdaptivePreferencesLearner:
 
         return updates
 
-    def get_signal_summary(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get summary of accumulated signals for a user.
+    def get_signal_summary(self, user_id: str) -> dict[str, Any]:
+        """Get summary of accumulated signals for a user.
 
         Returns:
             Dictionary with signal counts and top signals by type
@@ -396,12 +392,12 @@ class AdaptivePreferencesLearner:
 
 
 # Singleton instance
-_learner: Optional[AdaptivePreferencesLearner] = None
+_learner: AdaptivePreferencesLearner | None = None
 _learner_lock = threading.Lock()
 
 
 def get_adaptive_learner(
-    preferences_manager: Optional[PreferencesManager] = None, db_manager=None
+    preferences_manager: PreferencesManager | None = None, db_manager=None
 ) -> AdaptivePreferencesLearner:
     """Get or create the singleton adaptive learner."""
     global _learner

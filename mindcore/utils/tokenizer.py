@@ -1,11 +1,8 @@
-"""
-Tokenizer utilities for text processing.
+"""Tokenizer utilities for text processing.
 
 Supports accurate token counting via tiktoken (optional) with fallback
 to character-based estimation.
 """
-
-from typing import List, Optional
 
 # Try to import tiktoken for accurate token counting
 _tiktoken = None
@@ -27,9 +24,8 @@ def _get_tiktoken_encoding():
     return _tiktoken_encoding if _tiktoken else None
 
 
-def simple_tokenize(text: str) -> List[str]:
-    """
-    Simple word tokenization.
+def simple_tokenize(text: str) -> list[str]:
+    """Simple word tokenization.
 
     Args:
         text: Input text.
@@ -40,13 +36,11 @@ def simple_tokenize(text: str) -> List[str]:
     # Basic tokenization by splitting on whitespace and punctuation
     import re
 
-    tokens = re.findall(r"\w+", text.lower())
-    return tokens
+    return re.findall(r"\w+", text.lower())
 
 
 def estimate_tokens(text: str, accurate: bool = True) -> int:
-    """
-    Estimate the number of tokens in text.
+    """Estimate the number of tokens in text.
 
     Uses tiktoken for accurate counting if available (GPT-4/3.5 compatible),
     otherwise falls back to character-based approximation.
@@ -71,8 +65,7 @@ def estimate_tokens(text: str, accurate: bool = True) -> int:
 
 
 def count_tokens(text: str) -> int:
-    """
-    Count tokens accurately using tiktoken.
+    """Count tokens accurately using tiktoken.
 
     Raises ImportError if tiktoken not installed.
 
@@ -85,8 +78,7 @@ def count_tokens(text: str) -> int:
     encoding = _get_tiktoken_encoding()
     if not encoding:
         raise ImportError(
-            "tiktoken not installed for accurate token counting. "
-            "Install with: pip install tiktoken"
+            "tiktoken not installed for accurate token counting. Install with: pip install tiktoken"
         )
     return len(encoding.encode(text))
 
@@ -97,8 +89,7 @@ def has_accurate_tokenizer() -> bool:
 
 
 def truncate_text(text: str, max_tokens: int) -> str:
-    """
-    Truncate text to approximately max_tokens.
+    """Truncate text to approximately max_tokens.
 
     Uses tiktoken for accurate truncation if available.
 
@@ -118,17 +109,15 @@ def truncate_text(text: str, max_tokens: int) -> str:
             return text
         truncated_tokens = tokens[:max_tokens]
         return encoding.decode(truncated_tokens) + "..."
-    else:
-        # Fallback to character-based
-        max_chars = max_tokens * 4
-        if len(text) <= max_chars:
-            return text
-        return text[:max_chars] + "..."
+    # Fallback to character-based
+    max_chars = max_tokens * 4
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "..."
 
 
-def extract_keywords(text: str, top_n: int = 5) -> List[str]:
-    """
-    Extract top keywords from text (simple frequency-based).
+def extract_keywords(text: str, top_n: int = 5) -> list[str]:
+    """Extract top keywords from text (simple frequency-based).
 
     Args:
         text: Input text.

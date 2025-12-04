@@ -1,5 +1,4 @@
-"""
-Multi-Agent Memory Configuration.
+"""Multi-Agent Memory Configuration.
 
 Provides configuration and utilities for shared memory across multiple AI agents.
 Supports various memory sharing modes:
@@ -8,12 +7,13 @@ Supports various memory sharing modes:
 - Public: All agents can access all memory
 """
 
-from typing import Dict, Any, Optional, List, Set
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
-import threading
+from typing import Any
 
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -41,14 +41,14 @@ class AgentProfile:
 
     agent_id: str
     name: str
-    description: Optional[str] = None
-    sharing_groups: List[str] = field(default_factory=list)
+    description: str | None = None
+    sharing_groups: list[str] = field(default_factory=list)
     default_visibility: AgentVisibility = AgentVisibility.PRIVATE
     can_read_public: bool = True
     can_write_public: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def can_access(self, visibility: str, owner_groups: List[str]) -> bool:
+    def can_access(self, visibility: str, owner_groups: list[str]) -> bool:
         """Check if this agent can access content with given visibility."""
         if visibility == "public":
             return self.can_read_public
@@ -62,8 +62,7 @@ class AgentProfile:
 
 @dataclass
 class MultiAgentConfig:
-    """
-    Configuration for multi-agent memory sharing.
+    """Configuration for multi-agent memory sharing.
 
     Example:
         >>> config = MultiAgentConfig(
@@ -81,7 +80,7 @@ class MultiAgentConfig:
 
     # Default behavior
     default_visibility: AgentVisibility = AgentVisibility.PRIVATE
-    default_sharing_groups: List[str] = field(default_factory=list)
+    default_sharing_groups: list[str] = field(default_factory=list)
 
     # Access control
     allow_cross_agent_context: bool = (
@@ -94,7 +93,7 @@ class MultiAgentConfig:
     registered_agents_only: bool = False  # Only allow registered agent_ids
     max_sharing_groups: int = 10  # Maximum sharing groups per message
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate configuration, return list of issues."""
         issues = []
 
@@ -114,8 +113,7 @@ class MultiAgentConfig:
 
 
 class MultiAgentManager:
-    """
-    Manages multi-agent memory sharing.
+    """Manages multi-agent memory sharing.
 
     Handles agent registration, access control, and visibility rules.
 
@@ -131,17 +129,16 @@ class MultiAgentManager:
         ...     # Agent can access this message
     """
 
-    def __init__(self, config: Optional[MultiAgentConfig] = None):
-        """
-        Initialize multi-agent manager.
+    def __init__(self, config: MultiAgentConfig | None = None):
+        """Initialize multi-agent manager.
 
         Args:
             config: Multi-agent configuration (uses defaults if None)
         """
         self.config = config or MultiAgentConfig()
         self._lock = threading.Lock()
-        self._agents: Dict[str, AgentProfile] = {}
-        self._sharing_groups: Dict[str, Set[str]] = {}  # group -> agent_ids
+        self._agents: dict[str, AgentProfile] = {}
+        self._sharing_groups: dict[str, set[str]] = {}  # group -> agent_ids
 
     @property
     def is_enabled(self) -> bool:
@@ -152,15 +149,14 @@ class MultiAgentManager:
         self,
         agent_id: str,
         name: str,
-        description: Optional[str] = None,
-        sharing_groups: Optional[List[str]] = None,
-        default_visibility: Optional[AgentVisibility] = None,
+        description: str | None = None,
+        sharing_groups: list[str] | None = None,
+        default_visibility: AgentVisibility | None = None,
         can_read_public: bool = True,
         can_write_public: bool = False,
         **metadata,
     ) -> AgentProfile:
-        """
-        Register an agent for multi-agent memory access.
+        """Register an agent for multi-agent memory access.
 
         Args:
             agent_id: Unique agent identifier
@@ -213,17 +209,16 @@ class MultiAgentManager:
         logger.info(f"Unregistered agent {agent_id}")
         return True
 
-    def get_agent(self, agent_id: str) -> Optional[AgentProfile]:
+    def get_agent(self, agent_id: str) -> AgentProfile | None:
         """Get agent profile by ID."""
         return self._agents.get(agent_id)
 
-    def list_agents(self) -> List[AgentProfile]:
+    def list_agents(self) -> list[AgentProfile]:
         """List all registered agents."""
         return list(self._agents.values())
 
-    def validate_agent_id(self, agent_id: Optional[str], for_write: bool = False) -> tuple:
-        """
-        Validate an agent_id for an operation.
+    def validate_agent_id(self, agent_id: str | None, for_write: bool = False) -> tuple:
+        """Validate an agent_id for an operation.
 
         Args:
             agent_id: Agent ID to validate (can be None)
@@ -246,21 +241,19 @@ class MultiAgentManager:
             return True, None
 
         # Check if agent is registered (if required)
-        if self.config.registered_agents_only:
-            if agent_id not in self._agents:
-                return False, f"Agent '{agent_id}' is not registered"
+        if self.config.registered_agents_only and agent_id not in self._agents:
+            return False, f"Agent '{agent_id}' is not registered"
 
         return True, None
 
     def can_access(
         self,
-        agent_id: Optional[str],
-        owner_agent_id: Optional[str],
+        agent_id: str | None,
+        owner_agent_id: str | None,
         visibility: str,
-        sharing_groups: List[str],
+        sharing_groups: list[str],
     ) -> bool:
-        """
-        Check if an agent can access content.
+        """Check if an agent can access content.
 
         Args:
             agent_id: Agent trying to access (None for anonymous)
@@ -308,13 +301,12 @@ class MultiAgentManager:
 
     def get_access_filter(
         self,
-        agent_id: Optional[str],
+        agent_id: str | None,
         include_own: bool = True,
         include_shared: bool = True,
         include_public: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Get filter criteria for database queries.
+    ) -> dict[str, Any]:
+        """Get filter criteria for database queries.
 
         Args:
             agent_id: Agent making the query
@@ -349,7 +341,7 @@ class MultiAgentManager:
 
         return filter_criteria
 
-    def get_default_visibility(self, agent_id: Optional[str]) -> str:
+    def get_default_visibility(self, agent_id: str | None) -> str:
         """Get default visibility for an agent's content."""
         if agent_id:
             profile = self._agents.get(agent_id)
@@ -357,7 +349,7 @@ class MultiAgentManager:
                 return profile.default_visibility.value
         return self.config.default_visibility.value
 
-    def get_default_sharing_groups(self, agent_id: Optional[str]) -> List[str]:
+    def get_default_sharing_groups(self, agent_id: str | None) -> list[str]:
         """Get default sharing groups for an agent's content."""
         if agent_id:
             profile = self._agents.get(agent_id)
@@ -365,11 +357,11 @@ class MultiAgentManager:
                 return profile.sharing_groups.copy()
         return self.config.default_sharing_groups.copy()
 
-    def get_agents_in_group(self, group: str) -> List[str]:
+    def get_agents_in_group(self, group: str) -> list[str]:
         """Get all agent IDs in a sharing group."""
         return list(self._sharing_groups.get(group, set()))
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get multi-agent statistics."""
         return {
             "enabled": self.is_enabled,
@@ -389,11 +381,11 @@ class MultiAgentManager:
 
 
 # Singleton instance
-_manager: Optional[MultiAgentManager] = None
+_manager: MultiAgentManager | None = None
 _manager_lock = threading.Lock()
 
 
-def get_multi_agent_manager(config: Optional[MultiAgentConfig] = None) -> MultiAgentManager:
+def get_multi_agent_manager(config: MultiAgentConfig | None = None) -> MultiAgentManager:
     """Get or create the singleton multi-agent manager."""
     global _manager
     if _manager is None:
@@ -413,8 +405,7 @@ def reset_multi_agent_manager() -> None:
 def configure_multi_agent(
     enabled: bool = True, mode: str = "shared", require_agent_id: bool = True, **kwargs
 ) -> MultiAgentManager:
-    """
-    Configure and return multi-agent manager.
+    """Configure and return multi-agent manager.
 
     Convenience function for quick setup.
 

@@ -1,5 +1,4 @@
-"""
-Performance metrics and instrumentation for Mindcore.
+"""Performance metrics and instrumentation for Mindcore.
 
 Provides utilities for:
 - Timing function execution
@@ -8,11 +7,13 @@ Provides utilities for:
 - Latency monitoring
 """
 
-import time
+import builtins
 import functools
-from typing import Optional, Callable, Any, Dict
-from contextlib import contextmanager
+import time
+from collections.abc import Callable
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
+from typing import Any
 
 
 class PerformanceTimer:
@@ -20,9 +21,9 @@ class PerformanceTimer:
 
     def __init__(self, operation_name: str = "operation"):
         self.operation_name = operation_name
-        self.start_time: Optional[float] = None
-        self.end_time: Optional[float] = None
-        self.elapsed_ms: Optional[int] = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
+        self.elapsed_ms: int | None = None
 
     def __enter__(self):
         self.start_time = time.perf_counter()
@@ -44,7 +45,7 @@ class PerformanceTimer:
         return int((current - self.start_time) * 1000)
 
 
-def timed(operation_name: Optional[str] = None):
+def timed(operation_name: str | None = None):
     """Decorator for timing function execution.
 
     Usage:
@@ -101,10 +102,10 @@ def measure_time(operation_name: str = "operation"):
 
 
 # Global metrics storage (shared with dashboard API)
-_metrics_callback: Optional[Callable] = None
+_metrics_callback: Callable | None = None
 
 
-def set_metrics_callback(callback: Callable[[str, Dict[str, Any]], None]):
+def set_metrics_callback(callback: Callable[[str, dict[str, Any]], None]):
     """Set a callback function to receive metrics.
 
     The callback receives (metric_type, data) where:
@@ -134,7 +135,7 @@ def record_llm_call(
     completion_tokens: int = 0,
     latency_ms: int = 0,
     success: bool = True,
-    error: Optional[str] = None,
+    error: str | None = None,
 ):
     """Record an LLM API call metric.
 
@@ -165,8 +166,8 @@ def record_tool_call(
     tool_name: str,
     execution_time_ms: int,
     success: bool = True,
-    message_id: Optional[str] = None,
-    error_message: Optional[str] = None,
+    message_id: str | None = None,
+    error_message: str | None = None,
 ):
     """Record a tool execution metric.
 
@@ -194,7 +195,7 @@ def record_enrichment(
     message_id: str,
     enrichment_time_ms: int,
     topics_extracted: int = 0,
-    intent_detected: Optional[str] = None,
+    intent_detected: str | None = None,
 ):
     """Record message enrichment metrics.
 
@@ -245,7 +246,7 @@ def record_retrieval(
 def _init_dashboard_metrics():
     """Initialize metrics callback to dashboard API."""
     try:
-        from ..api.routes.dashboard import record_performance_metric
+        from mindcore.api.routes.dashboard import record_performance_metric
 
         set_metrics_callback(record_performance_metric)
     except ImportError:
@@ -253,7 +254,5 @@ def _init_dashboard_metrics():
 
 
 # Auto-initialize on import if dashboard is available
-try:
+with suppress(builtins.BaseException):
     _init_dashboard_metrics()
-except:
-    pass

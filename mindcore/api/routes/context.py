@@ -1,13 +1,13 @@
-"""
-Context route for context assembly.
-"""
+"""Context route for context assembly."""
 
-from fastapi import APIRouter, HTTPException, Query, Depends, Header, Request
+from typing import Any
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
 
-from ...utils.logger import get_logger
-from ...utils.security import get_rate_limiter
+from mindcore.utils.logger import get_logger
+from mindcore.utils.security import get_rate_limiter
+
 
 logger = get_logger(__name__)
 
@@ -15,10 +15,9 @@ router = APIRouter(prefix="/context", tags=["context"])
 
 
 async def check_rate_limit(
-    request: Request, x_user_id: Optional[str] = Header(None, alias="X-User-ID")
+    request: Request, x_user_id: str | None = Header(None, alias="X-User-ID")
 ) -> str:
-    """
-    Dependency to check rate limit.
+    """Dependency to check rate limit.
 
     Uses X-User-ID header if provided, otherwise uses client IP.
 
@@ -41,7 +40,7 @@ async def check_rate_limit(
         remaining = rate_limiter.get_remaining(identifier)
         raise HTTPException(
             status_code=429,
-            detail=f"Rate limit exceeded. Please wait before making more requests.",
+            detail="Rate limit exceeded. Please wait before making more requests.",
             headers={"X-RateLimit-Remaining": str(remaining)},
         )
 
@@ -54,7 +53,7 @@ class ContextRequest(BaseModel):
     user_id: str = Field(..., description="User identifier")
     thread_id: str = Field(..., description="Thread identifier")
     query: str = Field(..., description="Query or topic for context assembly")
-    max_messages: Optional[int] = Field(50, description="Maximum messages to consider")
+    max_messages: int | None = Field(50, description="Maximum messages to consider")
 
 
 class ContextResponse(BaseModel):
@@ -62,15 +61,14 @@ class ContextResponse(BaseModel):
 
     success: bool
     assembled_context: str
-    key_points: List[str]
-    relevant_message_ids: List[str]
-    metadata: Dict[str, Any]
+    key_points: list[str]
+    relevant_message_ids: list[str]
+    metadata: dict[str, Any]
 
 
 @router.post("", response_model=ContextResponse)
 async def get_context(request: ContextRequest, rate_limit_id: str = Depends(check_rate_limit)):
-    """
-    Assemble relevant context for a query.
+    """Assemble relevant context for a query.
 
     This endpoint:
     1. Retrieves recent messages from cache and database
@@ -84,7 +82,7 @@ async def get_context(request: ContextRequest, rate_limit_id: str = Depends(chec
     Returns:
         ContextResponse with assembled context and metadata.
     """
-    from ... import get_mindcore_instance
+    from mindcore import get_mindcore_instance
 
     try:
         mindcore = get_mindcore_instance()
@@ -109,7 +107,7 @@ async def get_context(request: ContextRequest, rate_limit_id: str = Depends(chec
         logger.warning(f"Validation error during context retrieval: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Context assembly failed: {e}")
+        logger.exception(f"Context assembly failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -121,8 +119,7 @@ async def get_context_query_param(
     max_messages: int = Query(50, description="Maximum messages to consider"),
     rate_limit_id: str = Depends(check_rate_limit),
 ):
-    """
-    Get context using query parameters (alternative GET endpoint).
+    """Get context using query parameters (alternative GET endpoint).
 
     Args:
         user_id: User identifier.
@@ -134,7 +131,7 @@ async def get_context_query_param(
     Returns:
         ContextResponse with assembled context.
     """
-    from ... import get_mindcore_instance
+    from mindcore import get_mindcore_instance
 
     try:
         mindcore = get_mindcore_instance()
@@ -156,7 +153,7 @@ async def get_context_query_param(
         logger.warning(f"Validation error during context retrieval: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Context assembly failed: {e}")
+        logger.exception(f"Context assembly failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -168,8 +165,7 @@ async def get_formatted_context(
     max_messages: int = Query(50, description="Maximum messages to consider"),
     rate_limit_id: str = Depends(check_rate_limit),
 ):
-    """
-    Get context pre-formatted for prompt injection.
+    """Get context pre-formatted for prompt injection.
 
     Returns context as a plain text string ready to be inserted into an LLM prompt.
 
@@ -183,7 +179,7 @@ async def get_formatted_context(
     Returns:
         Plain text formatted context.
     """
-    from ... import get_mindcore_instance
+    from mindcore import get_mindcore_instance
 
     try:
         mindcore = get_mindcore_instance()
@@ -194,7 +190,7 @@ async def get_formatted_context(
         )
 
         # Format for prompt
-        from ...utils.helper import format_context_for_prompt
+        from mindcore.utils.helper import format_context_for_prompt
 
         formatted = format_context_for_prompt(context.to_dict())
 
@@ -204,5 +200,5 @@ async def get_formatted_context(
         logger.warning(f"Validation error during context formatting: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Context formatting failed: {e}")
+        logger.exception(f"Context formatting failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

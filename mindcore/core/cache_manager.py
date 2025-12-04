@@ -1,32 +1,32 @@
-"""
-In-memory cache manager for recent messages.
+"""In-memory cache manager for recent messages.
 
 Uses cachetools for battle-tested caching with TTL and LRU support.
 """
 
-from typing import List, Dict, Tuple, Optional, Any
-from datetime import datetime, timezone
+import contextlib
 import threading
+from datetime import datetime, timezone
+from typing import Any
 
-from cachetools import TTLCache, LRUCache
+from cachetools import LRUCache, TTLCache
+
+from mindcore.utils.logger import get_logger
 
 from .schemas import Message
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class CacheManager:
-    """
-    Thread-safe in-memory cache for recent messages.
+    """Thread-safe in-memory cache for recent messages.
 
     Uses cachetools TTLCache for automatic expiration and LRU eviction.
     Messages are stored per user/thread combination.
     """
 
-    def __init__(self, max_size: int = 50, ttl_seconds: Optional[int] = None):
-        """
-        Initialize cache manager.
+    def __init__(self, max_size: int = 50, ttl_seconds: int | None = None):
+        """Initialize cache manager.
 
         Args:
             max_size: Maximum number of messages per user/thread.
@@ -38,21 +38,20 @@ class CacheManager:
         self._lock = threading.RLock()
 
         # Thread caches: (user_id, thread_id) -> TTLCache/LRUCache of messages
-        self._thread_caches: Dict[Tuple[str, str], Any] = {}
+        self._thread_caches: dict[tuple[str, str], Any] = {}
         # Track message order per thread for chronological retrieval
-        self._order: Dict[Tuple[str, str], List[Tuple[datetime, str]]] = {}
+        self._order: dict[tuple[str, str], list[tuple[datetime, str]]] = {}
 
         logger.info(
             f"Cache manager initialized with max_size={max_size}, ttl_seconds={ttl_seconds}"
         )
 
-    def _get_key(self, user_id: str, thread_id: str) -> Tuple[str, str]:
+    def _get_key(self, user_id: str, thread_id: str) -> tuple[str, str]:
         """Generate cache key."""
         return (user_id, thread_id)
 
     def _get_timestamp(self, message: Message) -> datetime:
-        """
-        Get normalized timestamp for message, using current time if not set.
+        """Get normalized timestamp for message, using current time if not set.
 
         Ensures all timestamps are timezone-aware (UTC) to avoid comparison errors
         between offset-naive and offset-aware datetimes.
@@ -82,8 +81,7 @@ class CacheManager:
         return LRUCache(maxsize=self.max_size)
 
     def add_message(self, message: Message) -> None:
-        """
-        Add a message to cache.
+        """Add a message to cache.
 
         Args:
             message: Message object to add.
@@ -121,8 +119,7 @@ class CacheManager:
             logger.debug(f"Added message {message.message_id} to cache")
 
     def update_message(self, message: Message) -> bool:
-        """
-        Update an existing message in cache.
+        """Update an existing message in cache.
 
         Used by background enrichment to update messages with new metadata
         after enrichment completes.
@@ -150,10 +147,9 @@ class CacheManager:
             return True
 
     def get_recent_messages(
-        self, user_id: str, thread_id: str, limit: Optional[int] = None
-    ) -> List[Message]:
-        """
-        Get recent messages from cache in chronological order.
+        self, user_id: str, thread_id: str, limit: int | None = None
+    ) -> list[Message]:
+        """Get recent messages from cache in chronological order.
 
         Args:
             user_id: User identifier.
@@ -174,7 +170,7 @@ class CacheManager:
 
             # Get messages in reverse chronological order (newest first)
             messages = []
-            for timestamp, msg_id in reversed(order):
+            for _timestamp, msg_id in reversed(order):
                 try:
                     # cachetools handles TTL expiration automatically on access
                     if msg_id in cache:
@@ -190,8 +186,7 @@ class CacheManager:
             return messages
 
     def clear_thread(self, user_id: str, thread_id: str) -> None:
-        """
-        Clear cache for a specific thread.
+        """Clear cache for a specific thread.
 
         Args:
             user_id: User identifier.
@@ -212,9 +207,8 @@ class CacheManager:
             self._order.clear()
             logger.info("Cleared entire cache")
 
-    def get_session_metadata(self, user_id: str, thread_id: str) -> Dict[str, Any]:
-        """
-        Aggregate metadata from all cached messages in the current session.
+    def get_session_metadata(self, user_id: str, thread_id: str) -> dict[str, Any]:
+        """Aggregate metadata from all cached messages in the current session.
 
         Returns unique topics, categories, and intents from the session,
         which can be used to query for similar historical messages.
@@ -264,9 +258,8 @@ class CacheManager:
                 "message_count": len(cache),
             }
 
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get cache statistics.
+    def get_stats(self) -> dict[str, Any]:
+        """Get cache statistics.
 
         Returns:
             Dictionary with cache stats.
@@ -274,10 +267,8 @@ class CacheManager:
         with self._lock:
             total_messages = 0
             for cache in self._thread_caches.values():
-                try:
+                with contextlib.suppress(Exception):
                     total_messages += len(cache)
-                except Exception:
-                    pass
 
             return {
                 "total_threads": len(self._thread_caches),

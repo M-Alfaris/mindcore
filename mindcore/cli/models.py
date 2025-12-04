@@ -1,5 +1,4 @@
-"""
-Model registry and metadata for recommended GGUF models.
+"""Model registry and metadata for recommended GGUF models.
 
 Provides curated list of models optimized for Mindcore's use cases:
 - Metadata enrichment (fast, accurate JSON extraction)
@@ -7,7 +6,6 @@ Provides curated list of models optimized for Mindcore's use cases:
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -19,7 +17,7 @@ class ModelInfo:
     size_gb: float
     url: str
     filename: str
-    recommended_for: List[str]
+    recommended_for: list[str]
     min_ram_gb: int
     quantization: str
     base_model: str
@@ -27,7 +25,7 @@ class ModelInfo:
 
 # Curated list of recommended models for Mindcore
 # Focus on small, fast models optimized for metadata extraction
-RECOMMENDED_MODELS: Dict[str, ModelInfo] = {
+RECOMMENDED_MODELS: dict[str, ModelInfo] = {
     "llama-3.2-3b": ModelInfo(
         name="Llama 3.2 3B Instruct (Q4_K_M)",
         description="Meta's latest small model. Excellent for structured extraction.",
@@ -100,12 +98,12 @@ RECOMMENDED_MODELS: Dict[str, ModelInfo] = {
 DEFAULT_MODEL = "llama-3.2-3b"
 
 
-def get_model_info(model_key: str) -> Optional[ModelInfo]:
+def get_model_info(model_key: str) -> ModelInfo | None:
     """Get model information by key."""
     return RECOMMENDED_MODELS.get(model_key)
 
 
-def list_available_models() -> List[str]:
+def list_available_models() -> list[str]:
     """Get list of available model keys."""
     return list(RECOMMENDED_MODELS.keys())
 

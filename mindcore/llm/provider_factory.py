@@ -1,20 +1,20 @@
-"""
-LLM Provider Factory for Mindcore.
+"""LLM Provider Factory for Mindcore.
 
 Provides factory functions to create and configure LLM providers
 with automatic fallback support.
 """
 
 from enum import Enum
-from typing import Optional, Dict, Any, List
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base_provider import (
     BaseLLMProvider,
-    LLMResponse,
-    LLMProviderError,
     GenerationError,
+    LLMResponse,
 )
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -28,8 +28,7 @@ class ProviderType(Enum):
 
 
 class FallbackProvider(BaseLLMProvider):
-    """
-    Provider wrapper that implements automatic fallback.
+    """Provider wrapper that implements automatic fallback.
 
     Tries the primary provider first, and if it fails, automatically
     falls back to the secondary provider. This enables reliable inference
@@ -46,8 +45,7 @@ class FallbackProvider(BaseLLMProvider):
     def __init__(
         self, primary: BaseLLMProvider, fallback: BaseLLMProvider, fallback_on_error: bool = True
     ):
-        """
-        Initialize fallback provider.
+        """Initialize fallback provider.
 
         Args:
             primary: Primary provider (tried first)
@@ -58,19 +56,18 @@ class FallbackProvider(BaseLLMProvider):
         self.primary = primary
         self.fallback = fallback
         self.fallback_on_error = fallback_on_error
-        self._last_used_provider: Optional[str] = None
+        self._last_used_provider: str | None = None
 
         logger.info(f"FallbackProvider initialized: {primary.name} -> {fallback.name}")
 
     def generate(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Generate response with automatic fallback.
+        """Generate response with automatic fallback.
 
         Tries primary provider first. If it fails or is unavailable,
         automatically falls back to the secondary provider.
@@ -134,7 +131,7 @@ class FallbackProvider(BaseLLMProvider):
                 return response
 
             except Exception as e:
-                logger.error(f"Fallback provider ({self.fallback.name}) also failed: {e}")
+                logger.exception(f"Fallback provider ({self.fallback.name}) also failed: {e}")
                 if primary_error:
                     raise GenerationError(
                         f"Both providers failed. "
@@ -160,7 +157,7 @@ class FallbackProvider(BaseLLMProvider):
         return f"{self.primary.name}+{self.fallback.name}"
 
     @property
-    def last_used_provider(self) -> Optional[str]:
+    def last_used_provider(self) -> str | None:
         """Get the name of the last provider that was used."""
         return self._last_used_provider
 
@@ -169,7 +166,7 @@ class FallbackProvider(BaseLLMProvider):
         self.primary.close()
         self.fallback.close()
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get status of both providers."""
         return {
             "primary": {
@@ -195,11 +192,10 @@ class FallbackProvider(BaseLLMProvider):
 
 def create_provider(
     provider_type: ProviderType = ProviderType.AUTO,
-    llama_config: Optional[Dict[str, Any]] = None,
-    openai_config: Optional[Dict[str, Any]] = None,
+    llama_config: dict[str, Any] | None = None,
+    openai_config: dict[str, Any] | None = None,
 ) -> BaseLLMProvider:
-    """
-    Factory function to create LLM providers.
+    """Factory function to create LLM providers.
 
     Creates the appropriate provider based on the specified type and
     configuration. Supports automatic fallback from llama.cpp to OpenAI.
@@ -260,15 +256,14 @@ def create_provider(
             )
         return LlamaCppProvider(**llama_config)
 
-    elif provider_type == ProviderType.OPENAI:
+    if provider_type == ProviderType.OPENAI:
         if not openai_config.get("api_key"):
             raise ValueError(
-                "api_key is required for OpenAI provider. "
-                "Set OPENAI_API_KEY or provide in config."
+                "api_key is required for OpenAI provider. Set OPENAI_API_KEY or provide in config."
             )
         return OpenAIProvider(**openai_config)
 
-    elif provider_type == ProviderType.AUTO:
+    if provider_type == ProviderType.AUTO:
         # Create providers, allowing failures
         primary = None
         fallback = None
@@ -278,7 +273,7 @@ def create_provider(
         if llama_config.get("model_path"):
             try:
                 primary = LlamaCppProvider(**llama_config)
-                logger.info(f"Primary provider (llama.cpp) initialized")
+                logger.info("Primary provider (llama.cpp) initialized")
             except Exception as e:
                 errors.append(f"llama.cpp: {e}")
                 logger.warning(f"Could not initialize llama.cpp provider: {e}")
@@ -287,7 +282,7 @@ def create_provider(
         if openai_config.get("api_key"):
             try:
                 fallback = OpenAIProvider(**openai_config)
-                logger.info(f"Fallback provider (OpenAI) initialized")
+                logger.info("Fallback provider (OpenAI) initialized")
             except Exception as e:
                 errors.append(f"OpenAI: {e}")
                 logger.warning(f"Could not initialize OpenAI provider: {e}")
@@ -295,27 +290,24 @@ def create_provider(
         # Return appropriate provider
         if primary and fallback:
             return FallbackProvider(primary, fallback)
-        elif primary:
+        if primary:
             logger.info("Using llama.cpp only (no OpenAI fallback configured)")
             return primary
-        elif fallback:
+        if fallback:
             logger.info("Using OpenAI only (llama.cpp not configured or failed)")
             return fallback
-        else:
-            raise ValueError(
-                f"No LLM provider could be initialized. Errors: {'; '.join(errors)}\n"
-                "Configure either:\n"
-                "  - MINDCORE_LLAMA_MODEL_PATH for local inference, or\n"
-                "  - OPENAI_API_KEY for cloud inference"
-            )
+        raise ValueError(
+            f"No LLM provider could be initialized. Errors: {'; '.join(errors)}\n"
+            "Configure either:\n"
+            "  - MINDCORE_LLAMA_MODEL_PATH for local inference, or\n"
+            "  - OPENAI_API_KEY for cloud inference"
+        )
 
-    else:
-        raise ValueError(f"Unknown provider type: {provider_type}")
+    raise ValueError(f"Unknown provider type: {provider_type}")
 
 
 def get_provider_type(name: str) -> ProviderType:
-    """
-    Convert string provider name to ProviderType enum.
+    """Convert string provider name to ProviderType enum.
 
     Args:
         name: Provider name string ("llama_cpp", "openai", "auto")
@@ -337,4 +329,4 @@ def get_provider_type(name: str) -> ProviderType:
     }
     if name_lower in mapping:
         return mapping[name_lower]
-    raise ValueError(f"Unknown provider type: {name}. " f"Valid options: {list(mapping.keys())}")
+    raise ValueError(f"Unknown provider type: {name}. Valid options: {list(mapping.keys())}")

@@ -1,5 +1,4 @@
-"""
-External Connectors for Mindcore.
+"""External Connectors for Mindcore.
 
 Provides read-only access to external business systems like orders,
 billing, CRM, etc. Connectors map conversation topics to external
@@ -27,14 +26,15 @@ Example:
 """
 
 from .base import BaseConnector, ConnectorResult
-from .registry import ConnectorRegistry
-from .orders import OrdersConnector
 from .billing import BillingConnector
+from .orders import OrdersConnector
+from .registry import ConnectorRegistry
+
 
 __all__ = [
     "BaseConnector",
-    "ConnectorResult",
-    "ConnectorRegistry",
-    "OrdersConnector",
     "BillingConnector",
+    "ConnectorRegistry",
+    "ConnectorResult",
+    "OrdersConnector",
 ]

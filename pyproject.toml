@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mindcore"
-version = "0.2.0"
+version = "0.1.0"
 description = "Intelligent memory and context management for AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,13 +37,14 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 
 dependencies = [
     # LLM Providers
     "openai>=1.0.0",
-    # Database (psycopg v3 - modern async-capable driver)
-    "psycopg[binary]>=3.1.0",
+    # Database (psycopg v3 - modern async-capable driver with connection pooling)
+    "psycopg[binary,pool]>=3.1.0",
     # API Framework
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
@@ -82,14 +83,14 @@ chroma = [
     "chromadb>=0.4.0",
 ]
 pinecone = [
-    "pinecone-client>=3.0.0",
+    "pinecone>=5.0.0",
 ]
 pgvector = [
     "pgvector>=0.2.0",
 ]
 # Access control (Casbin for RBAC/ABAC)
 rbac = [
-    "casbin>=1.50.0",
+    "casbin>=1.35.0",
 ]
 # Accurate token counting
 tokens = [
@@ -99,18 +100,20 @@ tokens = [
 metrics = [
     "prometheus-client>=0.17.0",
 ]
-# PostgreSQL support (psycopg2 - legacy driver for some tools)
-postgres = [
-    "psycopg2-binary>=2.9.0",
-]
 dev = [
+    # Testing
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
+    # Linting & Formatting (ruff replaces black, flake8, isort)
+    "ruff>=0.8.0",
+    # Type checking
     "mypy>=1.0.0",
-    "isort>=5.12.0",
+    # Security scanning
+    "bandit>=1.7.0",
+    "safety>=2.3.0",
+    # Pre-commit hooks
+    "pre-commit>=3.0.0",
 ]
 all = [
     "mindcore[llama]",
@@ -121,10 +124,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/mindcore"
-Documentation = "https://github.com/yourusername/mindcore#readme"
-Repository = "https://github.com/yourusername/mindcore"
-Issues = "https://github.com/yourusername/mindcore/issues"
+Homepage = "https://github.com/M-Alfaris/mindcore"
+Documentation = "https://github.com/M-Alfaris/mindcore#readme"
+Repository = "https://github.com/M-Alfaris/mindcore"
+Issues = "https://github.com/M-Alfaris/mindcore/issues"
+Changelog = "https://github.com/M-Alfaris/mindcore/blob/main/CHANGELOG.md"
 
 [project.scripts]
 mindcore = "mindcore.cli:main"
@@ -134,24 +138,267 @@ mindcore-server = "mindcore.api.server:run_server"
 packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.llm", "mindcore.cli", "mindcore.integrations", "mindcore.vectorstores", "mindcore.connectors"]
 
 [tool.setuptools.package-data]
-mindcore = ["config.yaml"]
+mindcore = ["config.yaml", "py.typed"]
 
-[tool.black]
+# ============================================================================
+# Ruff - Fast Python linter and formatter (replaces black, flake8, isort)
+# https://docs.astral.sh/ruff/
+# ============================================================================
+[tool.ruff]
+target-version = "py310"
 line-length = 100
-target-version = ["py310", "py311", "py312"]
 
-[tool.isort]
-profile = "black"
-line_length = 100
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "build",
+    "dist",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+]
 
+[tool.ruff.lint]
+# Enable rules (see: https://docs.astral.sh/ruff/rules/)
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "FA",     # flake8-future-annotations
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "PIE",    # flake8-pie
+    "PT",     # flake8-pytest-style
+    "Q",      # flake8-quotes
+    "RSE",    # flake8-raise
+    "RET",    # flake8-return
+    "SLF",    # flake8-self
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "TCH",    # flake8-type-checking
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "PL",     # Pylint
+    "TRY",    # tryceratops
+    "FLY",    # flynt
+    "PERF",   # Perflint
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit (security)
+    "D",      # pydocstyle (docstrings)
+]
+
+ignore = [
+    "E501",    # Line too long (handled by formatter)
+    "D100",    # Missing docstring in public module
+    "D101",    # Missing docstring in public class - will add incrementally
+    "D102",    # Missing docstring in public method - will add incrementally
+    "D104",    # Missing docstring in public package
+    "D105",    # Missing docstring in magic method
+    "D107",    # Missing docstring in __init__
+    "D203",    # 1 blank line required before class docstring (conflicts with D211)
+    "D213",    # Multi-line docstring summary should start at the second line (conflicts with D212)
+    "PLR0913", # Too many arguments to function call
+    "PLR2004", # Magic value used in comparison
+    "PLR0911", # Too many return statements
+    "PLR0912", # Too many branches
+    "PLR0915", # Too many statements
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "TRY300",  # Consider moving to else block - style preference
+    "TRY401",  # Redundant exception object in logging - we want context in logs
+    "S101",    # Use of assert detected (needed for tests)
+    "S608",    # Hardcoded SQL expressions - expected in database layer
+    "PLC0415", # Import outside top-level - needed for optional dependencies
+    "PLW0603", # Global statement - used for singleton patterns
+    "PLW0602", # Global variable not assigned - false positives
+    "PERF203", # Try-except in loop - sometimes necessary for robustness
+    "PERF401", # Manual list comprehension - readability preference
+    "SLF001",  # Private member access - sometimes needed for internal APIs
+    "ARG001",  # Unused function argument - common in callbacks
+    "ARG002",  # Unused method argument - common in interface implementations
+    "RUF012",  # Mutable class default - handled by dataclasses
+    "B904",    # Raise without from - sometimes we want to hide the original error
+    "SIM102",  # Collapsible if - readability preference
+    "PTH",     # Use pathlib - gradual migration
+    "DTZ",     # Datetime timezone - gradual migration
+    "TRY301",  # Raise within try - sometimes necessary
+    "E722",    # Bare except - sometimes needed for catch-all
+    "S110",    # Try-except-pass - sometimes intentional
+    "S112",    # Try-except-continue - sometimes intentional
+    "S104",    # Hardcoded bind all interfaces - needed for servers
+    "S310",    # Suspicious URL open - sometimes needed
+    "D205",    # Blank line after summary - style preference
+    "D417",    # Missing argument description - will add incrementally
+    "N806",    # Variable should be lowercase - sometimes we want class-like names
+    "E402",    # Import not at top - sometimes needed for conditional imports
+    "B007",    # Unused loop control variable - sometimes needed for unpacking
+    "B008",    # Function call in default arg - FastAPI Body() pattern
+    "B027",    # Empty method without abstract - sometimes intentional
+    "SIM105",  # Suppressible exception - readability preference
+    "SIM108",  # If-else instead of if-exp - readability preference
+    "UP035",   # Deprecated typing imports - gradual migration
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use assert and have unused arguments
+"**/tests/**/*.py" = ["S101", "ARG", "PLR2004", "F401"]
+# __init__.py can have unused imports (for re-exports)
+"**/__init__.py" = ["F401", "F403"]
+# CLI can use print
+"**/cli/**/*.py" = ["T201"]
+# Integrations check for package availability via import
+"**/integrations/**/*.py" = ["F401"]
+# Vectorstores check for package availability via import
+"**/vectorstores/**/*.py" = ["F401"]
+# Prometheus metrics may import for availability check
+"**/prometheus_metrics.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["mindcore"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Indent with spaces
+indent-style = "space"
+# Respect magic trailing commas
+skip-magic-trailing-comma = false
+# Auto-detect line endings
+line-ending = "auto"
+
+# ============================================================================
+# MyPy - Static type checking
+# ============================================================================
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
+ignore_missing_imports = true
+# Stricter options (can enable gradually)
+# strict = true
+# disallow_untyped_defs = true
 
+# ============================================================================
+# Pytest - Testing configuration (2025 best practices)
+# https://docs.pytest.org/en/stable/reference/customize.html
+# ============================================================================
 [tool.pytest.ini_options]
+minversion = "7.0"
 testpaths = ["mindcore/tests"]
-python_files = "test_*.py"
-python_functions = "test_*"
-addopts = "-v --cov=mindcore --cov-report=term-missing"
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Modern options for better test isolation and reporting
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "-ra",  # Show extra test summary for all except passed
+    "--cov=mindcore",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-branch",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Fail on specific warnings in tests (catch issues early)
+filterwarnings = [
+    "ignore::DeprecationWarning:pkg_resources.*",
+    "ignore::DeprecationWarning:google.*",
+    "ignore::DeprecationWarning:importlib.*",
+    "ignore::PendingDeprecationWarning",
+]
+# Custom markers for test categorization
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests requiring external services (DB, API)",
+    "unit: marks tests as unit tests (fast, no external deps)",
+]
+
+# ============================================================================
+# Coverage - Test coverage configuration (2025 best practices)
+# https://coverage.readthedocs.io/en/latest/config.html
+# ============================================================================
+[tool.coverage.run]
+source = ["mindcore"]
+branch = true
+parallel = true
+relative_files = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/conftest.py",
+    "*/.venv/*",
+]
+# Note: pytest-cov provides --cov-context for tracking test context
+# which is more comprehensive than coverage.py's dynamic_context
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+    "class .*\\bProtocol\\):",
+    "\\.\\.\\.",  # Ellipsis for abstract methods
+]
+exclude_also = [
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = false
+precision = 2
+# Uncomment to enforce minimum coverage threshold
+# fail_under = 80
+
+[tool.coverage.html]
+directory = "htmlcov"
+show_contexts = true
+title = "Mindcore Test Coverage"
+
+[tool.coverage.paths]
+# Map paths for coverage combination (CI environments)
+source = [
+    "mindcore/",
+    "*/mindcore/",
+]
+
+# ============================================================================
+# Bandit - Security scanning
+# ============================================================================
+[tool.bandit]
+exclude_dirs = ["tests", "mindcore/tests"]
+skips = [
+    "B101",  # Skip assert warnings (needed in tests)
+    "B104",  # Bind to 0.0.0.0 - needed for server accessibility
+    "B110",  # Try-except-pass - sometimes intentional for robustness
+    "B112",  # Try-except-continue - sometimes intentional for robustness
+    "B310",  # URL open - needed for downloading models from HuggingFace
+    "B608",  # SQL injection - false positive for controlled table names (not user input)
+]

@@ -1,5 +1,4 @@
-"""
-VocabularyManager - Central vocabulary control for Mindcore.
+"""VocabularyManager - Central vocabulary control for Mindcore.
 
 Provides a single source of truth for topics, categories, intents, sentiments,
 and entity types used throughout the system. Supports extensibility for
@@ -25,14 +24,16 @@ Usage:
     all_topics = vocab.get_topics()
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Set, Optional, Any, Callable, Literal
-from enum import Enum
-import threading
 import json
 import os
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -61,7 +62,7 @@ class Intent(str, Enum):
     FEEDBACK = "feedback"
 
     @classmethod
-    def values(cls) -> List[str]:
+    def values(cls) -> list[str]:
         return [e.value for e in cls]
 
 
@@ -74,7 +75,7 @@ class Sentiment(str, Enum):
     MIXED = "mixed"
 
     @classmethod
-    def values(cls) -> List[str]:
+    def values(cls) -> list[str]:
         return [e.value for e in cls]
 
 
@@ -87,7 +88,7 @@ class CommunicationStyle(str, Enum):
     BALANCED = "balanced"
 
     @classmethod
-    def values(cls) -> List[str]:
+    def values(cls) -> list[str]:
         return [e.value for e in cls]
 
 
@@ -108,7 +109,7 @@ class EntityType(str, Enum):
     CUSTOM = "custom"
 
     @classmethod
-    def values(cls) -> List[str]:
+    def values(cls) -> list[str]:
         return [e.value for e in cls]
 
 
@@ -118,15 +119,14 @@ class VocabularyEntry:
 
     value: str
     source: VocabularySource
-    description: Optional[str] = None
-    aliases: List[str] = field(default_factory=list)
-    parent: Optional[str] = None  # For hierarchical categories
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    description: str | None = None
+    aliases: list[str] = field(default_factory=list)
+    parent: str | None = None  # For hierarchical categories
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class VocabularyManager:
-    """
-    Central vocabulary manager for Mindcore.
+    """Central vocabulary manager for Mindcore.
 
     Manages topics, categories, intents, sentiments, and entity types
     with support for:
@@ -230,18 +230,18 @@ class VocabularyManager:
         self._lock = threading.RLock()
 
         # Topic management
-        self._topics: Dict[str, VocabularyEntry] = {}
-        self._topic_mappings: Dict[str, str] = {}  # external -> internal
+        self._topics: dict[str, VocabularyEntry] = {}
+        self._topic_mappings: dict[str, str] = {}  # external -> internal
 
         # Category management
-        self._categories: Dict[str, VocabularyEntry] = {}
-        self._category_mappings: Dict[str, str] = {}
+        self._categories: dict[str, VocabularyEntry] = {}
+        self._category_mappings: dict[str, str] = {}
 
         # Connector topic registry (for routing)
-        self._connector_topics: Dict[str, Set[str]] = {}  # connector_name -> topics
+        self._connector_topics: dict[str, set[str]] = {}  # connector_name -> topics
 
         # Custom vocabulary loaders
-        self._external_loaders: List[Callable[[], Dict[str, Any]]] = []
+        self._external_loaders: list[Callable[[], dict[str, Any]]] = []
 
         # Initialize core vocabulary
         self._initialize_core_vocabulary()
@@ -287,9 +287,8 @@ class VocabularyManager:
     # Topic Management
     # -------------------------------------------------------------------------
 
-    def get_topics(self, include_sources: Optional[List[VocabularySource]] = None) -> List[str]:
-        """
-        Get all registered topics.
+    def get_topics(self, include_sources: list[VocabularySource] | None = None) -> list[str]:
+        """Get all registered topics.
 
         Args:
             include_sources: Optional filter by source types.
@@ -313,13 +312,10 @@ class VocabularyManager:
             if normalized in self._topics:
                 return True
             # Check mappings
-            if normalized in self._topic_mappings:
-                return True
-            return False
+            return normalized in self._topic_mappings
 
-    def resolve_topic(self, topic: str) -> Optional[str]:
-        """
-        Resolve a topic to its canonical form.
+    def resolve_topic(self, topic: str) -> str | None:
+        """Resolve a topic to its canonical form.
 
         Handles aliases and external mappings.
 
@@ -339,9 +335,8 @@ class VocabularyManager:
                 return self._topic_mappings[normalized]
             return None
 
-    def validate_topics(self, topics: List[str]) -> List[str]:
-        """
-        Validate and resolve a list of topics.
+    def validate_topics(self, topics: list[str]) -> list[str]:
+        """Validate and resolve a list of topics.
 
         Args:
             topics: List of topic strings.
@@ -357,10 +352,9 @@ class VocabularyManager:
         return valid
 
     def register_topics(
-        self, topics: List[str], source: str = "user", descriptions: Optional[Dict[str, str]] = None
+        self, topics: list[str], source: str = "user", descriptions: dict[str, str] | None = None
     ) -> None:
-        """
-        Register new topics.
+        """Register new topics.
 
         Args:
             topics: List of topic strings to register.
@@ -385,8 +379,7 @@ class VocabularyManager:
                     logger.debug(f"Registered topic '{normalized}' from {source}")
 
     def add_topic_mapping(self, external_value: str, internal_topic: str) -> bool:
-        """
-        Add a mapping from external system value to internal topic.
+        """Add a mapping from external system value to internal topic.
 
         Args:
             external_value: Value from external system.
@@ -411,7 +404,7 @@ class VocabularyManager:
     # Category Management
     # -------------------------------------------------------------------------
 
-    def get_categories(self, include_sources: Optional[List[VocabularySource]] = None) -> List[str]:
+    def get_categories(self, include_sources: list[VocabularySource] | None = None) -> list[str]:
         """Get all registered categories."""
         with self._lock:
             if include_sources is None:
@@ -428,11 +421,9 @@ class VocabularyManager:
             normalized = category.lower().strip()
             if normalized in self._categories:
                 return True
-            if normalized in self._category_mappings:
-                return True
-            return False
+            return normalized in self._category_mappings
 
-    def resolve_category(self, category: str) -> Optional[str]:
+    def resolve_category(self, category: str) -> str | None:
         """Resolve a category to its canonical form."""
         with self._lock:
             normalized = category.lower().strip()
@@ -442,7 +433,7 @@ class VocabularyManager:
                 return self._category_mappings[normalized]
             return None
 
-    def validate_categories(self, categories: List[str]) -> List[str]:
+    def validate_categories(self, categories: list[str]) -> list[str]:
         """Validate and resolve a list of categories."""
         valid = []
         for category in categories:
@@ -453,9 +444,9 @@ class VocabularyManager:
 
     def register_categories(
         self,
-        categories: List[str],
+        categories: list[str],
         source: str = "user",
-        descriptions: Optional[Dict[str, str]] = None,
+        descriptions: dict[str, str] | None = None,
     ) -> None:
         """Register new categories."""
         with self._lock:
@@ -479,9 +470,8 @@ class VocabularyManager:
     # Connector Integration
     # -------------------------------------------------------------------------
 
-    def register_connector_topics(self, connector_name: str, topics: List[str]) -> None:
-        """
-        Register topics handled by a connector.
+    def register_connector_topics(self, connector_name: str, topics: list[str]) -> None:
+        """Register topics handled by a connector.
 
         This allows the VocabularyManager to know which connector
         handles which topics for routing purposes.
@@ -502,12 +492,11 @@ class VocabularyManager:
                     )
 
             # Register connector -> topics mapping
-            self._connector_topics[connector_name] = set(t.lower().strip() for t in topics)
+            self._connector_topics[connector_name] = {t.lower().strip() for t in topics}
             logger.info(f"Registered connector '{connector_name}' with topics: {topics}")
 
-    def get_connector_for_topics(self, topics: List[str]) -> List[str]:
-        """
-        Get connectors that handle the given topics.
+    def get_connector_for_topics(self, topics: list[str]) -> list[str]:
+        """Get connectors that handle the given topics.
 
         Args:
             topics: List of topics to check.
@@ -517,7 +506,7 @@ class VocabularyManager:
         """
         with self._lock:
             matching_connectors = []
-            topic_set = set(t.lower().strip() for t in topics)
+            topic_set = {t.lower().strip() for t in topics}
 
             for connector_name, connector_topics in self._connector_topics.items():
                 if topic_set & connector_topics:  # Intersection
@@ -529,7 +518,7 @@ class VocabularyManager:
     # Intent and Sentiment (Enum-based, strict)
     # -------------------------------------------------------------------------
 
-    def get_intents(self) -> List[str]:
+    def get_intents(self) -> list[str]:
         """Get all valid intent values."""
         return Intent.values()
 
@@ -537,7 +526,7 @@ class VocabularyManager:
         """Check if intent is valid."""
         return intent.lower().strip() in Intent.values()
 
-    def resolve_intent(self, intent: str) -> Optional[str]:
+    def resolve_intent(self, intent: str) -> str | None:
         """Resolve intent to canonical form."""
         normalized = intent.lower().strip()
         if normalized in Intent.values():
@@ -560,7 +549,7 @@ class VocabularyManager:
         }
         return intent_mappings.get(normalized)
 
-    def get_sentiments(self) -> List[str]:
+    def get_sentiments(self) -> list[str]:
         """Get all valid sentiment values."""
         return Sentiment.values()
 
@@ -568,11 +557,11 @@ class VocabularyManager:
         """Check if sentiment is valid."""
         return sentiment.lower().strip() in Sentiment.values()
 
-    def get_entity_types(self) -> List[str]:
+    def get_entity_types(self) -> list[str]:
         """Get all valid entity types."""
         return EntityType.values()
 
-    def get_communication_styles(self) -> List[str]:
+    def get_communication_styles(self) -> list[str]:
         """Get all valid communication styles."""
         return CommunicationStyle.values()
 
@@ -581,8 +570,7 @@ class VocabularyManager:
     # -------------------------------------------------------------------------
 
     def to_prompt_list(self, include_descriptions: bool = False) -> str:
-        """
-        Format vocabulary as a prompt-friendly list for the LLM.
+        """Format vocabulary as a prompt-friendly list for the LLM.
 
         Args:
             include_descriptions: If True, include descriptions for each item.
@@ -607,9 +595,8 @@ class VocabularyManager:
 
         return "\n".join(parts)
 
-    def to_json_schema(self) -> Dict[str, Any]:
-        """
-        Generate JSON schema for vocabulary (useful for tool definitions).
+    def to_json_schema(self) -> dict[str, Any]:
+        """Generate JSON schema for vocabulary (useful for tool definitions).
 
         Returns:
             Dictionary with enum definitions for topics, categories, etc.
@@ -638,8 +625,7 @@ class VocabularyManager:
     # -------------------------------------------------------------------------
 
     def load_from_json(self, file_path: str) -> None:
-        """
-        Load vocabulary extensions from a JSON file.
+        """Load vocabulary extensions from a JSON file.
 
         Expected format:
         {
@@ -657,7 +643,7 @@ class VocabularyManager:
             return
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
 
             # Load topics
@@ -681,11 +667,10 @@ class VocabularyManager:
             logger.info(f"Loaded vocabulary extensions from {file_path}")
 
         except Exception as e:
-            logger.error(f"Failed to load vocabulary from {file_path}: {e}")
+            logger.exception(f"Failed to load vocabulary from {file_path}: {e}")
 
-    def register_external_loader(self, loader: Callable[[], Dict[str, Any]]) -> None:
-        """
-        Register a custom vocabulary loader function.
+    def register_external_loader(self, loader: Callable[[], dict[str, Any]]) -> None:
+        """Register a custom vocabulary loader function.
 
         The loader should return a dict with keys:
         - topics: List[str]
@@ -712,13 +697,13 @@ class VocabularyManager:
                     for ext, internal in data["topic_mappings"].items():
                         self.add_topic_mapping(ext, internal)
             except Exception as e:
-                logger.error(f"External vocabulary loader failed: {e}")
+                logger.exception(f"External vocabulary loader failed: {e}")
 
     # -------------------------------------------------------------------------
     # Utility
     # -------------------------------------------------------------------------
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get vocabulary statistics."""
         with self._lock:
             return {
@@ -735,13 +720,12 @@ class VocabularyManager:
 
 
 # Global singleton instance
-_vocabulary_instance: Optional[VocabularyManager] = None
+_vocabulary_instance: VocabularyManager | None = None
 _vocabulary_lock = threading.Lock()
 
 
 def get_vocabulary() -> VocabularyManager:
-    """
-    Get the global VocabularyManager instance (thread-safe singleton).
+    """Get the global VocabularyManager instance (thread-safe singleton).
 
     Returns:
         VocabularyManager instance.
@@ -768,13 +752,13 @@ def reset_vocabulary() -> None:
 
 # Convenience exports
 __all__ = [
-    "VocabularyManager",
-    "VocabularySource",
-    "VocabularyEntry",
-    "Intent",
-    "Sentiment",
     "CommunicationStyle",
     "EntityType",
+    "Intent",
+    "Sentiment",
+    "VocabularyEntry",
+    "VocabularyManager",
+    "VocabularySource",
     "get_vocabulary",
     "reset_vocabulary",
 ]

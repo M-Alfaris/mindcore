@@ -1,5 +1,4 @@
-"""
-Timezone utilities for consistent datetime handling across Mindcore.
+"""Timezone utilities for consistent datetime handling across Mindcore.
 
 This module provides a single source of truth for all timezone operations,
 ensuring consistent handling of:
@@ -19,9 +18,9 @@ Database Storage Strategy:
     - `timezone` - IANA timezone name (e.g., "America/New_York")
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple, Union
 import os
+from datetime import datetime, timezone
+
 
 # Try to import zoneinfo (Python 3.9+) or pytz as fallback
 try:
@@ -43,8 +42,7 @@ _default_timezone: str = os.environ.get("MINDCORE_TIMEZONE", "UTC")
 
 
 def set_default_timezone(tz_name: str) -> None:
-    """
-    Set the default timezone for the application.
+    """Set the default timezone for the application.
 
     Args:
         tz_name: IANA timezone name (e.g., "America/New_York", "Europe/London", "UTC")
@@ -61,8 +59,7 @@ def get_default_timezone() -> str:
 
 
 def get_timezone(tz_name: str) -> timezone:
-    """
-    Get a timezone object by IANA name.
+    """Get a timezone object by IANA name.
 
     Args:
         tz_name: IANA timezone name (e.g., "America/New_York", "UTC")
@@ -97,8 +94,7 @@ def get_timezone(tz_name: str) -> timezone:
 
 
 def utc_now() -> datetime:
-    """
-    Get current UTC timestamp (timezone-aware).
+    """Get current UTC timestamp (timezone-aware).
 
     Returns:
         Current datetime in UTC with tzinfo set
@@ -106,9 +102,8 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def local_now(tz_name: Optional[str] = None) -> datetime:
-    """
-    Get current timestamp in specified timezone.
+def local_now(tz_name: str | None = None) -> datetime:
+    """Get current timestamp in specified timezone.
 
     Args:
         tz_name: Timezone name (defaults to MINDCORE_TIMEZONE)
@@ -121,8 +116,7 @@ def local_now(tz_name: Optional[str] = None) -> datetime:
 
 
 def to_utc(dt: datetime) -> datetime:
-    """
-    Convert datetime to UTC.
+    """Convert datetime to UTC.
 
     Handles:
     - Naive datetimes (assumes local timezone)
@@ -145,9 +139,8 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def to_local(dt: datetime, tz_name: Optional[str] = None) -> datetime:
-    """
-    Convert datetime to local timezone.
+def to_local(dt: datetime, tz_name: str | None = None) -> datetime:
+    """Convert datetime to local timezone.
 
     Args:
         dt: Datetime to convert (can be naive or aware)
@@ -165,8 +158,7 @@ def to_local(dt: datetime, tz_name: Optional[str] = None) -> datetime:
 
 
 def parse_iso(iso_string: str) -> datetime:
-    """
-    Parse ISO 8601 datetime string to UTC datetime.
+    """Parse ISO 8601 datetime string to UTC datetime.
 
     Handles various formats:
     - "2024-01-15T10:30:00Z" (Z suffix)
@@ -208,8 +200,7 @@ def parse_iso(iso_string: str) -> datetime:
 
 
 def format_iso(dt: datetime, include_tz: bool = True) -> str:
-    """
-    Format datetime as ISO 8601 string.
+    """Format datetime as ISO 8601 string.
 
     Args:
         dt: Datetime to format
@@ -221,15 +212,13 @@ def format_iso(dt: datetime, include_tz: bool = True) -> str:
     utc_dt = to_utc(dt)
     if include_tz:
         return utc_dt.isoformat()
-    else:
-        return utc_dt.replace(tzinfo=None).isoformat()
+    return utc_dt.replace(tzinfo=None).isoformat()
 
 
 def get_dual_timestamps(
-    dt: Optional[datetime] = None, tz_name: Optional[str] = None
-) -> Tuple[datetime, datetime, str]:
-    """
-    Get both UTC and local timestamps for database storage.
+    dt: datetime | None = None, tz_name: str | None = None
+) -> tuple[datetime, datetime, str]:
+    """Get both UTC and local timestamps for database storage.
 
     This is the recommended way to store timestamps - always store both
     UTC (for consistency/queries) and local (for display/debugging).
@@ -250,19 +239,15 @@ def get_dual_timestamps(
     """
     tz_name = tz_name or _default_timezone
 
-    if dt is None:
-        utc_dt = utc_now()
-    else:
-        utc_dt = to_utc(dt)
+    utc_dt = utc_now() if dt is None else to_utc(dt)
 
     local_dt = to_local(utc_dt, tz_name)
 
     return utc_dt, local_dt, tz_name
 
 
-def normalize_for_comparison(dt: Union[datetime, str]) -> datetime:
-    """
-    Normalize a datetime for safe comparison.
+def normalize_for_comparison(dt: datetime | str) -> datetime:
+    """Normalize a datetime for safe comparison.
 
     All comparisons should be done in UTC to avoid timezone issues.
 
@@ -283,8 +268,7 @@ def is_aware(dt: datetime) -> bool:
 
 
 def ensure_aware(dt: datetime, assume_utc: bool = True) -> datetime:
-    """
-    Ensure datetime is timezone-aware.
+    """Ensure datetime is timezone-aware.
 
     Args:
         dt: Datetime to check
@@ -298,14 +282,12 @@ def ensure_aware(dt: datetime, assume_utc: bool = True) -> datetime:
 
     if assume_utc:
         return dt.replace(tzinfo=timezone.utc)
-    else:
-        return to_utc(dt)  # Assumes local, converts to UTC
+    return to_utc(dt)  # Assumes local, converts to UTC
 
 
 # Sorting key function for mixed datetime types
-def sort_key(dt: Union[datetime, str, None]) -> datetime:
-    """
-    Get a sortable key from various datetime representations.
+def sort_key(dt: datetime | str | None) -> datetime:
+    """Get a sortable key from various datetime representations.
 
     Handles:
     - datetime objects (aware or naive)

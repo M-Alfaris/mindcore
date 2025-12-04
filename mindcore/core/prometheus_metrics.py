@@ -1,5 +1,4 @@
-"""
-Prometheus Metrics Export for Mindcore.
+"""Prometheus Metrics Export for Mindcore.
 
 Provides Prometheus-compatible metrics for monitoring Mindcore in production.
 Metrics are exposed via a simple HTTP endpoint or can be collected programmatically.
@@ -24,26 +23,26 @@ Usage:
     >>> start_metrics_server(port=9090)
 """
 
-from typing import Optional, Dict, Any
 import threading
-import time
+from typing import Any
 
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 # Optional prometheus_client import
 try:
     from prometheus_client import (
+        REGISTRY,
+        CollectorRegistry,
         Counter,
         Gauge,
         Histogram,
-        Summary,
         Info,
-        start_http_server,
+        Summary,
         generate_latest,
-        REGISTRY,
-        CollectorRegistry,
+        start_http_server,
     )
 
     PROMETHEUS_AVAILABLE = True
@@ -53,8 +52,7 @@ except ImportError:
 
 
 class MindcoreMetrics:
-    """
-    Prometheus metrics collector for Mindcore.
+    """Prometheus metrics collector for Mindcore.
 
     Tracks:
     - Message ingestion rate and latency
@@ -76,9 +74,8 @@ class MindcoreMetrics:
         >>> print(metrics.get_metrics_dict())
     """
 
-    def __init__(self, registry: Optional[Any] = None):
-        """
-        Initialize metrics collector.
+    def __init__(self, registry: Any | None = None):
+        """Initialize metrics collector.
 
         Args:
             registry: Optional Prometheus CollectorRegistry.
@@ -89,7 +86,7 @@ class MindcoreMetrics:
 
         if not self._enabled:
             # Create dummy counters for when prometheus is not available
-            self._counters: Dict[str, int] = {
+            self._counters: dict[str, int] = {
                 "messages_ingested": 0,
                 "messages_enriched": 0,
                 "trivial_skipped": 0,
@@ -98,12 +95,12 @@ class MindcoreMetrics:
                 "cache_misses": 0,
                 "errors": 0,
             }
-            self._gauges: Dict[str, float] = {
+            self._gauges: dict[str, float] = {
                 "queue_depth": 0,
                 "active_workers": 0,
                 "worker_pool_size": 1,
             }
-            self._histograms: Dict[str, list] = {
+            self._histograms: dict[str, list] = {
                 "enrichment_duration_ms": [],
                 "context_duration_ms": [],
                 "ingestion_duration_ms": [],
@@ -210,9 +207,8 @@ class MindcoreMetrics:
         """Check if Prometheus metrics are available."""
         return self._enabled
 
-    def record_ingestion(self, duration_ms: Optional[float] = None) -> None:
-        """
-        Record a message ingestion event.
+    def record_ingestion(self, duration_ms: float | None = None) -> None:
+        """Record a message ingestion event.
 
         Args:
             duration_ms: Optional ingestion duration in milliseconds
@@ -228,10 +224,9 @@ class MindcoreMetrics:
                     self._histograms["ingestion_duration_ms"].append(duration_ms)
 
     def record_enrichment(
-        self, duration_ms: float, trivial: bool = False, tokens_used: Optional[int] = None
+        self, duration_ms: float, trivial: bool = False, tokens_used: int | None = None
     ) -> None:
-        """
-        Record an enrichment event.
+        """Record an enrichment event.
 
         Args:
             duration_ms: Enrichment duration in milliseconds
@@ -252,11 +247,8 @@ class MindcoreMetrics:
                     self._counters["trivial_skipped"] += 1
                 self._histograms["enrichment_duration_ms"].append(duration_ms)
 
-    def record_context_retrieval(
-        self, duration_ms: float, tokens_used: Optional[int] = None
-    ) -> None:
-        """
-        Record a context retrieval event.
+    def record_context_retrieval(self, duration_ms: float, tokens_used: int | None = None) -> None:
+        """Record a context retrieval event.
 
         Args:
             duration_ms: Retrieval duration in milliseconds
@@ -273,8 +265,7 @@ class MindcoreMetrics:
                 self._histograms["context_duration_ms"].append(duration_ms)
 
     def record_cache_access(self, hit: bool) -> None:
-        """
-        Record a cache access.
+        """Record a cache access.
 
         Args:
             hit: True if cache hit, False if miss
@@ -290,8 +281,7 @@ class MindcoreMetrics:
                     self._counters["cache_misses"] += 1
 
     def record_error(self, error_type: str) -> None:
-        """
-        Record an error.
+        """Record an error.
 
         Args:
             error_type: Type of error (enrichment, context, database, etc.)
@@ -331,9 +321,8 @@ class MindcoreMetrics:
         if self._enabled:
             self.cache_size.set(size_bytes)
 
-    def get_metrics_dict(self) -> Dict[str, Any]:
-        """
-        Get current metrics as a dictionary.
+    def get_metrics_dict(self) -> dict[str, Any]:
+        """Get current metrics as a dictionary.
 
         Useful for non-Prometheus monitoring or debugging.
 
@@ -380,8 +369,7 @@ class MindcoreMetrics:
         }
 
     def generate_prometheus_output(self) -> str:
-        """
-        Generate Prometheus exposition format output.
+        """Generate Prometheus exposition format output.
 
         Returns:
             Prometheus-formatted metrics string
@@ -391,14 +379,14 @@ class MindcoreMetrics:
         """
         if not self._enabled:
             raise RuntimeError(
-                "Prometheus metrics not available. " "Install with: pip install prometheus-client"
+                "Prometheus metrics not available. Install with: pip install prometheus-client"
             )
 
         return generate_latest(self._registry).decode("utf-8")
 
 
 # Singleton instance
-_metrics: Optional[MindcoreMetrics] = None
+_metrics: MindcoreMetrics | None = None
 _metrics_lock = threading.Lock()
 
 
@@ -420,8 +408,7 @@ def reset_metrics() -> None:
 
 
 def start_metrics_server(port: int = 9090, addr: str = "") -> bool:
-    """
-    Start HTTP server for Prometheus metrics scraping.
+    """Start HTTP server for Prometheus metrics scraping.
 
     Args:
         port: Port to listen on (default: 9090)
@@ -447,7 +434,7 @@ def start_metrics_server(port: int = 9090, addr: str = "") -> bool:
         logger.info(f"Prometheus metrics server started on port {port}")
         return True
     except Exception as e:
-        logger.error(f"Failed to start metrics server: {e}")
+        logger.exception(f"Failed to start metrics server: {e}")
         return False
 
 

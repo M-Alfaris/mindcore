@@ -1,5 +1,4 @@
-"""
-SQLite database manager for local development.
+"""SQLite database manager for local development.
 
 Provides a lightweight alternative to PostgreSQL for:
 - Local development and testing
@@ -10,20 +9,20 @@ Provides a lightweight alternative to PostgreSQL for:
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
-from pathlib import Path
+from datetime import datetime, timezone
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .schemas import Message, MessageMetadata, MessageRole, ThreadSummary, UserPreferences
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
-def _normalize_datetime(dt: Any) -> Optional[datetime]:
-    """
-    Normalize datetime to be timezone-aware (UTC).
+def _normalize_datetime(dt: Any) -> datetime | None:
+    """Normalize datetime to be timezone-aware (UTC).
 
     SQLite stores timestamps as text (ISO format strings), so this function
     handles both string parsing and timezone normalization.
@@ -62,8 +61,7 @@ def _normalize_datetime(dt: Any) -> Optional[datetime]:
 
 
 class SQLiteManager:
-    """
-    SQLite database manager for local development.
+    """SQLite database manager for local development.
 
     Thread-safe implementation using connection-per-thread pattern.
 
@@ -78,8 +76,7 @@ class SQLiteManager:
     """
 
     def __init__(self, db_path: str = "mindcore.db"):
-        """
-        Initialize SQLite manager.
+        """Initialize SQLite manager.
 
         Args:
             db_path: Path to SQLite database file.
@@ -106,8 +103,7 @@ class SQLiteManager:
 
     @contextmanager
     def get_connection(self):
-        """
-        Context manager for database connections.
+        """Context manager for database connections.
 
         Yields:
             SQLite connection.
@@ -116,7 +112,7 @@ class SQLiteManager:
         try:
             yield conn
         except sqlite3.Error as e:
-            logger.error(f"SQLite error: {e}")
+            logger.exception(f"SQLite error: {e}")
             conn.rollback()
             raise
         finally:
@@ -196,8 +192,7 @@ class SQLiteManager:
             logger.info("SQLite schema initialized")
 
     def insert_message(self, message: Message) -> bool:
-        """
-        Insert a message into the database.
+        """Insert a message into the database.
 
         Args:
             message: Message object to insert.
@@ -236,12 +231,11 @@ class SQLiteManager:
                 logger.debug(f"Message {message.message_id} inserted successfully")
                 return True
         except Exception as e:
-            logger.error(f"Failed to insert message: {e}")
+            logger.exception(f"Failed to insert message: {e}")
             return False
 
-    def fetch_recent_messages(self, user_id: str, thread_id: str, limit: int = 50) -> List[Message]:
-        """
-        Fetch recent messages for a user and thread.
+    def fetch_recent_messages(self, user_id: str, thread_id: str, limit: int = 50) -> list[Message]:
+        """Fetch recent messages for a user and thread.
 
         Args:
             user_id: User identifier.
@@ -283,14 +277,13 @@ class SQLiteManager:
                 logger.debug(f"Fetched {len(messages)} messages for {user_id}/{thread_id}")
                 return messages
         except Exception as e:
-            logger.error(f"Failed to fetch messages: {e}")
+            logger.exception(f"Failed to fetch messages: {e}")
             return []
 
     def search_messages_by_topic(
-        self, user_id: str, thread_id: str, topics: List[str], limit: int = 20
-    ) -> List[Message]:
-        """
-        Search messages by topics.
+        self, user_id: str, thread_id: str, topics: list[str], limit: int = 20
+    ) -> list[Message]:
+        """Search messages by topics.
 
         Note: SQLite doesn't have native JSON array search, so this uses LIKE.
 
@@ -318,7 +311,7 @@ class SQLiteManager:
 
         try:
             with self.get_connection() as conn:
-                params = [user_id, thread_id] + topic_params + [limit]
+                params = [user_id, thread_id, *topic_params, limit]
                 cursor = conn.execute(search_sql, params)
                 rows = cursor.fetchall()
 
@@ -341,22 +334,21 @@ class SQLiteManager:
 
                 return messages
         except Exception as e:
-            logger.error(f"Failed to search messages by topic: {e}")
+            logger.exception(f"Failed to search messages by topic: {e}")
             return []
 
     def search_by_relevance(
         self,
         user_id: str,
-        topics: Optional[List[str]] = None,
-        categories: Optional[List[str]] = None,
-        intent: Optional[str] = None,
+        topics: list[str] | None = None,
+        categories: list[str] | None = None,
+        intent: str | None = None,
         min_importance: float = 0.0,
-        thread_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        thread_id: str | None = None,
+        session_id: str | None = None,
         limit: int = 20,
-    ) -> List[Message]:
-        """
-        Search messages by relevance using metadata matching and scoring.
+    ) -> list[Message]:
+        """Search messages by relevance using metadata matching and scoring.
 
         SQLite version uses JSON functions for matching. Scores results by:
         - Topic overlap (3x weight)
@@ -380,7 +372,7 @@ class SQLiteManager:
         """
         # Fetch all matching messages and score in Python (SQLite JSON support is limited)
         conditions = ["user_id = ?"]
-        params: List[Any] = [user_id]
+        params: list[Any] = [user_id]
 
         if thread_id:
             conditions.append("thread_id = ?")
@@ -470,12 +462,11 @@ class SQLiteManager:
                 return messages
 
         except Exception as e:
-            logger.error(f"Failed to search by relevance: {e}")
+            logger.exception(f"Failed to search by relevance: {e}")
             return []
 
-    def get_message_by_id(self, message_id: str) -> Optional[Message]:
-        """
-        Get a single message by ID.
+    def get_message_by_id(self, message_id: str) -> Message | None:
+        """Get a single message by ID.
 
         Args:
             message_id: Message identifier.
@@ -506,12 +497,11 @@ class SQLiteManager:
                     )
                 return None
         except Exception as e:
-            logger.error(f"Failed to get message by ID: {e}")
+            logger.exception(f"Failed to get message by ID: {e}")
             return None
 
     def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
-        """
-        Update the metadata of an existing message.
+        """Update the metadata of an existing message.
 
         Used by background enrichment to update messages that were
         initially stored with empty metadata.
@@ -538,11 +528,10 @@ class SQLiteManager:
                 if cursor.rowcount > 0:
                     logger.debug(f"Updated metadata for message {message_id}")
                     return True
-                else:
-                    logger.warning(f"Message {message_id} not found for metadata update")
-                    return False
+                logger.warning(f"Message {message_id} not found for metadata update")
+                return False
         except Exception as e:
-            logger.error(f"Failed to update message metadata: {e}")
+            logger.exception(f"Failed to update message metadata: {e}")
             return False
 
     def close(self) -> None:
@@ -557,8 +546,7 @@ class SQLiteManager:
     # =====================
 
     def insert_summary(self, summary: ThreadSummary) -> bool:
-        """
-        Insert or update a thread summary.
+        """Insert or update a thread summary.
 
         Args:
             summary: ThreadSummary object to insert.
@@ -603,12 +591,11 @@ class SQLiteManager:
                 )
                 return True
         except Exception as e:
-            logger.error(f"Failed to insert summary: {e}")
+            logger.exception(f"Failed to insert summary: {e}")
             return False
 
-    def get_summary(self, user_id: str, thread_id: str) -> Optional[ThreadSummary]:
-        """
-        Get summary for a specific thread.
+    def get_summary(self, user_id: str, thread_id: str) -> ThreadSummary | None:
+        """Get summary for a specific thread.
 
         Args:
             user_id: User identifier.
@@ -649,14 +636,13 @@ class SQLiteManager:
                     )
                 return None
         except Exception as e:
-            logger.error(f"Failed to get summary: {e}")
+            logger.exception(f"Failed to get summary: {e}")
             return None
 
     def get_user_summaries(
-        self, user_id: str, topics: Optional[List[str]] = None, limit: int = 20
-    ) -> List[ThreadSummary]:
-        """
-        Get summaries for a user, optionally filtered by topics.
+        self, user_id: str, topics: list[str] | None = None, limit: int = 20
+    ) -> list[ThreadSummary]:
+        """Get summaries for a user, optionally filtered by topics.
 
         Args:
             user_id: User identifier.
@@ -677,7 +663,7 @@ class SQLiteManager:
             ORDER BY summarized_at DESC
             LIMIT ?
             """
-            params = [user_id] + topic_params + [limit]
+            params = [user_id, *topic_params, limit]
         else:
             select_sql = """
             SELECT * FROM thread_summaries
@@ -715,12 +701,11 @@ class SQLiteManager:
                     )
                 return summaries
         except Exception as e:
-            logger.error(f"Failed to get user summaries: {e}")
+            logger.exception(f"Failed to get user summaries: {e}")
             return []
 
     def delete_summarized_messages(self, thread_id: str, keep_last_n: int = 0) -> int:
-        """
-        Delete raw messages for a summarized thread.
+        """Delete raw messages for a summarized thread.
 
         Args:
             thread_id: Thread identifier.
@@ -748,7 +733,7 @@ class SQLiteManager:
                         DELETE FROM messages
                         WHERE thread_id = ? AND message_id NOT IN ({placeholders})
                         """
-                        cursor = conn.execute(delete_sql, [thread_id] + keep_ids)
+                        cursor = conn.execute(delete_sql, [thread_id, *keep_ids])
                     else:
                         # No messages to keep, delete all
                         delete_sql = "DELETE FROM messages WHERE thread_id = ?"
@@ -762,14 +747,13 @@ class SQLiteManager:
                 logger.info(f"Deleted {deleted_count} messages from thread {thread_id}")
                 return deleted_count
         except Exception as e:
-            logger.error(f"Failed to delete summarized messages: {e}")
+            logger.exception(f"Failed to delete summarized messages: {e}")
             return 0
 
     def get_threads_for_summarization(
         self, max_age_days: int = 7, min_messages: int = 5
-    ) -> List[Dict[str, Any]]:
-        """
-        Get threads that are candidates for summarization.
+    ) -> list[dict[str, Any]]:
+        """Get threads that are candidates for summarization.
 
         Args:
             max_age_days: Only summarize threads older than this.
@@ -814,16 +798,15 @@ class SQLiteManager:
                         )
                 return threads
         except Exception as e:
-            logger.error(f"Failed to get threads for summarization: {e}")
+            logger.exception(f"Failed to get threads for summarization: {e}")
             return []
 
     # =========================
     # User Preferences Methods
     # =========================
 
-    def get_preferences(self, user_id: str) -> Optional[UserPreferences]:
-        """
-        Get user preferences.
+    def get_preferences(self, user_id: str) -> UserPreferences | None:
+        """Get user preferences.
 
         Args:
             user_id: User identifier.
@@ -860,12 +843,11 @@ class SQLiteManager:
                     )
                 return None
         except Exception as e:
-            logger.error(f"Failed to get preferences: {e}")
+            logger.exception(f"Failed to get preferences: {e}")
             return None
 
     def get_or_create_preferences(self, user_id: str) -> UserPreferences:
-        """
-        Get user preferences, creating defaults if not exists.
+        """Get user preferences, creating defaults if not exists.
 
         Args:
             user_id: User identifier.
@@ -883,8 +865,7 @@ class SQLiteManager:
         return default_prefs
 
     def save_preferences(self, preferences: UserPreferences) -> bool:
-        """
-        Save user preferences.
+        """Save user preferences.
 
         Args:
             preferences: UserPreferences object to save.
@@ -922,12 +903,11 @@ class SQLiteManager:
                 logger.debug(f"Saved preferences for user {preferences.user_id}")
                 return True
         except Exception as e:
-            logger.error(f"Failed to save preferences: {e}")
+            logger.exception(f"Failed to save preferences: {e}")
             return False
 
     def update_preference(self, user_id: str, field: str, value: Any) -> bool:
-        """
-        Update a single preference field.
+        """Update a single preference field.
 
         Args:
             user_id: User identifier.

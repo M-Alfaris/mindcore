@@ -1,36 +1,35 @@
-"""
-AI agents for Mindcore framework.
-"""
+"""AI agents for Mindcore framework."""
 
-from .base_agent import BaseAgent, AgentInitializationError, APICallError
-from .enrichment_agent import EnrichmentAgent
+from .base_agent import AgentInitializationError, APICallError, BaseAgent
 from .context_assembler_agent import ContextAssemblerAgent
-from .retrieval_query_agent import RetrievalQueryAgent, QueryIntent
-from .smart_context_agent import SmartContextAgent, ContextTools
+from .enrichment_agent import EnrichmentAgent
+from .retrieval_query_agent import QueryIntent, RetrievalQueryAgent
+from .smart_context_agent import ContextTools, SmartContextAgent
 from .summarization_agent import SummarizationAgent
 from .trivial_detector import (
-    TrivialMessageDetector,
     TrivialCategory,
     TrivialMatch,
+    TrivialMessageDetector,
     get_trivial_detector,
     reset_trivial_detector,
 )
 
+
 __all__ = [
-    "BaseAgent",
-    "EnrichmentAgent",
-    "ContextAssemblerAgent",
-    "RetrievalQueryAgent",
-    "QueryIntent",
-    "SmartContextAgent",
-    "ContextTools",
-    "SummarizationAgent",
-    "AgentInitializationError",
     "APICallError",
-    # Trivial message detection
-    "TrivialMessageDetector",
+    "AgentInitializationError",
+    "BaseAgent",
+    "ContextAssemblerAgent",
+    "ContextTools",
+    "EnrichmentAgent",
+    "QueryIntent",
+    "RetrievalQueryAgent",
+    "SmartContextAgent",
+    "SummarizationAgent",
     "TrivialCategory",
     "TrivialMatch",
+    # Trivial message detection
+    "TrivialMessageDetector",
     "get_trivial_detector",
     "reset_trivial_detector",
 ]

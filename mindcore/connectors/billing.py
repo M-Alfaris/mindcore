@@ -1,22 +1,22 @@
-"""
-Billing Connector - Read-only access to billing/payment systems.
+"""Billing Connector - Read-only access to billing/payment systems.
 
 Provides context about invoices, payments, subscriptions, and charges.
 """
 
 import re
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base import BaseConnector, ConnectorResult
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class BillingConnector(BaseConnector):
-    """
-    Read-only connector for billing/payment systems.
+    """Read-only connector for billing/payment systems.
 
     Maps topics like "billing", "payment", "invoice", "subscription"
     to billing data. Extracts invoice numbers, amounts, and dates.
@@ -57,21 +57,20 @@ class BillingConnector(BaseConnector):
     def __init__(
         self,
         # Stripe config
-        stripe_api_key: Optional[str] = None,
+        stripe_api_key: str | None = None,
         # API config
-        api_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        api_url: str | None = None,
+        api_key: str | None = None,
         # Database config
-        db_url: Optional[str] = None,
+        db_url: str | None = None,
         user_id_column: str = "user_id",
         # Custom function
-        lookup_fn: Optional[callable] = None,
+        lookup_fn: callable | None = None,
         # General config
         max_results: int = 10,
         enabled: bool = True,
     ):
-        """
-        Initialize billing connector.
+        """Initialize billing connector.
 
         Args:
             stripe_api_key: Stripe API key (read-only operations only)
@@ -95,9 +94,8 @@ class BillingConnector(BaseConnector):
         # Register topics with VocabularyManager
         super().__init__()
 
-    async def lookup(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
-        """
-        Fetch billing information for a user.
+    async def lookup(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
+        """Fetch billing information for a user.
 
         Args:
             user_id: User identifier
@@ -128,10 +126,10 @@ class BillingConnector(BaseConnector):
             return await self._lookup_mock(user_id, context)
 
         except Exception as e:
-            logger.error(f"Billing lookup failed for user {user_id}: {e}")
+            logger.exception(f"Billing lookup failed for user {user_id}: {e}")
             return ConnectorResult(data={}, source=self.name, error=str(e))
 
-    async def _lookup_via_stripe(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
+    async def _lookup_via_stripe(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
         """Lookup billing via Stripe API."""
         try:
             import stripe
@@ -181,9 +179,9 @@ class BillingConnector(BaseConnector):
                 data={}, source=self.name, error="stripe not installed. Run: pip install stripe"
             )
         except Exception as e:
-            return ConnectorResult(data={}, source=self.name, error=f"Stripe error: {str(e)}")
+            return ConnectorResult(data={}, source=self.name, error=f"Stripe error: {e!s}")
 
-    async def _lookup_via_api(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
+    async def _lookup_via_api(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
         """Lookup billing via custom REST API."""
         try:
             import aiohttp
@@ -198,33 +196,32 @@ class BillingConnector(BaseConnector):
             if context.get("invoice_id"):
                 params["invoice_id"] = context["invoice_id"]
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(
                     self.api_url,
                     params=params,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return ConnectorResult(
-                            data=data, source=self.name, cache_ttl=self.cache_ttl
-                        )
-                    else:
-                        return ConnectorResult(
-                            data={},
-                            source=self.name,
-                            error=f"API returned status {response.status}",
-                        )
+                ) as response,
+            ):
+                if response.status == 200:
+                    data = await response.json()
+                    return ConnectorResult(data=data, source=self.name, cache_ttl=self.cache_ttl)
+                return ConnectorResult(
+                    data={},
+                    source=self.name,
+                    error=f"API returned status {response.status}",
+                )
 
         except ImportError:
             return ConnectorResult(
                 data={}, source=self.name, error="aiohttp not installed. Run: pip install aiohttp"
             )
         except Exception as e:
-            return ConnectorResult(data={}, source=self.name, error=f"API error: {str(e)}")
+            return ConnectorResult(data={}, source=self.name, error=f"API error: {e!s}")
 
-    async def _lookup_via_db(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
+    async def _lookup_via_db(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
         """Lookup billing via database."""
         try:
             import asyncpg
@@ -257,11 +254,11 @@ class BillingConnector(BaseConnector):
                 data={}, source=self.name, error="asyncpg not installed. Run: pip install asyncpg"
             )
         except Exception as e:
-            return ConnectorResult(data={}, source=self.name, error=f"Database error: {str(e)}")
+            return ConnectorResult(data={}, source=self.name, error=f"Database error: {e!s}")
 
-    async def _lookup_mock(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
+    async def _lookup_mock(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
         """Return mock data for demonstration."""
-        logger.warning(f"BillingConnector using mock data - configure a backend for production")
+        logger.warning("BillingConnector using mock data - configure a backend for production")
 
         now = datetime.now(timezone.utc)
 
@@ -310,12 +307,13 @@ class BillingConnector(BaseConnector):
             ]
 
         return ConnectorResult(
-            data=mock_data, source=self.name, cache_ttl=60  # Shorter TTL for mock data
+            data=mock_data,
+            source=self.name,
+            cache_ttl=60,  # Shorter TTL for mock data
         )
 
-    def extract_entities(self, text: str) -> Dict[str, Any]:
-        """
-        Extract billing-related entities from text.
+    def extract_entities(self, text: str) -> dict[str, Any]:
+        """Extract billing-related entities from text.
 
         Extracts:
         - Invoice numbers (INV-123, invoice 123)
@@ -388,11 +386,11 @@ class BillingConnector(BaseConnector):
             try:
                 import aiohttp
 
-                async with aiohttp.ClientSession() as session:
-                    async with session.head(
-                        self.api_url, timeout=aiohttp.ClientTimeout(total=5)
-                    ) as resp:
-                        return resp.status < 500
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.head(self.api_url, timeout=aiohttp.ClientTimeout(total=5)) as resp,
+                ):
+                    return resp.status < 500
             except Exception:
                 return False
 

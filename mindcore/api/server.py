@@ -1,5 +1,4 @@
-"""
-FastAPI server for Mindcore framework.
+"""FastAPI server for Mindcore framework.
 
 Run with:
     mindcore-server                    # CLI command
@@ -22,17 +21,17 @@ Configuration via environment variables:
 """
 
 import os
-from typing import List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from .routes import ingest_router, context_router, dashboard_router
-from ..utils.logger import get_logger
-from ..utils.security import get_rate_limiter, RateLimiter
+from mindcore.utils.logger import get_logger
+
+from .routes import context_router, dashboard_router, ingest_router
+
 
 logger = get_logger(__name__)
 
@@ -40,9 +39,8 @@ logger = get_logger(__name__)
 _mindcore_client = None
 
 
-def get_cors_origins() -> List[str]:
-    """
-    Get CORS allowed origins from environment or config.
+def get_cors_origins() -> list[str]:
+    """Get CORS allowed origins from environment or config.
 
     Returns:
         List of allowed origins.
@@ -61,8 +59,7 @@ def get_cors_origins() -> List[str]:
 
 
 def get_mindcore_client():
-    """
-    Get or create the Mindcore client instance.
+    """Get or create the Mindcore client instance.
 
     Reads configuration from environment variables.
     """
@@ -71,7 +68,7 @@ def get_mindcore_client():
     if _mindcore_client is not None:
         return _mindcore_client
 
-    from .. import MindcoreClient
+    from mindcore import MindcoreClient
 
     # Determine database mode
     use_sqlite = os.getenv("MINDCORE_USE_SQLITE", "").lower() == "true"
@@ -80,7 +77,7 @@ def get_mindcore_client():
     # LLM provider
     llm_provider = os.getenv("MINDCORE_LLM_PROVIDER", "auto")
 
-    logger.info(f"Initializing Mindcore client " f"(sqlite={use_sqlite}, llm={llm_provider})")
+    logger.info(f"Initializing Mindcore client (sqlite={use_sqlite}, llm={llm_provider})")
 
     _mindcore_client = MindcoreClient(
         use_sqlite=use_sqlite,
@@ -94,8 +91,7 @@ def get_mindcore_client():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Application lifespan handler for startup/shutdown.
+    """Application lifespan handler for startup/shutdown.
 
     Initializes Mindcore on startup and cleans up on shutdown.
     """
@@ -120,13 +116,12 @@ async def lifespan(app: FastAPI):
             _mindcore_client.close()
             logger.info("Mindcore client closed successfully")
         except Exception as e:
-            logger.error(f"Error closing Mindcore client: {e}")
+            logger.exception(f"Error closing Mindcore client: {e}")
         _mindcore_client = None
 
 
-def create_app(cors_origins: List[str] = None) -> FastAPI:
-    """
-    Create and configure FastAPI application.
+def create_app(cors_origins: list[str] | None = None) -> FastAPI:
+    """Create and configure FastAPI application.
 
     Args:
         cors_origins: Optional list of allowed CORS origins. If None, uses
@@ -194,8 +189,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
     # Health check endpoint - lightweight, no initialization
     @app.get("/health")
     async def health():
-        """
-        Basic health check endpoint.
+        """Basic health check endpoint.
 
         Returns service status without initializing Mindcore.
         Use /health/full for detailed status including database.
@@ -204,8 +198,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
 
     @app.get("/health/full")
     async def health_full():
-        """
-        Full health check including database, cache, and LLM status.
+        """Full health check including database, cache, and LLM status.
 
         This endpoint initializes Mindcore if not already done.
         """
@@ -270,8 +263,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
 
     @app.get("/ready")
     async def readiness():
-        """
-        Kubernetes-style readiness probe.
+        """Kubernetes-style readiness probe.
 
         Returns 200 if the service is ready to accept traffic.
         """
@@ -286,8 +278,7 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
 
     @app.get("/live")
     async def liveness():
-        """
-        Kubernetes-style liveness probe.
+        """Kubernetes-style liveness probe.
 
         Returns 200 if the service is alive.
         """
@@ -306,9 +297,13 @@ def create_app(cors_origins: List[str] = None) -> FastAPI:
     return app
 
 
-def run_server(host: str = None, port: int = None, debug: bool = False, workers: int = None):
-    """
-    Run the FastAPI server.
+def run_server(
+    host: str | None = None,
+    port: int | None = None,
+    debug: bool = False,
+    workers: int | None = None,
+):
+    """Run the FastAPI server.
 
     Args:
         host: Host to bind to (default: 0.0.0.0 or MINDCORE_HOST)

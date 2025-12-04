@@ -1,22 +1,22 @@
-"""
-Orders Connector - Read-only access to order/purchase systems.
+"""Orders Connector - Read-only access to order/purchase systems.
 
 Provides context about user orders, deliveries, and purchase history.
 """
 
 import re
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base import BaseConnector, ConnectorResult
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class OrdersConnector(BaseConnector):
-    """
-    Read-only connector for orders/purchase systems.
+    """Read-only connector for orders/purchase systems.
 
     Maps topics like "orders", "delivery", "shipping" to order data.
     Extracts order IDs, dates, and product names from conversation.
@@ -62,20 +62,19 @@ class OrdersConnector(BaseConnector):
     def __init__(
         self,
         # Database config
-        db_url: Optional[str] = None,
+        db_url: str | None = None,
         user_id_column: str = "user_id",
         table_name: str = "orders",
         # API config
-        api_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        api_url: str | None = None,
+        api_key: str | None = None,
         # Custom function
-        lookup_fn: Optional[callable] = None,
+        lookup_fn: callable | None = None,
         # General config
         max_results: int = 10,
         enabled: bool = True,
     ):
-        """
-        Initialize orders connector.
+        """Initialize orders connector.
 
         Args:
             db_url: Database connection URL (read-only user recommended)
@@ -100,9 +99,8 @@ class OrdersConnector(BaseConnector):
         # Register topics with VocabularyManager
         super().__init__()
 
-    async def lookup(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
-        """
-        Fetch orders for a user.
+    async def lookup(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
+        """Fetch orders for a user.
 
         Args:
             user_id: User identifier
@@ -129,10 +127,10 @@ class OrdersConnector(BaseConnector):
             return await self._lookup_mock(user_id, context)
 
         except Exception as e:
-            logger.error(f"Orders lookup failed for user {user_id}: {e}")
+            logger.exception(f"Orders lookup failed for user {user_id}: {e}")
             return ConnectorResult(data={}, source=self.name, error=str(e))
 
-    async def _lookup_via_api(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
+    async def _lookup_via_api(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
         """Lookup orders via REST API."""
         try:
             import aiohttp
@@ -149,35 +147,36 @@ class OrdersConnector(BaseConnector):
             if context.get("date_from"):
                 params["date_from"] = context["date_from"]
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(
                     self.api_url,
                     params=params,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return ConnectorResult(
-                            data={"orders": data.get("orders", []), "count": data.get("count", 0)},
-                            source=self.name,
-                            cache_ttl=self.cache_ttl,
-                        )
-                    else:
-                        return ConnectorResult(
-                            data={},
-                            source=self.name,
-                            error=f"API returned status {response.status}",
-                        )
+                ) as response,
+            ):
+                if response.status == 200:
+                    data = await response.json()
+                    return ConnectorResult(
+                        data={"orders": data.get("orders", []), "count": data.get("count", 0)},
+                        source=self.name,
+                        cache_ttl=self.cache_ttl,
+                    )
+                return ConnectorResult(
+                    data={},
+                    source=self.name,
+                    error=f"API returned status {response.status}",
+                )
 
         except ImportError:
             return ConnectorResult(
                 data={}, source=self.name, error="aiohttp not installed. Run: pip install aiohttp"
             )
         except Exception as e:
-            return ConnectorResult(data={}, source=self.name, error=f"API error: {str(e)}")
+            return ConnectorResult(data={}, source=self.name, error=f"API error: {e!s}")
 
-    async def _lookup_via_db(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
+    async def _lookup_via_db(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
         """Lookup orders via database."""
         try:
             import asyncpg
@@ -222,15 +221,14 @@ class OrdersConnector(BaseConnector):
                 data={}, source=self.name, error="asyncpg not installed. Run: pip install asyncpg"
             )
         except Exception as e:
-            return ConnectorResult(data={}, source=self.name, error=f"Database error: {str(e)}")
+            return ConnectorResult(data={}, source=self.name, error=f"Database error: {e!s}")
 
-    async def _lookup_mock(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
-        """
-        Return mock data for demonstration purposes.
+    async def _lookup_mock(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
+        """Return mock data for demonstration purposes.
 
         In production, configure db_url, api_url, or lookup_fn.
         """
-        logger.warning(f"OrdersConnector using mock data - configure a backend for production")
+        logger.warning("OrdersConnector using mock data - configure a backend for production")
 
         order_id = context.get("order_id", "ORD-12345")
         now = datetime.now(timezone.utc)
@@ -268,9 +266,8 @@ class OrdersConnector(BaseConnector):
             cache_ttl=60,  # Shorter TTL for mock data
         )
 
-    def extract_entities(self, text: str) -> Dict[str, Any]:
-        """
-        Extract order-related entities from text.
+    def extract_entities(self, text: str) -> dict[str, Any]:
+        """Extract order-related entities from text.
 
         Extracts:
         - Order IDs (#12345, ORD-12345, order 12345)
@@ -326,11 +323,11 @@ class OrdersConnector(BaseConnector):
             try:
                 import aiohttp
 
-                async with aiohttp.ClientSession() as session:
-                    async with session.head(
-                        self.api_url, timeout=aiohttp.ClientTimeout(total=5)
-                    ) as resp:
-                        return resp.status < 500
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.head(self.api_url, timeout=aiohttp.ClientTimeout(total=5)) as resp,
+                ):
+                    return resp.status < 500
             except Exception:
                 return False
 

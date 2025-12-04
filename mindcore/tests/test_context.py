@@ -1,11 +1,11 @@
-"""
-Tests for Context Assembler Agent.
-"""
+"""Tests for Context Assembler Agent."""
+
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock, patch
+
 from mindcore.agents import ContextAssemblerAgent
-from mindcore.core.schemas import Message, MessageMetadata, AssembledContext
+from mindcore.core.schemas import AssembledContext, Message, MessageMetadata
 from mindcore.llm import LLMResponse
 
 

@@ -1,24 +1,24 @@
-"""
-Context Assembly AI Agent.
+"""Context Assembly AI Agent.
 
 Retrieves and assembles relevant historical context using LLM providers.
 """
 
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
+from mindcore.core.schemas import AssembledContext, Message
+from mindcore.utils.logger import get_logger
 
 from .base_agent import BaseAgent
-from ..core.schemas import Message, AssembledContext
-from ..utils.logger import get_logger
+
 
 if TYPE_CHECKING:
-    from ..llm import BaseLLMProvider
+    from mindcore.llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
 
 class ContextAssemblerAgent(BaseAgent):
-    """
-    AI agent that assembles relevant context from historical messages.
+    """AI agent that assembles relevant context from historical messages.
 
     Uses LLM reasoning to:
     - Analyze message history
@@ -38,8 +38,7 @@ class ContextAssemblerAgent(BaseAgent):
     def __init__(
         self, llm_provider: "BaseLLMProvider", temperature: float = 0.3, max_tokens: int = 1500
     ):
-        """
-        Initialize context assembler agent.
+        """Initialize context assembler agent.
 
         Args:
             llm_provider: LLM provider instance
@@ -75,9 +74,8 @@ Your task is to return a JSON object with:
 
 Be selective and concise. Only include truly relevant information. Return ONLY valid JSON."""
 
-    def process(self, messages: List[Message], query: str) -> AssembledContext:
-        """
-        Assemble context from messages based on query.
+    def process(self, messages: list[Message], query: str) -> AssembledContext:
+        """Assemble context from messages based on query.
 
         Args:
             messages: List of Message objects with metadata.
@@ -133,7 +131,7 @@ Analyze the messages and provide relevant context for the current query."""
             return assembled_context
 
         except Exception as e:
-            logger.error(f"Context assembly failed: {e}")
+            logger.exception(f"Context assembly failed: {e}")
             # Return empty context on failure
             return AssembledContext(
                 assembled_context="",
@@ -142,9 +140,8 @@ Analyze the messages and provide relevant context for the current query."""
                 metadata={"assembly_failed": True, "error_type": type(e).__name__},
             )
 
-    def _format_messages(self, messages: List[Message]) -> str:
-        """
-        Format messages for inclusion in prompt.
+    def _format_messages(self, messages: list[Message]) -> str:
+        """Format messages for inclusion in prompt.
 
         Args:
             messages: List of Message objects.
@@ -174,9 +171,8 @@ Analyze the messages and provide relevant context for the current query."""
 
         return "\n".join(formatted)
 
-    def assemble_for_prompt(self, messages: List[Message], query: str) -> str:
-        """
-        Assemble context and format it for direct inclusion in a prompt.
+    def assemble_for_prompt(self, messages: list[Message], query: str) -> str:
+        """Assemble context and format it for direct inclusion in a prompt.
 
         Args:
             messages: List of Message objects.

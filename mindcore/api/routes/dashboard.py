@@ -1,5 +1,4 @@
-"""
-Dashboard API routes for Mindcore web interface.
+"""Dashboard API routes for Mindcore web interface.
 
 Provides endpoints for:
 - Statistics and metrics
@@ -10,16 +9,19 @@ Provides endpoints for:
 - Model management
 """
 
-import os
+import builtins
+import contextlib
 import json
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any
+import os
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from fastapi import APIRouter, Query, HTTPException, Body
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel
 
-from ...utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -45,12 +47,12 @@ class MessageResponse(BaseModel):
     session_id: str
     role: str
     raw_text: str
-    metadata: Dict[str, Any]
-    created_at: Optional[str]
+    metadata: dict[str, Any]
+    created_at: str | None
 
 
 class MessagesListResponse(BaseModel):
-    messages: List[MessageResponse]
+    messages: list[MessageResponse]
     total: int
     page: int
     page_size: int
@@ -60,12 +62,12 @@ class ThreadResponse(BaseModel):
     thread_id: str
     user_id: str
     message_count: int
-    last_message_at: Optional[str]
-    first_message_at: Optional[str]
+    last_message_at: str | None
+    first_message_at: str | None
 
 
 class ThreadsListResponse(BaseModel):
-    threads: List[ThreadResponse]
+    threads: list[ThreadResponse]
     total: int
 
 
@@ -73,19 +75,19 @@ class LogEntry(BaseModel):
     timestamp: str
     level: str
     message: str
-    logger: Optional[str] = None
+    logger: str | None = None
 
 
 class LogsResponse(BaseModel):
-    logs: List[LogEntry]
+    logs: list[LogEntry]
     total: int
 
 
 class ConfigResponse(BaseModel):
-    llm: Dict[str, Any]
-    memory: Dict[str, Any]
-    database: Dict[str, Any]
-    cache: Dict[str, Any]
+    llm: dict[str, Any]
+    memory: dict[str, Any]
+    database: dict[str, Any]
+    cache: dict[str, Any]
 
 
 class ModelInfo(BaseModel):
@@ -93,14 +95,14 @@ class ModelInfo(BaseModel):
     name: str
     description: str
     provider: str
-    size: Optional[str] = None
+    size: str | None = None
     available: bool = True
 
 
 class ModelsResponse(BaseModel):
-    cloud: List[ModelInfo]
-    local: List[ModelInfo]
-    active: Optional[str] = None
+    cloud: list[ModelInfo]
+    local: list[ModelInfo]
+    active: str | None = None
 
 
 class SetModelRequest(BaseModel):
@@ -112,7 +114,7 @@ class SetModelRequest(BaseModel):
 # In-memory log storage (for demo purposes)
 # ============================================================================
 
-_log_buffer: List[Dict[str, Any]] = []
+_log_buffer: list[dict[str, Any]] = []
 _max_log_entries = 1000
 
 
@@ -144,7 +146,7 @@ add_log_entry("DEBUG", "Cache manager started with TTL=3600s")
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats():
     """Get dashboard statistics."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     total_messages = 0
     today_messages = 0
@@ -173,32 +175,31 @@ async def get_stats():
 
                         # Active users
                         cursor = conn.execute("SELECT DISTINCT user_id FROM messages")
-                        active_users = set(row[0] for row in cursor.fetchall())
+                        active_users = {row[0] for row in cursor.fetchall()}
 
                         # Conversations (threads)
                         cursor = conn.execute("SELECT DISTINCT thread_id FROM messages")
-                        conversations = set(row[0] for row in cursor.fetchall())
+                        conversations = {row[0] for row in cursor.fetchall()}
 
                 # For PostgreSQL
                 elif hasattr(db, "pool"):
-                    with db.get_connection() as conn:
-                        with conn.cursor() as cursor:
-                            cursor.execute("SELECT COUNT(*) FROM messages")
-                            total_messages = cursor.fetchone()[0]
+                    with db.get_connection() as conn, conn.cursor() as cursor:
+                        cursor.execute("SELECT COUNT(*) FROM messages")
+                        total_messages = cursor.fetchone()[0]
 
-                            cursor.execute(
-                                "SELECT COUNT(*) FROM messages WHERE DATE(created_at) = CURRENT_DATE"
-                            )
-                            today_messages = cursor.fetchone()[0]
+                        cursor.execute(
+                            "SELECT COUNT(*) FROM messages WHERE DATE(created_at) = CURRENT_DATE"
+                        )
+                        today_messages = cursor.fetchone()[0]
 
-                            cursor.execute("SELECT DISTINCT user_id FROM messages")
-                            active_users = set(row[0] for row in cursor.fetchall())
+                        cursor.execute("SELECT DISTINCT user_id FROM messages")
+                        active_users = {row[0] for row in cursor.fetchall()}
 
-                            cursor.execute("SELECT DISTINCT thread_id FROM messages")
-                            conversations = set(row[0] for row in cursor.fetchall())
+                        cursor.execute("SELECT DISTINCT thread_id FROM messages")
+                        conversations = {row[0] for row in cursor.fetchall()}
 
         except Exception as e:
-            logger.error(f"Failed to get stats: {e}")
+            logger.exception(f"Failed to get stats: {e}")
             add_log_entry("ERROR", f"Failed to get stats: {e}")
 
     return StatsResponse(
@@ -212,7 +213,7 @@ async def get_stats():
 @router.get("/messages-by-time")
 async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
     """Get message count by day for the last N days."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     result = defaultdict(int)
 
@@ -241,22 +242,21 @@ async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
                             result[row[0]] = row[1]
 
             elif hasattr(db, "pool"):
-                with db.get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute(
-                            """SELECT DATE(created_at) as date, COUNT(*) as count
+                with db.get_connection() as conn, conn.cursor() as cursor:
+                    cursor.execute(
+                        """SELECT DATE(created_at) as date, COUNT(*) as count
                                FROM messages
                                WHERE created_at >= NOW() - INTERVAL '%s days'
                                GROUP BY DATE(created_at)
                                ORDER BY date""",
-                            (days,),
-                        )
-                        for row in cursor.fetchall():
-                            if row[0]:
-                                result[row[0].isoformat()] = row[1]
+                        (days,),
+                    )
+                    for row in cursor.fetchall():
+                        if row[0]:
+                            result[row[0].isoformat()] = row[1]
 
         except Exception as e:
-            logger.error(f"Failed to get messages by time: {e}")
+            logger.exception(f"Failed to get messages by time: {e}")
 
     # Convert to sorted list
     sorted_dates = sorted(result.keys())
@@ -266,7 +266,7 @@ async def get_messages_by_time(days: int = Query(7, ge=1, le=30)):
 @router.get("/messages-by-role")
 async def get_messages_by_role():
     """Get message count by role."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     result = {"user": 0, "assistant": 0, "system": 0, "tool": 0}
 
@@ -282,15 +282,14 @@ async def get_messages_by_role():
                             result[row[0]] = row[1]
 
             elif hasattr(db, "pool"):
-                with db.get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute("SELECT role, COUNT(*) FROM messages GROUP BY role")
-                        for row in cursor.fetchall():
-                            if row[0] in result:
-                                result[row[0]] = row[1]
+                with db.get_connection() as conn, conn.cursor() as cursor:
+                    cursor.execute("SELECT role, COUNT(*) FROM messages GROUP BY role")
+                    for row in cursor.fetchall():
+                        if row[0] in result:
+                            result[row[0]] = row[1]
 
         except Exception as e:
-            logger.error(f"Failed to get messages by role: {e}")
+            logger.exception(f"Failed to get messages by role: {e}")
 
     return {"labels": list(result.keys()), "data": list(result.values())}
 
@@ -304,13 +303,13 @@ async def get_messages_by_role():
 async def get_messages(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    role: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    user_id: Optional[str] = Query(None),
-    thread_id: Optional[str] = Query(None),
+    role: str | None = Query(None),
+    search: str | None = Query(None),
+    user_id: str | None = Query(None),
+    thread_id: str | None = Query(None),
 ):
     """Get paginated messages with optional filters."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     messages = []
     total = 0
@@ -353,20 +352,18 @@ async def get_messages(
                             WHERE {where_clause}
                             ORDER BY created_at DESC
                             LIMIT ? OFFSET ?""",
-                        params + [page_size, offset],
+                        [*params, page_size, offset],
                     )
 
                     for row in cursor.fetchall():
                         metadata = {}
                         if row["metadata"]:
-                            try:
+                            with contextlib.suppress(builtins.BaseException):
                                 metadata = (
                                     json.loads(row["metadata"])
                                     if isinstance(row["metadata"], str)
                                     else row["metadata"]
                                 )
-                            except:
-                                pass
 
                         messages.append(
                             MessageResponse(
@@ -382,7 +379,7 @@ async def get_messages(
                         )
 
         except Exception as e:
-            logger.error(f"Failed to get messages: {e}")
+            logger.exception(f"Failed to get messages: {e}")
             add_log_entry("ERROR", f"Failed to get messages: {e}")
 
     return MessagesListResponse(messages=messages, total=total, page=page, page_size=page_size)
@@ -391,7 +388,7 @@ async def get_messages(
 @router.get("/messages/{message_id}", response_model=MessageResponse)
 async def get_message(message_id: str):
     """Get a single message by ID."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -421,7 +418,7 @@ async def get_message(message_id: str):
 @router.delete("/messages/{message_id}")
 async def delete_message(message_id: str):
     """Delete a message."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -434,16 +431,15 @@ async def delete_message(message_id: str):
                 conn.execute("DELETE FROM messages WHERE message_id = ?", (message_id,))
                 conn.commit()
         elif hasattr(db, "pool"):
-            with db.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("DELETE FROM messages WHERE message_id = %s", (message_id,))
-                    conn.commit()
+            with db.get_connection() as conn, conn.cursor() as cursor:
+                cursor.execute("DELETE FROM messages WHERE message_id = %s", (message_id,))
+                conn.commit()
 
         add_log_entry("INFO", f"Deleted message: {message_id}")
         return {"status": "deleted", "message_id": message_id}
 
     except Exception as e:
-        logger.error(f"Failed to delete message: {e}")
+        logger.exception(f"Failed to delete message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -456,10 +452,10 @@ async def delete_message(message_id: str):
 async def get_threads(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    user_id: Optional[str] = Query(None),
+    user_id: str | None = Query(None),
 ):
     """Get list of conversation threads."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     threads = []
     total = 0
@@ -514,7 +510,7 @@ async def get_threads(
                         )
 
         except Exception as e:
-            logger.error(f"Failed to get threads: {e}")
+            logger.exception(f"Failed to get threads: {e}")
 
     return ThreadsListResponse(threads=threads, total=total)
 
@@ -533,7 +529,7 @@ async def get_thread_messages(
 
 
 @router.get("/logs", response_model=LogsResponse)
-async def get_logs(level: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=500)):
+async def get_logs(level: str | None = Query(None), limit: int = Query(100, ge=1, le=500)):
     """Get system logs."""
     logs = _log_buffer.copy()
 
@@ -560,7 +556,7 @@ async def clear_logs():
 # ============================================================================
 
 # In-memory config store (persisted via MetricsManager settings in production)
-_runtime_config: Dict[str, Any] = {
+_runtime_config: dict[str, Any] = {
     "system_enabled": True,
     "llm": {
         "provider": "openai",
@@ -581,20 +577,20 @@ _runtime_config: Dict[str, Any] = {
 
 class ExtendedConfigResponse(BaseModel):
     system_enabled: bool = True
-    llm: Dict[str, Any]
-    memory: Dict[str, Any]
-    database: Dict[str, Any]
-    cache: Dict[str, Any]
-    api: Dict[str, Any] = {}
-    logging: Dict[str, Any] = {}
-    monitoring: Dict[str, Any] = {}
-    security: Dict[str, Any] = {}
+    llm: dict[str, Any]
+    memory: dict[str, Any]
+    database: dict[str, Any]
+    cache: dict[str, Any]
+    api: dict[str, Any] = {}
+    logging: dict[str, Any] = {}
+    monitoring: dict[str, Any] = {}
+    security: dict[str, Any] = {}
 
 
 @router.get("/config", response_model=ExtendedConfigResponse)
 async def get_config():
     """Get current configuration."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     config = _runtime_config.copy()
 
@@ -622,13 +618,13 @@ async def get_config():
                 )
 
         except Exception as e:
-            logger.error(f"Failed to get config: {e}")
+            logger.exception(f"Failed to get config: {e}")
 
     return ExtendedConfigResponse(**config)
 
 
 @router.put("/config")
-async def update_config(config: Dict[str, Any] = Body(...)):
+async def update_config(config: dict[str, Any] = Body(...)):
     """Update configuration."""
     global _runtime_config
 
@@ -650,7 +646,7 @@ async def update_config(config: Dict[str, Any] = Body(...)):
 @router.get("/config/status")
 async def get_system_status():
     """Get system status."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     return {
         "system_enabled": _runtime_config.get("system_enabled", True),
@@ -673,7 +669,7 @@ async def restart_server():
 # ============================================================================
 
 # In-memory env var store (for dashboard display, actual values from os.environ)
-_env_vars_config: List[Dict[str, Any]] = []
+_env_vars_config: list[dict[str, Any]] = []
 
 
 @router.get("/config/env")
@@ -721,7 +717,7 @@ async def get_env_vars():
 
 
 @router.put("/config/env")
-async def update_env_vars(env_vars: List[Dict[str, Any]] = Body(...)):
+async def update_env_vars(env_vars: list[dict[str, Any]] = Body(...)):
     """Update environment variables (runtime only, not persistent)."""
     updated = []
     for var in env_vars:
@@ -745,7 +741,7 @@ async def update_env_vars(env_vars: List[Dict[str, Any]] = Body(...)):
 
 
 @router.post("/config/database/test")
-async def test_database_connection(db_config: Dict[str, Any] = Body(...)):
+async def test_database_connection(db_config: dict[str, Any] = Body(...)):
     """Test database connection."""
     db_type = db_config.get("type", "sqlite")
 
@@ -759,7 +755,7 @@ async def test_database_connection(db_config: Dict[str, Any] = Body(...)):
             conn.close()
             return {"status": "success", "message": f"Connected to SQLite database: {path}"}
 
-        elif db_type == "postgresql":
+        if db_type == "postgresql":
             # In production, would actually test PostgreSQL connection
             return {"status": "success", "message": "PostgreSQL connection test passed"}
 
@@ -770,7 +766,7 @@ async def test_database_connection(db_config: Dict[str, Any] = Body(...)):
 @router.post("/config/database/vacuum")
 async def vacuum_database():
     """Vacuum the SQLite database."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -786,14 +782,14 @@ async def vacuum_database():
             return {"status": "skipped", "message": "Vacuum only supported for SQLite"}
 
     except Exception as e:
-        logger.error(f"Failed to vacuum database: {e}")
+        logger.exception(f"Failed to vacuum database: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/config/database/clear-metrics")
 async def clear_old_metrics(days: int = Body(..., embed=True)):
     """Clear metrics older than specified days."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -820,7 +816,7 @@ async def clear_old_metrics(days: int = Body(..., embed=True)):
         return {"status": "success", "deleted_count": deleted_count}
 
     except Exception as e:
-        logger.error(f"Failed to clear metrics: {e}")
+        logger.exception(f"Failed to clear metrics: {e}")
         # Table might not exist yet
         return {"status": "success", "deleted_count": 0, "note": "Metrics tables may not exist"}
 
@@ -828,7 +824,7 @@ async def clear_old_metrics(days: int = Body(..., embed=True)):
 @router.post("/config/database/reset")
 async def reset_database():
     """Reset database (delete all data, recreate tables)."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -852,7 +848,7 @@ async def reset_database():
                 return {"status": "success", "tables_cleared": tables}
 
     except Exception as e:
-        logger.error(f"Failed to reset database: {e}")
+        logger.exception(f"Failed to reset database: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -864,7 +860,7 @@ async def reset_database():
 @router.get("/models", response_model=ModelsResponse)
 async def get_models():
     """Get available models."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     cloud_models = [
         ModelInfo(
@@ -960,7 +956,7 @@ def _check_model_available(model_id: str) -> bool:
 @router.get("/models/active")
 async def get_active_model():
     """Get the currently active model."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         return {"model": None, "provider": None}
@@ -1002,11 +998,11 @@ async def download_model(model_id: str):
 
 
 class PerformanceStatsResponse(BaseModel):
-    stats: Dict[str, Any]
-    tool_stats: Dict[str, Any]
-    user_performance: List[Dict[str, Any]]
-    response_time_trend: List[Dict[str, Any]]
-    latency_distribution: List[int]
+    stats: dict[str, Any]
+    tool_stats: dict[str, Any]
+    user_performance: list[dict[str, Any]]
+    response_time_trend: list[dict[str, Any]]
+    latency_distribution: list[int]
 
 
 class ToolCallResponse(BaseModel):
@@ -1015,19 +1011,19 @@ class ToolCallResponse(BaseModel):
     tool_name: str
     success: bool
     execution_time_ms: int
-    error_message: Optional[str] = None
+    error_message: str | None = None
     created_at: str
 
 
 # In-memory performance metrics storage (for demo/dev purposes)
-_performance_metrics: Dict[str, List[Dict[str, Any]]] = {
+_performance_metrics: dict[str, list[dict[str, Any]]] = {
     "response_times": [],
     "tool_calls": [],
     "user_stats": {},
 }
 
 
-def record_performance_metric(metric_type: str, data: Dict[str, Any]):
+def record_performance_metric(metric_type: str, data: dict[str, Any]):
     """Record a performance metric."""
     global _performance_metrics
     data["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -1044,7 +1040,7 @@ def record_performance_metric(metric_type: str, data: Dict[str, Any]):
 @router.get("/performance")
 async def get_performance_stats(range: str = Query("24h", pattern="^(1h|24h|7d)$")):
     """Get performance statistics and metrics."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     # Calculate time range
     now = datetime.now(timezone.utc)
@@ -1109,7 +1105,7 @@ async def get_performance_stats(range: str = Query("24h", pattern="^(1h|24h|7d)$
         response["tool_stats"]["success_rate"] = round(success_count / len(recent_tools) * 100, 1)
 
         # Group by tool name
-        tool_grouped: Dict[str, Dict[str, Any]] = {}
+        tool_grouped: dict[str, dict[str, Any]] = {}
         for t in recent_tools:
             name = t.get("tool_name", "unknown")
             if name not in tool_grouped:
@@ -1195,7 +1191,7 @@ async def get_performance_stats(range: str = Query("24h", pattern="^(1h|24h|7d)$
                             )
 
         except Exception as e:
-            logger.error(f"Failed to get performance stats from DB: {e}")
+            logger.exception(f"Failed to get performance stats from DB: {e}")
             add_log_entry("ERROR", f"Performance stats error: {e}")
 
     # Add demo data if no real data
@@ -1222,7 +1218,7 @@ async def get_tool_stats():
     success_count = sum(1 for t in tool_calls if t.get("success", False))
 
     # Group by tool name
-    tool_grouped: Dict[str, Dict[str, Any]] = {}
+    tool_grouped: dict[str, dict[str, Any]] = {}
     for t in tool_calls:
         name = t.get("tool_name", "unknown")
         if name not in tool_grouped:
@@ -1260,8 +1256,8 @@ async def get_tool_stats():
 async def get_tool_calls(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    tool_name: Optional[str] = Query(None),
-    success: Optional[bool] = Query(None),
+    tool_name: str | None = Query(None),
+    success: bool | None = Query(None),
 ):
     """Get detailed tool call history."""
     calls = _performance_metrics["tool_calls"].copy()
@@ -1284,7 +1280,7 @@ async def get_user_performance(
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 ):
     """Get per-user performance metrics."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     users = []
     total = 0
@@ -1333,7 +1329,7 @@ async def get_user_performance(
                         )
 
         except Exception as e:
-            logger.error(f"Failed to get user performance: {e}")
+            logger.exception(f"Failed to get user performance: {e}")
 
     return {"users": users, "total": total, "page": page, "page_size": page_size}
 
@@ -1358,7 +1354,7 @@ class SessionResponse(BaseModel):
 
 
 class SessionsListResponse(BaseModel):
-    sessions: List[SessionResponse]
+    sessions: list[SessionResponse]
     total: int
     page: int
     page_size: int
@@ -1374,7 +1370,7 @@ class SessionStatsResponse(BaseModel):
 @router.get("/sessions/stats", response_model=SessionStatsResponse)
 async def get_session_stats():
     """Get session statistics."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     stats = {
         "total_sessions": 0,
@@ -1427,7 +1423,7 @@ async def get_session_stats():
                         stats["avg_duration_minutes"] = int(result[0])
 
         except Exception as e:
-            logger.error(f"Failed to get session stats: {e}")
+            logger.exception(f"Failed to get session stats: {e}")
 
     return SessionStatsResponse(**stats)
 
@@ -1436,11 +1432,11 @@ async def get_session_stats():
 async def get_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    user_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
+    user_id: str | None = Query(None),
+    status: str | None = Query(None),
 ):
     """Get list of sessions with analytics."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     sessions = []
     total = 0
@@ -1483,7 +1479,7 @@ async def get_sessions(
                            GROUP BY session_id, user_id
                            ORDER BY last_activity_at DESC
                            LIMIT ? OFFSET ?""",
-                        params + [page_size, offset],
+                        [*params, page_size, offset],
                     )
 
                     now = datetime.now(timezone.utc)
@@ -1522,7 +1518,7 @@ async def get_sessions(
                         )
 
         except Exception as e:
-            logger.error(f"Failed to get sessions: {e}")
+            logger.exception(f"Failed to get sessions: {e}")
             add_log_entry("ERROR", f"Failed to get sessions: {e}")
 
     return SessionsListResponse(sessions=sessions, total=total, page=page, page_size=page_size)
@@ -1531,7 +1527,7 @@ async def get_sessions(
 @router.get("/sessions/{session_id}")
 async def get_session_detail(session_id: str):
     """Get detailed information about a specific session."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -1608,7 +1604,7 @@ async def get_session_detail(session_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get session detail: {e}")
+        logger.exception(f"Failed to get session detail: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1617,7 +1613,7 @@ async def get_session_messages(
     session_id: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)
 ):
     """Get messages for a specific session."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     messages = []
     total = 0
@@ -1647,14 +1643,12 @@ async def get_session_messages(
                     for row in cursor.fetchall():
                         metadata = {}
                         if row["metadata"]:
-                            try:
+                            with contextlib.suppress(builtins.BaseException):
                                 metadata = (
                                     json.loads(row["metadata"])
                                     if isinstance(row["metadata"], str)
                                     else row["metadata"]
                                 )
-                            except:
-                                pass
 
                         messages.append(
                             {
@@ -1670,7 +1664,7 @@ async def get_session_messages(
                         )
 
         except Exception as e:
-            logger.error(f"Failed to get session messages: {e}")
+            logger.exception(f"Failed to get session messages: {e}")
 
     return {"messages": messages, "total": total, "page": page, "page_size": page_size}
 
@@ -1678,7 +1672,7 @@ async def get_session_messages(
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete all messages in a session."""
-    from ... import _mindcore_instance
+    from mindcore import _mindcore_instance
 
     if _mindcore_instance is None:
         raise HTTPException(status_code=503, detail="Mindcore not initialized")
@@ -1705,5 +1699,5 @@ async def delete_session(session_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete session: {e}")
+        logger.exception(f"Failed to delete session: {e}")
         raise HTTPException(status_code=500, detail=str(e))

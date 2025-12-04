@@ -1,5 +1,4 @@
-"""
-Chroma vector store integration.
+"""Chroma vector store integration.
 
 Chroma is an open-source embedding database with:
 - Local persistence
@@ -10,11 +9,13 @@ Chroma is an open-source embedding database with:
 Install: pip install chromadb
 """
 
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import uuid
+from typing import TYPE_CHECKING, Any
 
-from .base import VectorStore, Document, SearchResult, EmbeddingFunction, DistanceMetric
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
+from .base import DistanceMetric, Document, EmbeddingFunction, SearchResult, VectorStore
+
 
 logger = get_logger(__name__)
 
@@ -23,8 +24,7 @@ if TYPE_CHECKING:
 
 
 class ChromaVectorStore(VectorStore):
-    """
-    Chroma vector store integration.
+    """Chroma vector store integration.
 
     Supports both local persistence and client/server mode.
 
@@ -53,15 +53,14 @@ class ChromaVectorStore(VectorStore):
         self,
         collection_name: str,
         embedding: EmbeddingFunction,
-        persist_directory: Optional[str] = None,
-        host: Optional[str] = None,
-        port: Optional[int] = None,
+        persist_directory: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
         distance_fn: DistanceMetric = DistanceMetric.COSINE,
-        collection_metadata: Optional[Dict[str, Any]] = None,
-        client: Optional["chromadb.ClientAPI"] = None,
+        collection_metadata: dict[str, Any] | None = None,
+        client: "chromadb.ClientAPI | None" = None,
     ):
-        """
-        Initialize Chroma vector store.
+        """Initialize Chroma vector store.
 
         Args:
             collection_name: Name of the collection
@@ -120,8 +119,8 @@ class ChromaVectorStore(VectorStore):
         logger.info(f"Chroma collection '{collection_name}' initialized")
 
     def add_documents(
-        self, documents: List[Document], ids: Optional[List[str]] = None, **kwargs: Any
-    ) -> List[str]:
+        self, documents: list[Document], ids: list[str] | None = None, **kwargs: Any
+    ) -> list[str]:
         """Add documents to Chroma."""
         texts = [doc.page_content for doc in documents]
         metadatas = [doc.metadata for doc in documents]
@@ -134,11 +133,11 @@ class ChromaVectorStore(VectorStore):
 
     def add_texts(
         self,
-        texts: List[str],
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
+        texts: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[str]:
+    ) -> list[str]:
         """Add texts to Chroma."""
         if not texts:
             return []
@@ -171,15 +170,15 @@ class ChromaVectorStore(VectorStore):
         return ids
 
     def similarity_search(
-        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
-    ) -> List[Document]:
+        self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
+    ) -> list[Document]:
         """Search for similar documents."""
         results = self.similarity_search_with_score(query, k, filter, **kwargs)
         return [r.document for r in results]
 
     def similarity_search_with_score(
-        self, query: str, k: int = 4, filter: Optional[Dict[str, Any]] = None, **kwargs: Any
-    ) -> List[SearchResult]:
+        self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
+    ) -> list[SearchResult]:
         """Search with similarity scores."""
         # Embed query
         query_embedding = self.embedding.embed_query(query)
@@ -215,11 +214,11 @@ class ChromaVectorStore(VectorStore):
 
     def similarity_search_by_vector(
         self,
-        embedding: List[float],
+        embedding: list[float],
         k: int = 4,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Search by embedding vector."""
         where = self._convert_filter(filter) if filter else None
 
@@ -244,8 +243,8 @@ class ChromaVectorStore(VectorStore):
 
     def delete(
         self,
-        ids: Optional[List[str]] = None,
-        filter: Optional[Dict[str, Any]] = None,
+        ids: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> bool:
         """Delete documents from Chroma."""
@@ -258,13 +257,13 @@ class ChromaVectorStore(VectorStore):
             else:
                 return False
 
-            logger.debug(f"Deleted documents from Chroma")
+            logger.debug("Deleted documents from Chroma")
             return True
         except Exception as e:
-            logger.error(f"Failed to delete from Chroma: {e}")
+            logger.exception(f"Failed to delete from Chroma: {e}")
             return False
 
-    def get_by_ids(self, ids: List[str]) -> List[Document]:
+    def get_by_ids(self, ids: list[str]) -> list[Document]:
         """Get documents by IDs."""
         results = self._collection.get(ids=ids, include=["documents", "metadatas"])
 
@@ -283,10 +282,10 @@ class ChromaVectorStore(VectorStore):
     @classmethod
     def from_documents(
         cls,
-        documents: List[Document],
+        documents: list[Document],
         embedding: EmbeddingFunction,
         collection_name: str = "mindcore_docs",
-        persist_directory: Optional[str] = None,
+        persist_directory: str | None = None,
         **kwargs: Any,
     ) -> "ChromaVectorStore":
         """Create Chroma store from documents."""
@@ -302,11 +301,11 @@ class ChromaVectorStore(VectorStore):
     @classmethod
     def from_texts(
         cls,
-        texts: List[str],
+        texts: list[str],
         embedding: EmbeddingFunction,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
+        metadatas: list[dict[str, Any]] | None = None,
         collection_name: str = "mindcore_docs",
-        persist_directory: Optional[str] = None,
+        persist_directory: str | None = None,
         **kwargs: Any,
     ) -> "ChromaVectorStore":
         """Create Chroma store from texts."""
@@ -319,7 +318,7 @@ class ChromaVectorStore(VectorStore):
         store.add_texts(texts, metadatas)
         return store
 
-    def _convert_filter(self, filter: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_filter(self, filter: dict[str, Any]) -> dict[str, Any]:
         """Convert generic filter to Chroma where clause format."""
         if not filter:
             return {}
@@ -341,12 +340,11 @@ class ChromaVectorStore(VectorStore):
         if self._distance_fn == DistanceMetric.COSINE:
             # Cosine distance: 0 = identical, 2 = opposite
             return max(0, 1 - distance / 2)
-        elif self._distance_fn in (DistanceMetric.DOT_PRODUCT, DistanceMetric.INNER_PRODUCT):
+        if self._distance_fn in (DistanceMetric.DOT_PRODUCT, DistanceMetric.INNER_PRODUCT):
             # Inner product: higher = more similar (already a score)
             return distance
-        else:
-            # Euclidean: convert distance to similarity
-            return 1 / (1 + distance)
+        # Euclidean: convert distance to similarity
+        return 1 / (1 + distance)
 
     def health_check(self) -> bool:
         """Check if Chroma is accessible."""
@@ -354,12 +352,11 @@ class ChromaVectorStore(VectorStore):
             self._client.heartbeat()
             return True
         except Exception as e:
-            logger.error(f"Chroma health check failed: {e}")
+            logger.exception(f"Chroma health check failed: {e}")
             return False
 
     def persist(self) -> None:
-        """
-        Persist data to disk (for local mode).
+        """Persist data to disk (for local mode).
 
         Note: With PersistentClient, data is auto-persisted.
         """

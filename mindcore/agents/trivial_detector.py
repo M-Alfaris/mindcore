@@ -1,5 +1,4 @@
-"""
-Trivial message detector for auto-enrichment without LLM.
+"""Trivial message detector for auto-enrichment without LLM.
 
 Detects greetings, confirmations, fillers, and other trivial messages
 that don't require LLM enrichment. Auto-enriches them with low importance
@@ -7,12 +6,11 @@ metadata to reduce costs and improve performance.
 """
 
 import re
-from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from ..core.schemas import Message, MessageMetadata, MessageRole
-from ..core.vocabulary import Intent, Sentiment, get_vocabulary
+from mindcore.core.schemas import Message, MessageMetadata, MessageRole
+from mindcore.core.vocabulary import Intent, Sentiment
 
 
 class TrivialCategory(str, Enum):
@@ -33,14 +31,13 @@ class TrivialMatch:
     """Result of trivial message detection."""
 
     is_trivial: bool
-    category: Optional[TrivialCategory] = None
+    category: TrivialCategory | None = None
     confidence: float = 0.0
-    matched_pattern: Optional[str] = None
+    matched_pattern: str | None = None
 
 
 class TrivialMessageDetector:
-    """
-    Detects trivial messages using regex patterns.
+    """Detects trivial messages using regex patterns.
 
     Trivial messages are auto-enriched with low importance metadata,
     skipping the LLM call entirely. This reduces costs and latency
@@ -57,7 +54,7 @@ class TrivialMessageDetector:
 
     # Pattern definitions: (pattern, category, base_importance)
     # Patterns are case-insensitive and match whole message or start/end
-    PATTERNS: List[Tuple[str, TrivialCategory, float]] = [
+    PATTERNS: list[tuple[str, TrivialCategory, float]] = [
         # Greetings (very low importance for retrieval)
         (r"^(hi|hey|hello|hiya|yo|howdy|greetings?)[\s!.,?]*$", TrivialCategory.GREETING, 0.1),
         (r"^good\s+(morning|afternoon|evening|day)[\s!.,?]*$", TrivialCategory.GREETING, 0.1),
@@ -120,15 +117,14 @@ class TrivialMessageDetector:
     ]
 
     # Compiled patterns for performance
-    _compiled_patterns: List[Tuple[re.Pattern, TrivialCategory, float]] = []
+    _compiled_patterns: list[tuple[re.Pattern, TrivialCategory, float]] = []
 
     def __init__(
         self,
-        custom_patterns: Optional[List[Tuple[str, TrivialCategory, float]]] = None,
+        custom_patterns: list[tuple[str, TrivialCategory, float]] | None = None,
         min_confidence: float = 0.8,
     ):
-        """
-        Initialize the trivial message detector.
+        """Initialize the trivial message detector.
 
         Args:
             custom_patterns: Additional patterns to detect
@@ -147,8 +143,7 @@ class TrivialMessageDetector:
         ]
 
     def detect(self, text: str) -> TrivialMatch:
-        """
-        Detect if a message is trivial.
+        """Detect if a message is trivial.
 
         Args:
             text: The message text to analyze
@@ -166,7 +161,7 @@ class TrivialMessageDetector:
         word_count = len(normalized.split())
 
         # Try each pattern
-        for pattern, category, base_importance in self._compiled_patterns:
+        for pattern, category, _base_importance in self._compiled_patterns:
             match = pattern.match(normalized)
             if match:
                 # Confidence based on how much of the text matched
@@ -195,11 +190,10 @@ class TrivialMessageDetector:
         thread_id: str,
         session_id: str,
         role: str = "user",
-        message_id: Optional[str] = None,
+        message_id: str | None = None,
         **extra_metadata,
-    ) -> Optional[Message]:
-        """
-        Auto-enrich a trivial message without LLM.
+    ) -> Message | None:
+        """Auto-enrich a trivial message without LLM.
 
         Args:
             text: Message text
@@ -240,7 +234,7 @@ class TrivialMessageDetector:
         import uuid
         from datetime import datetime
 
-        message = Message(
+        return Message(
             id=message_id or str(uuid.uuid4()),
             user_id=user_id,
             thread_id=thread_id,
@@ -251,11 +245,9 @@ class TrivialMessageDetector:
             metadata=metadata,
         )
 
-        return message
-
     def _map_category(
         self, category: TrivialCategory
-    ) -> Tuple[Optional[Intent], Optional[Sentiment], List[str]]:
+    ) -> tuple[Intent | None, Sentiment | None, list[str]]:
         """Map trivial category to intent, sentiment, and topics."""
         mappings = {
             TrivialCategory.GREETING: (Intent.GREET, Sentiment.POSITIVE, ["greeting"]),
@@ -270,8 +262,7 @@ class TrivialMessageDetector:
         return mappings.get(category, (None, Sentiment.NEUTRAL, ["general"]))
 
     def _calculate_importance(self, result: TrivialMatch) -> float:
-        """
-        Calculate importance score for trivial message.
+        """Calculate importance score for trivial message.
 
         Trivial messages get very low importance (0.05-0.2)
         to effectively exclude them from context retrieval
@@ -279,7 +270,7 @@ class TrivialMessageDetector:
         """
         # Base importance from pattern
         base = 0.1
-        for pattern, category, importance in self._compiled_patterns:
+        for _pattern, category, importance in self._compiled_patterns:
             if category == result.category:
                 base = importance
                 break
@@ -289,7 +280,7 @@ class TrivialMessageDetector:
 
 
 # Singleton instance for convenience
-_detector: Optional[TrivialMessageDetector] = None
+_detector: TrivialMessageDetector | None = None
 
 
 def get_trivial_detector() -> TrivialMessageDetector:

@@ -1,27 +1,27 @@
-"""
-OpenAI LLM Provider for Mindcore.
+"""OpenAI LLM Provider for Mindcore.
 
 Provides OpenAI API integration as a fallback provider.
 Also supports any OpenAI-compatible API (vLLM, Ollama, LocalAI, etc.) via base_url.
 """
 
 import time
-from typing import List, Dict, Optional, Any
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base_provider import (
     BaseLLMProvider,
-    LLMResponse,
-    LLMProviderError,
     GenerationError,
+    LLMProviderError,
+    LLMResponse,
 )
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class OpenAIProvider(BaseLLMProvider):
-    """
-    OpenAI API provider for Mindcore.
+    """OpenAI API provider for Mindcore.
 
     Serves as the fallback provider when llama.cpp is unavailable or fails.
     Uses gpt-4o-mini by default for cost-effective inference.
@@ -69,22 +69,22 @@ class OpenAIProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "gpt-4o-mini",
-        base_url: Optional[str] = None,
+        base_url: str | None = None,
         timeout: int = 60,
         max_retries: int = 3,
         **kwargs: Any,
     ):
-        """
-        Initialize OpenAI provider.
+        """Initialize OpenAI provider.
 
         Args:
             api_key: OpenAI API key. If None, reads from OPENAI_API_KEY env var.
                 For self-hosted servers, use any non-empty string if required.
             model: Model to use (default: gpt-4o-mini)
             base_url: Custom API base URL for OpenAI-compatible servers.
-                Examples:
+
+        Examples:
                 - vLLM: "http://localhost:8000/v1"
                 - Ollama: "http://localhost:11434/v1"
                 - LocalAI: "http://localhost:8080/v1"
@@ -111,7 +111,7 @@ class OpenAIProvider(BaseLLMProvider):
                 "Set OPENAI_API_KEY environment variable or provide api_key parameter."
             )
 
-    def _init_client(self, api_key: str, base_url: Optional[str] = None, **kwargs: Any) -> None:
+    def _init_client(self, api_key: str, base_url: str | None = None, **kwargs: Any) -> None:
         """Initialize the OpenAI client."""
         try:
             from openai import OpenAI
@@ -132,21 +132,20 @@ class OpenAIProvider(BaseLLMProvider):
                 logger.info(f"OpenAI provider initialized with model: {self.model}")
         except ImportError as e:
             raise LLMProviderError(
-                "openai package is not installed. " "Install it with: pip install openai"
+                "openai package is not installed. Install it with: pip install openai"
             ) from e
         except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
+            logger.exception(f"Failed to initialize OpenAI client: {e}")
             raise LLMProviderError(f"Failed to initialize OpenAI: {e}") from e
 
     def generate(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Generate a response using OpenAI API.
+        """Generate a response using OpenAI API.
 
         Args:
             messages: List of message dicts with 'role' and 'content'
@@ -168,10 +167,10 @@ class OpenAIProvider(BaseLLMProvider):
 
         # Import error types
         from openai import (
-            APIError,
-            RateLimitError,
             APIConnectionError,
+            APIError,
             APITimeoutError,
+            RateLimitError,
         )
 
         start_time = time.time()
@@ -247,12 +246,12 @@ class OpenAIProvider(BaseLLMProvider):
                     time.sleep(delay)
                 else:
                     # Don't retry client errors (4xx)
-                    logger.error(f"OpenAI API client error: {e}")
+                    logger.exception(f"OpenAI API client error: {e}")
                     raise GenerationError(f"OpenAI API error: {e}") from e
 
             except Exception as e:
                 # Unknown error, don't retry
-                logger.error(f"OpenAI generation failed with unexpected error: {e}")
+                logger.exception(f"OpenAI generation failed with unexpected error: {e}")
                 raise GenerationError(f"OpenAI generation failed: {e}") from e
 
         # All retries exhausted
@@ -267,14 +266,13 @@ class OpenAIProvider(BaseLLMProvider):
 
     def generate_with_tools(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
         tool_choice: str = "auto",
-    ) -> Dict[str, Any]:
-        """
-        Generate a response with tool calling support.
+    ) -> dict[str, Any]:
+        """Generate a response with tool calling support.
 
         Args:
             messages: List of message dicts (can include tool calls and results)
@@ -296,10 +294,10 @@ class OpenAIProvider(BaseLLMProvider):
             )
 
         from openai import (
-            APIError,
-            RateLimitError,
             APIConnectionError,
+            APIError,
             APITimeoutError,
+            RateLimitError,
         )
 
         start_time = time.time()

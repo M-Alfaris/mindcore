@@ -1,5 +1,4 @@
-"""
-Embedding function implementations.
+"""Embedding function implementations.
 
 Provides adapters for various embedding providers:
 - OpenAI (text-embedding-3-small, text-embedding-3-large, ada-002)
@@ -8,18 +7,20 @@ Provides adapters for various embedding providers:
 - Custom (bring your own embedding function)
 """
 
-from typing import List, Optional, Callable, Any
 import os
+from collections.abc import Callable
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base import EmbeddingFunction
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class OpenAIEmbeddings(EmbeddingFunction):
-    """
-    OpenAI embeddings using the official API.
+    """OpenAI embeddings using the official API.
 
     Models:
     - text-embedding-3-small: 1536 dimensions, best price/performance
@@ -45,14 +46,13 @@ class OpenAIEmbeddings(EmbeddingFunction):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "text-embedding-3-small",
-        base_url: Optional[str] = None,
-        dimensions: Optional[int] = None,
+        base_url: str | None = None,
+        dimensions: int | None = None,
         batch_size: int = 100,
     ):
-        """
-        Initialize OpenAI embeddings.
+        """Initialize OpenAI embeddings.
 
         Args:
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
@@ -89,7 +89,7 @@ class OpenAIEmbeddings(EmbeddingFunction):
         self._client = OpenAI(**kwargs)
         logger.info(f"OpenAI embeddings initialized with model {model}")
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple documents."""
         if not texts:
             return []
@@ -110,7 +110,7 @@ class OpenAIEmbeddings(EmbeddingFunction):
 
         return all_embeddings
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """Embed a single query."""
         return self.embed_documents([text])[0]
 
@@ -121,8 +121,7 @@ class OpenAIEmbeddings(EmbeddingFunction):
 
 
 class SentenceTransformerEmbeddings(EmbeddingFunction):
-    """
-    Local embeddings using sentence-transformers.
+    """Local embeddings using sentence-transformers.
 
     No API required - runs entirely on your machine.
 
@@ -143,12 +142,11 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        device: Optional[str] = None,
+        device: str | None = None,
         normalize_embeddings: bool = True,
         batch_size: int = 32,
     ):
-        """
-        Initialize sentence-transformers embeddings.
+        """Initialize sentence-transformers embeddings.
 
         Args:
             model_name: Model name from HuggingFace or local path
@@ -176,7 +174,7 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
             f"({self._dimensions} dimensions)"
         )
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple documents."""
         if not texts:
             return []
@@ -190,7 +188,7 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
 
         return embeddings.tolist()
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """Embed a single query."""
         embedding = self._model.encode(
             text, normalize_embeddings=self._normalize, show_progress_bar=False
@@ -204,8 +202,7 @@ class SentenceTransformerEmbeddings(EmbeddingFunction):
 
 
 class OllamaEmbeddings(EmbeddingFunction):
-    """
-    Local embeddings using Ollama.
+    """Local embeddings using Ollama.
 
     Requires Ollama to be installed and running locally.
     Supports any embedding model available in Ollama.
@@ -227,10 +224,9 @@ class OllamaEmbeddings(EmbeddingFunction):
         self,
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434",
-        dimensions: Optional[int] = None,
+        dimensions: int | None = None,
     ):
-        """
-        Initialize Ollama embeddings.
+        """Initialize Ollama embeddings.
 
         Args:
             model: Ollama model name
@@ -256,7 +252,7 @@ class OllamaEmbeddings(EmbeddingFunction):
 
         logger.info(f"Ollama embeddings initialized: {model} ({self._dimensions} dimensions)")
 
-    def _embed_single(self, text: str) -> List[float]:
+    def _embed_single(self, text: str) -> list[float]:
         """Embed a single text using Ollama API."""
         response = self._client.post(
             f"{self._base_url}/api/embeddings", json={"model": self._model, "prompt": text}
@@ -264,7 +260,7 @@ class OllamaEmbeddings(EmbeddingFunction):
         response.raise_for_status()
         return response.json()["embedding"]
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple documents."""
         if not texts:
             return []
@@ -277,7 +273,7 @@ class OllamaEmbeddings(EmbeddingFunction):
 
         return embeddings
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """Embed a single query."""
         return self._embed_single(text)
 
@@ -288,8 +284,7 @@ class OllamaEmbeddings(EmbeddingFunction):
 
 
 class CustomEmbeddings(EmbeddingFunction):
-    """
-    Custom embedding function wrapper.
+    """Custom embedding function wrapper.
 
     Wrap any embedding function with this adapter.
 
@@ -306,12 +301,11 @@ class CustomEmbeddings(EmbeddingFunction):
 
     def __init__(
         self,
-        embed_fn: Callable[[List[str]], List[List[float]]],
+        embed_fn: Callable[[list[str]], list[list[float]]],
         dimension: int,
-        query_embed_fn: Optional[Callable[[str], List[float]]] = None,
+        query_embed_fn: Callable[[str], list[float]] | None = None,
     ):
-        """
-        Initialize custom embeddings.
+        """Initialize custom embeddings.
 
         Args:
             embed_fn: Function that takes list of texts and returns list of embeddings
@@ -322,13 +316,13 @@ class CustomEmbeddings(EmbeddingFunction):
         self._query_embed_fn = query_embed_fn
         self._dimensions = dimension
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple documents."""
         if not texts:
             return []
         return self._embed_fn(texts)
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """Embed a single query."""
         if self._query_embed_fn:
             return self._query_embed_fn(text)
@@ -342,8 +336,7 @@ class CustomEmbeddings(EmbeddingFunction):
 
 # Factory function for creating embeddings
 def create_embeddings(provider: str = "openai", **kwargs: Any) -> EmbeddingFunction:
-    """
-    Factory function to create embedding functions.
+    """Factory function to create embedding functions.
 
     Args:
         provider: Provider name ("openai", "sentence_transformers", "ollama", "custom")
@@ -373,7 +366,7 @@ def create_embeddings(provider: str = "openai", **kwargs: Any) -> EmbeddingFunct
     provider_lower = provider.lower()
     if provider_lower not in providers:
         raise ValueError(
-            f"Unknown embedding provider: {provider}. " f"Available: {list(providers.keys())}"
+            f"Unknown embedding provider: {provider}. Available: {list(providers.keys())}"
         )
 
     return providers[provider_lower](**kwargs)

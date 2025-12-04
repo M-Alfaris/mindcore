@@ -1,5 +1,4 @@
-"""
-Disk-backed cache manager for persistent message caching.
+"""Disk-backed cache manager for persistent message caching.
 
 Uses diskcache (SQLite-backed) for:
 - Persistence across restarts
@@ -7,23 +6,23 @@ Uses diskcache (SQLite-backed) for:
 - Multi-process safe access
 """
 
-import json
 import tempfile
-from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import diskcache
 
+from mindcore.utils.logger import get_logger
+
 from .schemas import Message, MessageMetadata, MessageRole
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class DiskCacheManager:
-    """
-    Persistent disk-backed cache for messages.
+    """Persistent disk-backed cache for messages.
 
     Uses diskcache (SQLite-backed) which provides:
     - Persistence: Survives process restarts
@@ -37,12 +36,11 @@ class DiskCacheManager:
     def __init__(
         self,
         max_size: int = 50,
-        ttl_seconds: Optional[int] = None,
-        cache_dir: Optional[str] = None,
+        ttl_seconds: int | None = None,
+        cache_dir: str | None = None,
         size_limit: int = 100 * 1024 * 1024,  # 100MB default
     ):
-        """
-        Initialize disk cache manager.
+        """Initialize disk cache manager.
 
         Args:
             max_size: Maximum number of messages per user/thread.
@@ -81,7 +79,7 @@ class DiskCacheManager:
         """Generate key for thread message list."""
         return f"thread:{user_id}:{thread_id}"
 
-    def _message_to_dict(self, message: Message) -> Dict[str, Any]:
+    def _message_to_dict(self, message: Message) -> dict[str, Any]:
         """Convert Message to serializable dict."""
         return {
             "message_id": message.message_id,
@@ -98,7 +96,7 @@ class DiskCacheManager:
             "created_at": message.created_at.isoformat() if message.created_at else None,
         }
 
-    def _dict_to_message(self, data: Dict[str, Any]) -> Message:
+    def _dict_to_message(self, data: dict[str, Any]) -> Message:
         """Convert dict back to Message object."""
         created_at = None
         if data.get("created_at"):
@@ -123,8 +121,7 @@ class DiskCacheManager:
         )
 
     def add_message(self, message: Message) -> None:
-        """
-        Add a message to cache.
+        """Add a message to cache.
 
         Args:
             message: Message object to add.
@@ -162,8 +159,7 @@ class DiskCacheManager:
         logger.debug(f"Added message {message.message_id} to disk cache")
 
     def update_message(self, message: Message) -> bool:
-        """
-        Update an existing message in cache.
+        """Update an existing message in cache.
 
         Args:
             message: Message object with updated data.
@@ -184,10 +180,9 @@ class DiskCacheManager:
         return True
 
     def get_recent_messages(
-        self, user_id: str, thread_id: str, limit: Optional[int] = None
-    ) -> List[Message]:
-        """
-        Get recent messages from cache in chronological order.
+        self, user_id: str, thread_id: str, limit: int | None = None
+    ) -> list[Message]:
+        """Get recent messages from cache in chronological order.
 
         Args:
             user_id: User identifier.
@@ -223,8 +218,7 @@ class DiskCacheManager:
         return messages
 
     def clear_thread(self, user_id: str, thread_id: str) -> None:
-        """
-        Clear cache for a specific thread.
+        """Clear cache for a specific thread.
 
         Args:
             user_id: User identifier.
@@ -247,9 +241,8 @@ class DiskCacheManager:
         self._cache.clear()
         logger.info("Cleared entire disk cache")
 
-    def get_session_metadata(self, user_id: str, thread_id: str) -> Dict[str, Any]:
-        """
-        Aggregate metadata from all cached messages in the current session.
+    def get_session_metadata(self, user_id: str, thread_id: str) -> dict[str, Any]:
+        """Aggregate metadata from all cached messages in the current session.
 
         Args:
             user_id: User identifier.
@@ -281,9 +274,8 @@ class DiskCacheManager:
             "message_count": len(messages),
         }
 
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get cache statistics.
+    def get_stats(self) -> dict[str, Any]:
+        """Get cache statistics.
 
         Returns:
             Dictionary with cache stats.

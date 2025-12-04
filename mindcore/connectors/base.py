@@ -1,5 +1,4 @@
-"""
-Base classes for external connectors.
+"""Base classes for external connectors.
 
 Connectors provide READ-ONLY access to external business systems.
 They map conversation topics to external data sources.
@@ -12,34 +11,34 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, ClassVar
+from typing import Any, ClassVar
 
-from ..core.vocabulary import get_vocabulary
-from ..utils.logger import get_logger
+from mindcore.core.vocabulary import get_vocabulary
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 @dataclass
 class ConnectorResult:
-    """
-    Result from an external connector lookup.
+    """Result from an external connector lookup.
 
     Contains the fetched data, source information, and cache metadata.
     """
 
-    data: Dict[str, Any]  # The fetched data
+    data: dict[str, Any]  # The fetched data
     source: str  # Connector name
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     cache_ttl: int = 300  # How long to cache (seconds)
-    error: Optional[str] = None  # Error message if failed
+    error: str | None = None  # Error message if failed
 
     @property
     def success(self) -> bool:
         """Check if lookup was successful."""
         return self.error is None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "data": self.data,
@@ -83,8 +82,7 @@ class ConnectorResult:
 
 
 class BaseConnector(ABC):
-    """
-    Abstract base class for external system connectors.
+    """Abstract base class for external system connectors.
 
     Connectors provide READ-ONLY access to external systems.
     They map topics to external data sources and extract relevant
@@ -126,7 +124,7 @@ class BaseConnector(ABC):
     """
 
     # Topic(s) this connector handles
-    topics: ClassVar[List[str]] = []
+    topics: ClassVar[list[str]] = []
 
     # Human-readable name
     name: ClassVar[str] = "base_connector"
@@ -141,8 +139,7 @@ class BaseConnector(ABC):
     _topics_registered: ClassVar[bool] = False
 
     def __init__(self, **kwargs):
-        """
-        Initialize connector and register topics with VocabularyManager.
+        """Initialize connector and register topics with VocabularyManager.
 
         Subclasses should call super().__init__(**kwargs) to ensure
         topic registration.
@@ -160,9 +157,8 @@ class BaseConnector(ABC):
             logger.info(f"Connector '{cls.name}' registered topics: {cls.topics}")
 
     @abstractmethod
-    async def lookup(self, user_id: str, context: Dict[str, Any]) -> ConnectorResult:
-        """
-        Fetch data from external system.
+    async def lookup(self, user_id: str, context: dict[str, Any]) -> ConnectorResult:
+        """Fetch data from external system.
 
         This method must be READ-ONLY. Never modify external data.
 
@@ -185,12 +181,10 @@ class BaseConnector(ABC):
             ...         source=self.name
             ...     )
         """
-        pass
 
     @abstractmethod
-    def extract_entities(self, text: str) -> Dict[str, Any]:
-        """
-        Extract relevant entities from text for lookup.
+    def extract_entities(self, text: str) -> dict[str, Any]:
+        r"""Extract relevant entities from text for lookup.
 
         Identifies IDs, dates, amounts, and other relevant
         information that can be used to query external systems.
@@ -210,11 +204,9 @@ class BaseConnector(ABC):
             ...         entities["order_id"] = order_match.group(1) or order_match.group(2)
             ...     return entities
         """
-        pass
 
-    def can_handle(self, topics: List[str]) -> bool:
-        """
-        Check if this connector handles any of the given topics.
+    def can_handle(self, topics: list[str]) -> bool:
+        """Check if this connector handles any of the given topics.
 
         Uses VocabularyManager to resolve topic aliases.
 
@@ -237,9 +229,8 @@ class BaseConnector(ABC):
         connector_topics = set(self.topics)
         return bool(connector_topics & resolved_topics)
 
-    def _extract_dates(self, text: str) -> Dict[str, Any]:
-        """
-        Helper to extract date-related information from text.
+    def _extract_dates(self, text: str) -> dict[str, Any]:
+        """Helper to extract date-related information from text.
 
         Args:
             text: Text to extract dates from
@@ -269,9 +260,8 @@ class BaseConnector(ABC):
 
         return entities
 
-    def _extract_amounts(self, text: str) -> Dict[str, Any]:
-        """
-        Helper to extract monetary amounts from text.
+    def _extract_amounts(self, text: str) -> dict[str, Any]:
+        """Helper to extract monetary amounts from text.
 
         Args:
             text: Text to extract amounts from
@@ -296,8 +286,7 @@ class BaseConnector(ABC):
         return entities
 
     async def health_check(self) -> bool:
-        """
-        Check if the connector is healthy and can connect.
+        """Check if the connector is healthy and can connect.
 
         Override to implement actual health check logic.
 

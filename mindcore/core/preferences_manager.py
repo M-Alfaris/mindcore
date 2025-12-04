@@ -1,21 +1,21 @@
-"""
-User Preferences Manager.
+"""User Preferences Manager.
 
 Manages amendable user preferences separately from read-only system data.
 Provides safe methods for updating preferences through AI agent tools.
 """
 
-from typing import Any, Tuple, Optional, Union
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .schemas import UserPreferences
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class PreferencesManager:
-    """
-    Manage user preferences with safe update controls.
+    """Manage user preferences with safe update controls.
 
     Ensures only amendable fields can be updated, protecting
     read-only system data from modification.
@@ -39,8 +39,7 @@ class PreferencesManager:
     """
 
     def __init__(self, db_manager):
-        """
-        Initialize preferences manager.
+        """Initialize preferences manager.
 
         Args:
             db_manager: Database manager instance (SQLiteManager or AsyncSQLiteManager)
@@ -48,8 +47,7 @@ class PreferencesManager:
         self.db = db_manager
 
     def get_preferences(self, user_id: str) -> UserPreferences:
-        """
-        Get user preferences, creating default if not exists.
+        """Get user preferences, creating default if not exists.
 
         Args:
             user_id: User identifier
@@ -59,9 +57,8 @@ class PreferencesManager:
         """
         return self.db.get_or_create_preferences(user_id)
 
-    def update_preference(self, user_id: str, field: str, value: Any) -> Tuple[bool, str]:
-        """
-        Update a user preference field.
+    def update_preference(self, user_id: str, field: str, value: Any) -> tuple[bool, str]:
+        """Update a user preference field.
 
         Only amendable fields can be updated. See UserPreferences.AMENDABLE_FIELDS
         for the list of fields that can be modified.
@@ -95,14 +92,11 @@ class PreferencesManager:
             if self.db.save_preferences(prefs):
                 logger.info(f"Updated {field} for user {user_id}")
                 return True, f"Updated {field} to {value}"
-            else:
-                return False, "Failed to save preferences to database"
-        else:
-            return False, f"Failed to update {field}"
+            return False, "Failed to save preferences to database"
+        return False, f"Failed to update {field}"
 
-    def add_interest(self, user_id: str, interest: str) -> Tuple[bool, str]:
-        """
-        Add an interest to user's list.
+    def add_interest(self, user_id: str, interest: str) -> tuple[bool, str]:
+        """Add an interest to user's list.
 
         Args:
             user_id: User identifier
@@ -116,15 +110,13 @@ class PreferencesManager:
         if interest in prefs.interests:
             return True, f"Interest '{interest}' already exists"
 
-        if prefs.add_to_list("interests", interest):
-            if self.db.save_preferences(prefs):
-                logger.info(f"Added interest '{interest}' for user {user_id}")
-                return True, f"Added interest: {interest}"
+        if prefs.add_to_list("interests", interest) and self.db.save_preferences(prefs):
+            logger.info(f"Added interest '{interest}' for user {user_id}")
+            return True, f"Added interest: {interest}"
         return False, f"Failed to add interest: {interest}"
 
-    def remove_interest(self, user_id: str, interest: str) -> Tuple[bool, str]:
-        """
-        Remove an interest from user's list.
+    def remove_interest(self, user_id: str, interest: str) -> tuple[bool, str]:
+        """Remove an interest from user's list.
 
         Args:
             user_id: User identifier
@@ -144,9 +136,8 @@ class PreferencesManager:
                 return True, f"Removed interest: {interest}"
         return False, f"Failed to remove interest: {interest}"
 
-    def add_goal(self, user_id: str, goal: str) -> Tuple[bool, str]:
-        """
-        Add a goal to user's list.
+    def add_goal(self, user_id: str, goal: str) -> tuple[bool, str]:
+        """Add a goal to user's list.
 
         Args:
             user_id: User identifier
@@ -160,15 +151,13 @@ class PreferencesManager:
         if goal in prefs.goals:
             return True, f"Goal '{goal}' already exists"
 
-        if prefs.add_to_list("goals", goal):
-            if self.db.save_preferences(prefs):
-                logger.info(f"Added goal '{goal}' for user {user_id}")
-                return True, f"Added goal: {goal}"
+        if prefs.add_to_list("goals", goal) and self.db.save_preferences(prefs):
+            logger.info(f"Added goal '{goal}' for user {user_id}")
+            return True, f"Added goal: {goal}"
         return False, f"Failed to add goal: {goal}"
 
-    def remove_goal(self, user_id: str, goal: str) -> Tuple[bool, str]:
-        """
-        Remove a goal from user's list.
+    def remove_goal(self, user_id: str, goal: str) -> tuple[bool, str]:
+        """Remove a goal from user's list.
 
         Args:
             user_id: User identifier
@@ -182,15 +171,13 @@ class PreferencesManager:
         if goal not in prefs.goals:
             return False, f"Goal '{goal}' not found"
 
-        if prefs.remove_from_list("goals", goal):
-            if self.db.save_preferences(prefs):
-                logger.info(f"Removed goal '{goal}' for user {user_id}")
-                return True, f"Removed goal: {goal}"
+        if prefs.remove_from_list("goals", goal) and self.db.save_preferences(prefs):
+            logger.info(f"Removed goal '{goal}' for user {user_id}")
+            return True, f"Removed goal: {goal}"
         return False, f"Failed to remove goal: {goal}"
 
-    def set_custom_context(self, user_id: str, key: str, value: Any) -> Tuple[bool, str]:
-        """
-        Set a custom context key-value pair.
+    def set_custom_context(self, user_id: str, key: str, value: Any) -> tuple[bool, str]:
+        """Set a custom context key-value pair.
 
         Args:
             user_id: User identifier
@@ -210,9 +197,8 @@ class PreferencesManager:
             return True, f"Set {key}: {value}"
         return False, f"Failed to set custom context: {key}"
 
-    def remove_custom_context(self, user_id: str, key: str) -> Tuple[bool, str]:
-        """
-        Remove a custom context key.
+    def remove_custom_context(self, user_id: str, key: str) -> tuple[bool, str]:
+        """Remove a custom context key.
 
         Args:
             user_id: User identifier
@@ -235,8 +221,7 @@ class PreferencesManager:
         return False, f"Failed to remove custom context: {key}"
 
     def get_context_string(self, user_id: str) -> str:
-        """
-        Get formatted preferences string for AI context.
+        """Get formatted preferences string for AI context.
 
         Args:
             user_id: User identifier
@@ -247,9 +232,8 @@ class PreferencesManager:
         prefs = self.get_preferences(user_id)
         return prefs.to_context_string()
 
-    def _validate_value(self, field: str, value: Any) -> Optional[str]:
-        """
-        Validate a value for a specific field.
+    def _validate_value(self, field: str, value: Any) -> str | None:
+        """Validate a value for a specific field.
 
         Args:
             field: Field name
@@ -259,9 +243,8 @@ class PreferencesManager:
             Error message if invalid, None if valid
         """
         # Language validation
-        if field == "language":
-            if not isinstance(value, str) or len(value) < 2:
-                return "Language must be a valid language code (e.g., 'en', 'es', 'fr')"
+        if field == "language" and (not isinstance(value, str) or len(value) < 2):
+            return "Language must be a valid language code (e.g., 'en', 'es', 'fr')"
 
         # Communication style validation
         if field == "communication_style":
@@ -277,23 +260,20 @@ class PreferencesManager:
                 return f"All items in {field} must be strings"
 
         # Custom context validation
-        if field == "custom_context":
-            if not isinstance(value, dict):
-                return "custom_context must be a dictionary"
+        if field == "custom_context" and not isinstance(value, dict):
+            return "custom_context must be a dictionary"
 
         return None
 
 
 class AsyncPreferencesManager:
-    """
-    Async version of PreferencesManager for use with AsyncMindcoreClient.
+    """Async version of PreferencesManager for use with AsyncMindcoreClient.
 
     Same interface as PreferencesManager but with async methods.
     """
 
     def __init__(self, db_manager):
-        """
-        Initialize async preferences manager.
+        """Initialize async preferences manager.
 
         Args:
             db_manager: Async database manager instance
@@ -304,7 +284,7 @@ class AsyncPreferencesManager:
         """Get user preferences, creating default if not exists."""
         return await self.db.get_or_create_preferences(user_id)
 
-    async def update_preference(self, user_id: str, field: str, value: Any) -> Tuple[bool, str]:
+    async def update_preference(self, user_id: str, field: str, value: Any) -> tuple[bool, str]:
         """Update a user preference field."""
         if field not in UserPreferences.AMENDABLE_FIELDS:
             logger.warning(f"Attempted to update non-amendable field: {field}")
@@ -312,13 +292,12 @@ class AsyncPreferencesManager:
 
         prefs = await self.get_preferences(user_id)
 
-        if prefs.update(field, value):
-            if await self.db.save_preferences(prefs):
-                logger.info(f"Updated {field} for user {user_id}")
-                return True, f"Updated {field} to {value}"
+        if prefs.update(field, value) and await self.db.save_preferences(prefs):
+            logger.info(f"Updated {field} for user {user_id}")
+            return True, f"Updated {field} to {value}"
         return False, f"Failed to update {field}"
 
-    async def add_interest(self, user_id: str, interest: str) -> Tuple[bool, str]:
+    async def add_interest(self, user_id: str, interest: str) -> tuple[bool, str]:
         """Add an interest to user's list."""
         prefs = await self.get_preferences(user_id)
 
@@ -330,7 +309,7 @@ class AsyncPreferencesManager:
                 return True, f"Added interest: {interest}"
         return False, f"Failed to add interest: {interest}"
 
-    async def remove_interest(self, user_id: str, interest: str) -> Tuple[bool, str]:
+    async def remove_interest(self, user_id: str, interest: str) -> tuple[bool, str]:
         """Remove an interest from user's list."""
         prefs = await self.get_preferences(user_id)
 

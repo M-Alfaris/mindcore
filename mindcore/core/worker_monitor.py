@@ -1,16 +1,15 @@
-"""
-Worker monitoring for background tasks.
+"""Worker monitoring for background tasks.
 
 Provides monitoring, metrics, and health checks for background workers
 like the enrichment worker.
 """
 
-from typing import Dict, Any, Optional, List, Callable
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from enum import Enum
 import threading
-import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Any
 
 
 class WorkerStatus(str, Enum):
@@ -29,18 +28,18 @@ class WorkerMetrics:
 
     worker_name: str
     status: WorkerStatus = WorkerStatus.IDLE
-    started_at: Optional[datetime] = None
-    last_activity: Optional[datetime] = None
+    started_at: datetime | None = None
+    last_activity: datetime | None = None
     processed_count: int = 0
     error_count: int = 0
     trivial_skip_count: int = 0
     avg_processing_time_ms: float = 0.0
     queue_size: int = 0
-    last_error: Optional[str] = None
-    last_error_at: Optional[datetime] = None
+    last_error: str | None = None
+    last_error_at: datetime | None = None
 
     # Rolling window for processing times (last 100)
-    _processing_times: List[float] = field(default_factory=list)
+    _processing_times: list[float] = field(default_factory=list)
 
     def record_processing(self, duration_ms: float) -> None:
         """Record a successful processing."""
@@ -66,7 +65,7 @@ class WorkerMetrics:
         self.trivial_skip_count += 1
         self.last_activity = datetime.now(timezone.utc)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "worker_name": self.worker_name,
@@ -85,7 +84,7 @@ class WorkerMetrics:
             "savings_from_trivial": self._get_trivial_savings(),
         }
 
-    def _get_uptime_seconds(self) -> Optional[float]:
+    def _get_uptime_seconds(self) -> float | None:
         """Get worker uptime in seconds."""
         if not self.started_at:
             return None
@@ -98,7 +97,7 @@ class WorkerMetrics:
             return 0.0
         return round(self.error_count / total * 100, 2)
 
-    def _get_trivial_savings(self) -> Dict[str, Any]:
+    def _get_trivial_savings(self) -> dict[str, Any]:
         """Get estimated savings from trivial message detection."""
         total = self.processed_count + self.trivial_skip_count
         if total == 0:
@@ -111,8 +110,7 @@ class WorkerMetrics:
 
 
 class WorkerMonitor:
-    """
-    Monitor for background workers.
+    """Monitor for background workers.
 
     Tracks metrics, health status, and provides callbacks for alerts.
 
@@ -132,15 +130,14 @@ class WorkerMonitor:
 
     def __init__(self):
         """Initialize the worker monitor."""
-        self._workers: Dict[str, WorkerMetrics] = {}
+        self._workers: dict[str, WorkerMetrics] = {}
         self._lock = threading.Lock()
-        self._alert_callbacks: List[Callable[[str, WorkerMetrics], None]] = []
+        self._alert_callbacks: list[Callable[[str, WorkerMetrics], None]] = []
         self._health_check_interval = 30  # seconds
-        self._last_health_check: Optional[datetime] = None
+        self._last_health_check: datetime | None = None
 
     def register_worker(self, name: str) -> WorkerMetrics:
-        """
-        Register a new worker for monitoring.
+        """Register a new worker for monitoring.
 
         Args:
             name: Unique worker name
@@ -166,18 +163,17 @@ class WorkerMonitor:
             if name in self._workers:
                 self._workers[name].status = WorkerStatus.STOPPED
 
-    def get_metrics(self, name: str) -> Optional[WorkerMetrics]:
+    def get_metrics(self, name: str) -> WorkerMetrics | None:
         """Get metrics for a specific worker."""
         return self._workers.get(name)
 
-    def get_all_metrics(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_metrics(self) -> dict[str, dict[str, Any]]:
         """Get metrics for all workers."""
         with self._lock:
             return {name: metrics.to_dict() for name, metrics in self._workers.items()}
 
-    def get_health(self) -> Dict[str, Any]:
-        """
-        Get overall health status.
+    def get_health(self) -> dict[str, Any]:
+        """Get overall health status.
 
         Returns:
             Health check result with status and details
@@ -229,8 +225,7 @@ class WorkerMonitor:
             }
 
     def add_alert_callback(self, callback: Callable[[str, WorkerMetrics], None]) -> None:
-        """
-        Add a callback for worker alerts.
+        """Add a callback for worker alerts.
 
         Args:
             callback: Function called with (worker_name, metrics) on issues
@@ -253,7 +248,7 @@ class WorkerMonitor:
 
 
 # Singleton instance
-_monitor: Optional[WorkerMonitor] = None
+_monitor: WorkerMonitor | None = None
 _monitor_lock = threading.Lock()
 
 

@@ -1,16 +1,16 @@
-"""
-Cost analysis and efficiency benchmarking for Mindcore.
+"""Cost analysis and efficiency benchmarking for Mindcore.
 
 This module proves that using Mindcore's lightweight AI agents for memory management
 saves significantly more tokens and costs than traditional approaches.
 """
 
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
-from .tokenizer import estimate_tokens
 from .logger import get_logger
+from .tokenizer import estimate_tokens
+
 
 logger = get_logger(__name__)
 
@@ -46,16 +46,14 @@ class CostMetrics:
 
 
 class CostAnalyzer:
-    """
-    Analyzes and compares costs between Mindcore and traditional approaches.
+    """Analyzes and compares costs between Mindcore and traditional approaches.
 
     Traditional approach: Send full conversation history with every request
     Mindcore approach: Use lightweight agents to enrich + intelligent context assembly
     """
 
     def __init__(self, main_model: str = "gpt-4o", enrichment_model: str = "gpt-4o-mini"):
-        """
-        Initialize cost analyzer.
+        """Initialize cost analyzer.
 
         Args:
             main_model: Main LLM model being used.
@@ -67,10 +65,9 @@ class CostAnalyzer:
         self.enrichment_pricing = PRICING.get(enrichment_model, PRICING["gpt-4o-mini"])
 
     def estimate_traditional_cost(
-        self, conversation_history: List[str], num_requests: int = 10
-    ) -> Dict[str, Any]:
-        """
-        Estimate cost of traditional approach (sending full history every time).
+        self, conversation_history: list[str], num_requests: int = 10
+    ) -> dict[str, Any]:
+        """Estimate cost of traditional approach (sending full history every time).
 
         Args:
             conversation_history: List of message texts.
@@ -107,12 +104,11 @@ class CostAnalyzer:
 
     def estimate_mindcore_cost(
         self,
-        conversation_history: List[str],
+        conversation_history: list[str],
         num_requests: int = 10,
         avg_context_size_tokens: int = 1500,
-    ) -> Dict[str, Any]:
-        """
-        Estimate cost of Mindcore approach.
+    ) -> dict[str, Any]:
+        """Estimate cost of Mindcore approach.
 
         Args:
             conversation_history: List of message texts.
@@ -175,10 +171,9 @@ class CostAnalyzer:
         }
 
     def compare_approaches(
-        self, conversation_history: List[str], num_requests: int = 10
-    ) -> Dict[str, Any]:
-        """
-        Compare traditional vs Mindcore approach.
+        self, conversation_history: list[str], num_requests: int = 10
+    ) -> dict[str, Any]:
+        """Compare traditional vs Mindcore approach.
 
         Args:
             conversation_history: List of message texts.
@@ -206,9 +201,8 @@ class CostAnalyzer:
             "verdict": "Mindcore saves money" if cost_saved > 0 else "Traditional is cheaper",
         }
 
-    def generate_benchmark_report(self, scenarios: List[Dict[str, Any]]) -> str:
-        """
-        Generate comprehensive benchmark report.
+    def generate_benchmark_report(self, scenarios: list[dict[str, Any]]) -> str:
+        """Generate comprehensive benchmark report.
 
         Args:
             scenarios: List of test scenarios with conversation histories.
@@ -282,7 +276,7 @@ class CostAnalyzer:
         report_lines.append(f"Total scenarios tested: {len(scenarios)}")
         report_lines.append(f"Total cost saved: ${total_saved:.4f}")
         report_lines.append(f"Total traditional cost: ${total_traditional_cost:.4f}")
-        report_lines.append(f"Overall savings: {(total_saved/total_traditional_cost)*100:.1f}%")
+        report_lines.append(f"Overall savings: {(total_saved / total_traditional_cost) * 100:.1f}%")
         report_lines.append("")
         report_lines.append("KEY INSIGHTS:")
         report_lines.append("  • Mindcore uses gpt-4o-mini for enrichment/context assembly (cheap)")
@@ -295,8 +289,7 @@ class CostAnalyzer:
 
 
 def run_cost_benchmark() -> str:
-    """
-    Run standard cost benchmarks.
+    """Run standard cost benchmarks.
 
     Returns:
         Benchmark report string.

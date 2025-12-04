@@ -1,5 +1,4 @@
-"""
-Multi-Agent Access Control and Privacy System
+"""Multi-Agent Access Control and Privacy System.
 ==============================================
 
 Provides fine-grained access control for knowledge sharing between
@@ -56,15 +55,17 @@ Example:
     ... )
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Set
-from enum import Enum
 import hashlib
 import secrets
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any
 
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 from .schemas import KnowledgeVisibility  # Single source of truth
+
 
 logger = get_logger(__name__)
 
@@ -81,8 +82,7 @@ class Permission(str, Enum):
 
 @dataclass
 class AgentRegistration:
-    """
-    Registered agent identity.
+    """Registered agent identity.
 
     Each agent must be registered to access the knowledge system.
     """
@@ -92,28 +92,28 @@ class AgentRegistration:
     owner_id: str  # Organization or user that owns this agent
 
     # Group memberships for shared access
-    groups: List[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
 
     # Agent capabilities/roles
-    roles: List[str] = field(default_factory=list)
+    roles: list[str] = field(default_factory=list)
     # e.g., ["support", "sales", "admin"]
 
     # API key hash for authentication
-    api_key_hash: Optional[str] = None
+    api_key_hash: str | None = None
 
     # Status
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    last_active_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    last_active_at: datetime | None = None
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now(timezone.utc)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "agent_id": self.agent_id,
             "name": self.name,
@@ -129,24 +129,23 @@ class AgentRegistration:
 
 @dataclass
 class AccessControlEntry:
-    """
-    Single entry in an Access Control List (ACL).
+    """Single entry in an Access Control List (ACL).
 
     Grants specific permissions to a principal (agent or group).
     """
 
     principal_id: str  # Agent ID or group name (prefixed with "group:")
     principal_type: str  # "agent" or "group"
-    permissions: Set[Permission] = field(default_factory=set)
-    granted_by: Optional[str] = None  # Agent who granted this access
-    granted_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None  # Optional expiration
+    permissions: set[Permission] = field(default_factory=set)
+    granted_by: str | None = None  # Agent who granted this access
+    granted_at: datetime | None = None
+    expires_at: datetime | None = None  # Optional expiration
 
     def __post_init__(self):
         if self.granted_at is None:
             self.granted_at = datetime.now(timezone.utc)
         # Convert string permissions to enum
-        if self.permissions and isinstance(list(self.permissions)[0], str):
+        if self.permissions and isinstance(next(iter(self.permissions)), str):
             self.permissions = {Permission(p) for p in self.permissions}
 
     def is_expired(self) -> bool:
@@ -159,7 +158,7 @@ class AccessControlEntry:
             return False
         return permission in self.permissions or Permission.ADMIN in self.permissions
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "principal_id": self.principal_id,
             "principal_type": self.principal_type,
@@ -172,8 +171,7 @@ class AccessControlEntry:
 
 @dataclass
 class KnowledgeAccessPolicy:
-    """
-    Access policy attached to a knowledge resource.
+    """Access policy attached to a knowledge resource.
 
     Combines visibility with fine-grained ACL.
     """
@@ -187,14 +185,14 @@ class KnowledgeAccessPolicy:
     visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE
 
     # Fine-grained access control
-    acl: List[AccessControlEntry] = field(default_factory=list)
+    acl: list[AccessControlEntry] = field(default_factory=list)
 
     # Sharing groups (for SHARED visibility)
-    sharing_groups: List[str] = field(default_factory=list)
+    sharing_groups: list[str] = field(default_factory=list)
 
     # Audit
-    created_at: Optional[datetime] = None
-    modified_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    modified_at: datetime | None = None
 
     def __post_init__(self):
         if self.created_at is None:
@@ -206,9 +204,9 @@ class KnowledgeAccessPolicy:
         self,
         principal_id: str,
         principal_type: str,
-        permissions: Set[Permission],
+        permissions: set[Permission],
         granted_by: str,
-        expires_at: Optional[datetime] = None,
+        expires_at: datetime | None = None,
     ) -> None:
         """Add an ACL entry for a principal."""
         # Remove existing entry for this principal
@@ -233,14 +231,14 @@ class KnowledgeAccessPolicy:
             return True
         return False
 
-    def get_acl_entry(self, principal_id: str) -> Optional[AccessControlEntry]:
+    def get_acl_entry(self, principal_id: str) -> AccessControlEntry | None:
         """Get ACL entry for a principal."""
         for entry in self.acl:
             if entry.principal_id == principal_id:
                 return entry
         return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "resource_id": self.resource_id,
             "resource_type": self.resource_type,
@@ -265,10 +263,10 @@ class AccessAuditLog:
     resource_type: str
     action: str  # "read", "write", "delete", "share"
     success: bool
-    denial_reason: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    denial_reason: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "log_id": self.log_id,
             "timestamp": self.timestamp.isoformat(),
@@ -283,8 +281,7 @@ class AccessAuditLog:
 
 
 class AccessControlManager:
-    """
-    Manages access control for multi-agent knowledge sharing.
+    """Manages access control for multi-agent knowledge sharing.
 
     Handles:
     - Agent registration and authentication
@@ -299,8 +296,7 @@ class AccessControlManager:
         enable_audit_logging: bool = True,
         default_visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE,
     ):
-        """
-        Initialize access control manager.
+        """Initialize access control manager.
 
         Args:
             database: Database manager for persistence
@@ -312,8 +308,8 @@ class AccessControlManager:
         self._default_visibility = default_visibility
 
         # In-memory caches (for performance)
-        self._agents: Dict[str, AgentRegistration] = {}
-        self._policies: Dict[str, KnowledgeAccessPolicy] = {}
+        self._agents: dict[str, AgentRegistration] = {}
+        self._policies: dict[str, KnowledgeAccessPolicy] = {}
 
         logger.info("AccessControlManager initialized")
 
@@ -326,12 +322,11 @@ class AccessControlManager:
         agent_id: str,
         name: str,
         owner_id: str,
-        groups: Optional[List[str]] = None,
-        roles: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        groups: list[str] | None = None,
+        roles: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> tuple[AgentRegistration, str]:
-        """
-        Register a new agent.
+        """Register a new agent.
 
         Args:
             agent_id: Unique identifier for the agent
@@ -367,9 +362,8 @@ class AccessControlManager:
         logger.info(f"Registered agent: {agent_id} (owner: {owner_id})")
         return agent, api_key
 
-    def authenticate_agent(self, agent_id: str, api_key: str) -> Optional[AgentRegistration]:
-        """
-        Authenticate an agent by API key.
+    def authenticate_agent(self, agent_id: str, api_key: str) -> AgentRegistration | None:
+        """Authenticate an agent by API key.
 
         Args:
             agent_id: Agent identifier
@@ -400,7 +394,7 @@ class AccessControlManager:
 
         return agent
 
-    def get_agent(self, agent_id: str) -> Optional[AgentRegistration]:
+    def get_agent(self, agent_id: str) -> AgentRegistration | None:
         """Get agent by ID."""
         if agent_id in self._agents:
             return self._agents[agent_id]
@@ -446,11 +440,10 @@ class AccessControlManager:
         resource_type: str,
         owner_id: str,
         owner_org: str,
-        visibility: Optional[KnowledgeVisibility] = None,
-        sharing_groups: Optional[List[str]] = None,
+        visibility: KnowledgeVisibility | None = None,
+        sharing_groups: list[str] | None = None,
     ) -> KnowledgeAccessPolicy:
-        """
-        Create an access policy for a resource.
+        """Create an access policy for a resource.
 
         Args:
             resource_id: ID of the resource
@@ -479,7 +472,7 @@ class AccessControlManager:
 
         return policy
 
-    def get_policy(self, resource_id: str) -> Optional[KnowledgeAccessPolicy]:
+    def get_policy(self, resource_id: str) -> KnowledgeAccessPolicy | None:
         """Get policy for a resource."""
         if resource_id in self._policies:
             return self._policies[resource_id]
@@ -492,8 +485,7 @@ class AccessControlManager:
     def update_visibility(
         self, resource_id: str, visibility: KnowledgeVisibility, requesting_agent_id: str
     ) -> bool:
-        """
-        Update visibility of a resource.
+        """Update visibility of a resource.
 
         Only owner or agents with ADMIN permission can change visibility.
         """
@@ -526,12 +518,11 @@ class AccessControlManager:
         resource_id: str,
         principal_id: str,
         principal_type: str,
-        permissions: Set[Permission],
+        permissions: set[Permission],
         granting_agent_id: str,
-        expires_at: Optional[datetime] = None,
+        expires_at: datetime | None = None,
     ) -> bool:
-        """
-        Grant access to a resource.
+        """Grant access to a resource.
 
         Args:
             resource_id: Resource to grant access to
@@ -572,8 +563,7 @@ class AccessControlManager:
             self._persist_policy(policy)
 
         logger.info(
-            f"Access granted: {principal_id} -> {resource_id} "
-            f"({[p.value for p in permissions]})"
+            f"Access granted: {principal_id} -> {resource_id} ({[p.value for p in permissions]})"
         )
         return True
 
@@ -600,8 +590,7 @@ class AccessControlManager:
     def can_access(
         self, agent_id: str, resource_id: str, permission: Permission = Permission.READ
     ) -> bool:
-        """
-        Check if an agent can access a resource with given permission.
+        """Check if an agent can access a resource with given permission.
 
         Args:
             agent_id: Agent requesting access
@@ -662,7 +651,6 @@ class AccessControlManager:
         self, agent: AgentRegistration, policy: KnowledgeAccessPolicy, permission: Permission
     ) -> bool:
         """Check access based on visibility and ACL."""
-
         # PRIVATE: Only owner can access (already checked above)
         if policy.visibility == KnowledgeVisibility.PRIVATE:
             # Check explicit ACL
@@ -735,10 +723,9 @@ class AccessControlManager:
         resource_id: str,
         target_agent_id: str,
         sharing_agent_id: str,
-        permissions: Optional[Set[Permission]] = None,
+        permissions: set[Permission] | None = None,
     ) -> bool:
-        """
-        Share a resource with another agent.
+        """Share a resource with another agent.
 
         Args:
             resource_id: Resource to share
@@ -765,10 +752,9 @@ class AccessControlManager:
         resource_id: str,
         group_name: str,
         sharing_agent_id: str,
-        permissions: Optional[Set[Permission]] = None,
+        permissions: set[Permission] | None = None,
     ) -> bool:
-        """
-        Share a resource with a group.
+        """Share a resource with a group.
 
         Args:
             resource_id: Resource to share
@@ -793,11 +779,10 @@ class AccessControlManager:
     def get_accessible_resources(
         self,
         agent_id: str,
-        resource_type: Optional[str] = None,
+        resource_type: str | None = None,
         permission: Permission = Permission.READ,
-    ) -> List[str]:
-        """
-        Get all resources an agent can access.
+    ) -> list[str]:
+        """Get all resources an agent can access.
 
         Args:
             agent_id: Agent to check
@@ -829,7 +814,7 @@ class AccessControlManager:
         resource_type: str,
         action: str,
         success: bool,
-        denial_reason: Optional[str] = None,
+        denial_reason: str | None = None,
     ) -> None:
         """Log an access attempt."""
         if not self._audit_enabled:
@@ -857,12 +842,12 @@ class AccessControlManager:
 
     def get_audit_logs(
         self,
-        agent_id: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        agent_id: str | None = None,
+        resource_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AccessAuditLog]:
+    ) -> list[AccessAuditLog]:
         """Get audit logs with optional filters."""
         # Would query database in real implementation
         return []
@@ -900,9 +885,9 @@ class AccessControlManager:
             else:
                 logger.warning("Database doesn't support agent persistence")
         except Exception as e:
-            logger.error(f"Failed to persist agent {agent.agent_id}: {e}")
+            logger.exception(f"Failed to persist agent {agent.agent_id}: {e}")
 
-    def _load_agent(self, agent_id: str) -> Optional[AgentRegistration]:
+    def _load_agent(self, agent_id: str) -> AgentRegistration | None:
         """Load agent from database."""
         if not self._db:
             return None
@@ -929,7 +914,7 @@ class AccessControlManager:
                 if data:
                     return AgentRegistration(**data)
         except Exception as e:
-            logger.error(f"Failed to load agent {agent_id}: {e}")
+            logger.exception(f"Failed to load agent {agent_id}: {e}")
 
         return None
 
@@ -952,9 +937,9 @@ class AccessControlManager:
             elif hasattr(self._db, "upsert_json"):
                 self._db.upsert_json("access_policies", policy.resource_id, policy_data)
         except Exception as e:
-            logger.error(f"Failed to persist policy {policy.resource_id}: {e}")
+            logger.exception(f"Failed to persist policy {policy.resource_id}: {e}")
 
-    def _load_policy(self, resource_id: str) -> Optional[KnowledgeAccessPolicy]:
+    def _load_policy(self, resource_id: str) -> KnowledgeAccessPolicy | None:
         """Load policy from database."""
         if not self._db:
             return None
@@ -984,7 +969,7 @@ class AccessControlManager:
                     data["acl"] = [AccessControlEntry(**e) for e in data.get("acl", [])]
                     return KnowledgeAccessPolicy(**data)
         except Exception as e:
-            logger.error(f"Failed to load policy {resource_id}: {e}")
+            logger.exception(f"Failed to load policy {resource_id}: {e}")
 
         return None
 
@@ -1019,8 +1004,7 @@ class AccessControlManager:
 
 
 class CasbinAccessControlManager(AccessControlManager):
-    """
-    Enhanced access control using Casbin for RBAC/ABAC.
+    """Enhanced access control using Casbin for RBAC/ABAC.
 
     Casbin provides a powerful and flexible authorization mechanism that supports:
     - Role-Based Access Control (RBAC)
@@ -1055,14 +1039,13 @@ class CasbinAccessControlManager(AccessControlManager):
     def __init__(
         self,
         database: Any = None,
-        model_path: Optional[str] = None,
-        policy_path: Optional[str] = None,
-        model_text: Optional[str] = None,
+        model_path: str | None = None,
+        policy_path: str | None = None,
+        model_text: str | None = None,
         enable_audit_logging: bool = True,
         default_visibility: KnowledgeVisibility = KnowledgeVisibility.PRIVATE,
     ):
-        """
-        Initialize Casbin-powered access control.
+        """Initialize Casbin-powered access control.
 
         Args:
             database: Database manager for persistence
@@ -1099,8 +1082,7 @@ class CasbinAccessControlManager(AccessControlManager):
     def with_rbac(
         cls, database: Any = None, enable_audit_logging: bool = True
     ) -> "CasbinAccessControlManager":
-        """
-        Create manager with built-in RBAC model.
+        """Create manager with built-in RBAC model.
 
         RBAC Model:
         - Supports role hierarchy (e.g., admin inherits from manager)
@@ -1131,8 +1113,7 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
     def with_rbac_domains(
         cls, database: Any = None, enable_audit_logging: bool = True
     ) -> "CasbinAccessControlManager":
-        """
-        Create manager with RBAC + domains (multi-tenant).
+        """Create manager with RBAC + domains (multi-tenant).
 
         Supports different role sets per organization/tenant.
         """
@@ -1159,8 +1140,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
         )
 
     def add_policy(self, *args) -> bool:
-        """
-        Add a policy rule.
+        """Add a policy rule.
 
         For RBAC: add_policy(agent_id, resource_id, action)
         For RBAC domains: add_policy(agent_id, domain, resource_id, action)
@@ -1175,9 +1155,8 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
             return False
         return self._enforcer.remove_policy(*args)
 
-    def add_role_for_agent(self, agent_id: str, role: str, domain: Optional[str] = None) -> bool:
-        """
-        Assign a role to an agent.
+    def add_role_for_agent(self, agent_id: str, role: str, domain: str | None = None) -> bool:
+        """Assign a role to an agent.
 
         Args:
             agent_id: Agent identifier
@@ -1190,9 +1169,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
             return self._enforcer.add_grouping_policy(agent_id, role, domain)
         return self._enforcer.add_grouping_policy(agent_id, role)
 
-    def remove_role_from_agent(
-        self, agent_id: str, role: str, domain: Optional[str] = None
-    ) -> bool:
+    def remove_role_from_agent(self, agent_id: str, role: str, domain: str | None = None) -> bool:
         """Remove a role from an agent."""
         if not self._enforcer:
             return False
@@ -1200,7 +1177,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
             return self._enforcer.remove_grouping_policy(agent_id, role, domain)
         return self._enforcer.remove_grouping_policy(agent_id, role)
 
-    def get_roles_for_agent(self, agent_id: str, domain: Optional[str] = None) -> List[str]:
+    def get_roles_for_agent(self, agent_id: str, domain: str | None = None) -> list[str]:
         """Get all roles for an agent."""
         if not self._enforcer:
             return []
@@ -1208,7 +1185,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
             return self._enforcer.get_roles_for_user_in_domain(agent_id, domain)
         return self._enforcer.get_roles_for_user(agent_id)
 
-    def get_agents_for_role(self, role: str, domain: Optional[str] = None) -> List[str]:
+    def get_agents_for_role(self, role: str, domain: str | None = None) -> list[str]:
         """Get all agents with a specific role."""
         if not self._enforcer:
             return []
@@ -1217,8 +1194,7 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
         return self._enforcer.get_users_for_role(role)
 
     def enforce(self, *args) -> bool:
-        """
-        Check if a request should be allowed.
+        """Check if a request should be allowed.
 
         For RBAC: enforce(agent_id, resource_id, action)
         For RBAC domains: enforce(agent_id, domain, resource_id, action)
@@ -1235,10 +1211,9 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
         agent_id: str,
         resource_id: str,
         permission: Permission = Permission.READ,
-        domain: Optional[str] = None,
+        domain: str | None = None,
     ) -> bool:
-        """
-        Check access using both Casbin and parent's visibility-based checks.
+        """Check access using both Casbin and parent's visibility-based checks.
 
         First checks Casbin policies, then falls back to visibility-based
         access control from the parent class.
@@ -1249,10 +1224,9 @@ m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
                 if self.enforce(agent_id, domain, resource_id, permission.value):
                     self._log_access(agent_id, resource_id, "resource", permission.value, True)
                     return True
-            else:
-                if self.enforce(agent_id, resource_id, permission.value):
-                    self._log_access(agent_id, resource_id, "resource", permission.value, True)
-                    return True
+            elif self.enforce(agent_id, resource_id, permission.value):
+                self._log_access(agent_id, resource_id, "resource", permission.value, True)
+                return True
 
         # Fall back to parent's visibility-based checks
         return super().can_access(agent_id, resource_id, permission)

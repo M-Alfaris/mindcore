@@ -1,5 +1,4 @@
-"""
-Mindcore: Intelligent Memory and Context Management for AI Agents
+"""Mindcore: Intelligent Memory and Context Management for AI Agents.
 ===================================================================
 
 Save 60-90% on token costs with intelligent memory management powered by
@@ -38,84 +37,72 @@ Features:
 - In-memory and disk-backed caching
 """
 
-from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
-import threading
 import atexit
-import tempfile
-import time
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-import warnings
 import os
+import tempfile
+import threading
+import time
+import warnings
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 # Persistent queue (survives crashes/restarts)
 import persistqueue
 
+
 # Version
-__version__ = "0.3.0"
+__version__ = "0.1.0"
 __author__ = "Mindcore Contributors"
 __license__ = "MIT"
 
 # Core classes
+# AI Agents
+import contextlib
+
+from .agents import (
+    BaseAgent,
+    ContextTools,
+    SmartContextAgent,
+    SummarizationAgent,
+    TrivialCategory,
+    TrivialMessageDetector,
+    get_trivial_detector,
+)
+from .agents import (
+    EnrichmentAgent as MetadataAgent,
+)
 from .core import (
-    ConfigLoader,
-    DatabaseManager,
-    SQLiteManager,
+    AssembledContext,
     CacheManager,
+    CommunicationStyle,
+    ConfigLoader,
+    ContextRequest,
+    DatabaseManager,
     DiskCacheManager,
-    PreferencesManager,
+    EntityType,
+    IngestRequest,
+    Intent,
     Message,
     MessageMetadata,
     MessageRole,
-    AssembledContext,
-    ContextRequest,
-    IngestRequest,
+    PreferencesManager,
+    Sentiment,
+    SQLiteManager,
     ThreadSummary,
     UserPreferences,
     # VocabularyManager
     VocabularyManager,
     VocabularySource,
-    Intent,
-    Sentiment,
-    CommunicationStyle,
-    EntityType,
     get_vocabulary,
-)
-
-# AI Agents
-from .agents import (
-    BaseAgent,
-    EnrichmentAgent as MetadataAgent,
-    SummarizationAgent,
-    SmartContextAgent,
-    ContextTools,
-    TrivialMessageDetector,
-    TrivialCategory,
-    get_trivial_detector,
-)
-
-# Worker monitoring
-from .core.worker_monitor import (
-    WorkerMonitor,
-    WorkerMetrics,
-    WorkerStatus,
-    get_worker_monitor,
 )
 
 # Adaptive preferences
 from .core.adaptive_preferences import (
-    AdaptivePreferencesLearner,
     AdaptiveConfig,
+    AdaptivePreferencesLearner,
     get_adaptive_learner,
-)
-
-# Retention policy
-from .core.retention_policy import (
-    RetentionPolicyManager,
-    RetentionConfig,
-    MemoryTier,
-    get_retention_policy,
 )
 
 # Cache invalidation
@@ -125,39 +112,58 @@ from .core.cache_invalidation import (
     get_cache_invalidation,
 )
 
+# Multi-agent support
+from .core.multi_agent import (
+    AgentProfile,
+    AgentVisibility,
+    MemorySharingMode,
+    MultiAgentConfig,
+    MultiAgentManager,
+    configure_multi_agent,
+    get_multi_agent_manager,
+)
+
 # Prometheus metrics
 from .core.prometheus_metrics import (
     MindcoreMetrics,
-    get_metrics as get_prometheus_metrics,
-    start_metrics_server,
     is_prometheus_available,
+    start_metrics_server,
+)
+from .core.prometheus_metrics import (
+    get_metrics as get_prometheus_metrics,
 )
 
-# Multi-agent support
-from .core.multi_agent import (
-    MultiAgentConfig,
-    MultiAgentManager,
-    MemorySharingMode,
-    AgentVisibility,
-    AgentProfile,
-    get_multi_agent_manager,
-    configure_multi_agent,
+# Retention policy
+from .core.retention_policy import (
+    MemoryTier,
+    RetentionConfig,
+    RetentionPolicyManager,
+    get_retention_policy,
+)
+
+# Worker monitoring
+from .core.worker_monitor import (
+    WorkerMetrics,
+    WorkerMonitor,
+    WorkerStatus,
+    get_worker_monitor,
 )
 
 # LLM Providers
 from .llm import (
     BaseLLMProvider,
-    LLMResponse,
-    LlamaCppProvider,
-    OpenAIProvider,
     FallbackProvider,
+    LlamaCppProvider,
+    LLMResponse,
+    OpenAIProvider,
     ProviderType,
     create_provider,
     get_provider_type,
 )
 
 # Utilities
-from .utils import get_logger, generate_message_id, SecurityValidator
+from .utils import SecurityValidator, generate_message_id, get_logger
+
 
 logger = get_logger(__name__)
 
@@ -182,13 +188,12 @@ def _get_sort_key(message: Message) -> float:
 
 
 # Global instance with thread-safe initialization
-_mindcore_instance: Optional["MindcoreClient"] = None
+_mindcore_instance: "MindcoreClient | None" = None
 _instance_lock = threading.Lock()
 
 
 class MindcoreClient:
-    """
-    Main Mindcore client for intelligent memory and context management.
+    """Main Mindcore client for intelligent memory and context management.
 
     Simplified API with:
     - Single ingestion flow (async background enrichment)
@@ -219,18 +224,17 @@ class MindcoreClient:
 
     def __init__(
         self,
-        config_path: Optional[str] = None,
+        config_path: str | None = None,
         use_sqlite: bool = False,
         sqlite_path: str = "mindcore.db",
-        llm_provider: Optional[str] = None,
+        llm_provider: str | None = None,
         persistent_cache: bool = True,
-        cache_dir: Optional[str] = None,
-        vocabulary: Optional[VocabularyManager] = None,
-        multi_agent_config: Optional[MultiAgentConfig] = None,
-        enrichment_workers: Optional[int] = None,
+        cache_dir: str | None = None,
+        vocabulary: VocabularyManager | None = None,
+        multi_agent_config: MultiAgentConfig | None = None,
+        enrichment_workers: int | None = None,
     ):
-        """
-        Initialize Mindcore client.
+        """Initialize Mindcore client.
 
         Args:
             config_path: Optional path to config.yaml file.
@@ -356,7 +360,9 @@ class MindcoreClient:
 
         # Retention policy manager
         self._retention_policy = RetentionPolicyManager(
-            self.db, summarization_agent=None, config=RetentionConfig()  # Set later if needed
+            self.db,
+            summarization_agent=None,
+            config=RetentionConfig(),  # Set later if needed
         )
 
         # Cache invalidation manager
@@ -380,7 +386,7 @@ class MindcoreClient:
 
         # Start worker threads
         self._enrichment_futures = []
-        for i in range(self._enrichment_workers):
+        for _i in range(self._enrichment_workers):
             future = self._enrichment_executor.submit(self._enrichment_worker)
             self._enrichment_futures.append(future)
 
@@ -392,10 +398,10 @@ class MindcoreClient:
 
         db_type = "SQLite" if use_sqlite else "PostgreSQL"
         logger.info(
-            f"Mindcore initialized with {db_type} and " f"{self._llm_provider.name} LLM provider"
+            f"Mindcore initialized with {db_type} and {self._llm_provider.name} LLM provider"
         )
 
-    def _create_llm_provider(self, provider_type_str: Optional[str]) -> BaseLLMProvider:
+    def _create_llm_provider(self, provider_type_str: str | None) -> BaseLLMProvider:
         """Create LLM provider based on configuration."""
         llm_config = self.config.get_llm_config()
 
@@ -432,7 +438,7 @@ class MindcoreClient:
                 openai_config=openai_config if openai_config else None,
             )
         except ValueError as e:
-            logger.error(f"Failed to create LLM provider: {e}")
+            logger.exception(f"Failed to create LLM provider: {e}")
             raise ValueError(
                 f"No LLM provider available. Configure either:\n"
                 f"  - MINDCORE_LLAMA_MODEL_PATH for local inference, or\n"
@@ -461,14 +467,13 @@ class MindcoreClient:
         session_id: str,
         role: str,
         text: str,
-        message_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        visibility: Optional[str] = None,
-        sharing_groups: Optional[List[str]] = None,
+        message_id: str | None = None,
+        agent_id: str | None = None,
+        visibility: str | None = None,
+        sharing_groups: list[str] | None = None,
         **metadata,
     ) -> Message:
-        """
-        Ingest a message with background enrichment.
+        """Ingest a message with background enrichment.
 
         This is the PRIMARY ingestion method. Messages are stored immediately
         and enriched asynchronously in the background.
@@ -588,29 +593,6 @@ class MindcoreClient:
         logger.debug(f"Message {message.message_id} ingested (enrichment queued)")
         return message
 
-    def ingest_message(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Ingest a message (legacy API).
-
-        Deprecated: Use ingest() instead for cleaner API.
-        """
-        return self.ingest(
-            user_id=message_dict["user_id"],
-            thread_id=message_dict["thread_id"],
-            session_id=message_dict["session_id"],
-            role=message_dict["role"],
-            text=message_dict["text"],
-            message_id=message_dict.get("message_id"),
-        )
-
-    def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Ingest a message (legacy API).
-
-        Deprecated: Use ingest() instead. All ingestion is now fast by default.
-        """
-        return self.ingest_message(message_dict)
-
     def _enrichment_worker(self) -> None:
         """Background worker that enriches messages from the persistent queue."""
         logger.info("Background enrichment worker started (persistent queue)")
@@ -712,7 +694,7 @@ class MindcoreClient:
                     logger.debug(f"Background enrichment completed for {message_id}")
 
                 except Exception as e:
-                    logger.error(f"Background enrichment failed for {message_id}: {e}")
+                    logger.exception(f"Background enrichment failed for {message_id}: {e}")
                     self._worker_metrics.record_error(str(e))
                     self._metrics.record_error("enrichment")
                     failed_metadata = MessageMetadata(
@@ -724,7 +706,7 @@ class MindcoreClient:
                 self._worker_metrics.status = WorkerStatus.IDLE
 
             except Exception as e:
-                logger.error(f"Enrichment worker error: {e}")
+                logger.exception(f"Enrichment worker error: {e}")
                 self._worker_metrics.record_error(str(e))
                 self._worker_metrics.status = WorkerStatus.ERROR
 
@@ -740,14 +722,13 @@ class MindcoreClient:
         user_id: str,
         thread_id: str,
         query: str,
-        additional_context: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        agent_ids: Optional[List[str]] = None,
+        additional_context: str | None = None,
+        agent_id: str | None = None,
+        agent_ids: list[str] | None = None,
         include_shared: bool = True,
         include_public: bool = True,
     ) -> AssembledContext:
-        """
-        Get intelligently assembled context for a query.
+        """Get intelligently assembled context for a query.
 
         This is the PRIMARY context retrieval method. Uses SmartContextAgent
         with tool calling for efficient, intelligent context assembly.
@@ -840,21 +821,21 @@ class MindcoreClient:
             return self._smart_context_agent
 
         # Create callbacks for the agent's tools
-        def get_recent_messages(user_id: str, thread_id: str, limit: int) -> List[Message]:
+        def get_recent_messages(user_id: str, thread_id: str, limit: int) -> list[Message]:
             try:
                 return self.cache.get_recent_messages(user_id, thread_id, limit)
             except Exception as e:
-                logger.error(f"Error fetching recent messages: {e}")
+                logger.exception(f"Error fetching recent messages: {e}")
                 return []
 
         def search_history(
             user_id: str,
-            thread_id: Optional[str],
-            topics: List[str],
-            categories: List[str],
-            intent: Optional[str],
+            thread_id: str | None,
+            topics: list[str],
+            categories: list[str],
+            intent: str | None,
             limit: int,
-        ) -> List[Message]:
+        ) -> list[Message]:
             try:
                 return self.db.search_by_relevance(
                     user_id=user_id,
@@ -865,14 +846,14 @@ class MindcoreClient:
                     limit=limit,
                 )
             except Exception as e:
-                logger.error(f"Error searching history: {e}")
+                logger.exception(f"Error searching history: {e}")
                 return []
 
-        def get_session_metadata(user_id: str, thread_id: str) -> Dict[str, Any]:
+        def get_session_metadata(user_id: str, thread_id: str) -> dict[str, Any]:
             try:
                 return self.cache.get_session_metadata(user_id, thread_id)
             except Exception as e:
-                logger.error(f"Error fetching session metadata: {e}")
+                logger.exception(f"Error fetching session metadata: {e}")
                 return {"topics": [], "categories": [], "intents": [], "message_count": 0}
 
         tools = ContextTools(
@@ -905,9 +886,8 @@ class MindcoreClient:
         """Get the number of enrichment worker threads."""
         return getattr(self, "_enrichment_workers", 1)
 
-    def get_worker_health(self) -> Dict[str, Any]:
-        """
-        Get health and metrics for background workers.
+    def get_worker_health(self) -> dict[str, Any]:
+        """Get health and metrics for background workers.
 
         Returns:
             Health check result with worker status, metrics, and issues
@@ -923,9 +903,8 @@ class MindcoreClient:
         health["worker_pool_size"] = self._enrichment_workers
         return health
 
-    def get_enrichment_metrics(self) -> Dict[str, Any]:
-        """
-        Get metrics for the enrichment worker.
+    def get_enrichment_metrics(self) -> dict[str, Any]:
+        """Get metrics for the enrichment worker.
 
         Returns:
             Dictionary with enrichment worker metrics including:
@@ -942,11 +921,11 @@ class MindcoreClient:
         """
         return self._worker_metrics.to_dict()
 
-    def get_message(self, message_id: str) -> Optional[Message]:
+    def get_message(self, message_id: str) -> Message | None:
         """Get a single message by ID."""
         return self.db.get_message_by_id(message_id)
 
-    def get_recent_messages(self, user_id: str, thread_id: str, limit: int = 20) -> List[Message]:
+    def get_recent_messages(self, user_id: str, thread_id: str, limit: int = 20) -> list[Message]:
         """Get recent messages from cache/database."""
         cached = self.cache.get_recent_messages(user_id, thread_id, limit)
         if len(cached) >= limit:
@@ -964,7 +943,7 @@ class MindcoreClient:
         all_messages.sort(key=_get_sort_key, reverse=True)
         return all_messages[:limit]
 
-    def clear_cache(self, user_id: Optional[str] = None, thread_id: Optional[str] = None) -> None:
+    def clear_cache(self, user_id: str | None = None, thread_id: str | None = None) -> None:
         """Clear message cache."""
         if user_id and thread_id:
             self.cache.clear_thread(user_id, thread_id)
@@ -985,10 +964,9 @@ class MindcoreClient:
     # -------------------------------------------------------------------------
 
     def run_tier_migration(
-        self, user_id: Optional[str] = None, dry_run: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Run tier migration for memory management.
+        self, user_id: str | None = None, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Run tier migration for memory management.
 
         Moves messages between tiers (short-term → mid-term → long-term)
         based on age and importance.
@@ -1013,8 +991,7 @@ class MindcoreClient:
         }
 
     def get_decayed_importance(self, message: Message) -> float:
-        """
-        Get importance score with time-based decay.
+        """Get importance score with time-based decay.
 
         More recent messages have higher importance.
 
@@ -1028,9 +1005,8 @@ class MindcoreClient:
 
     def get_context_window(
         self, user_id: str, thread_id: str, max_messages: int = 50, min_importance: float = 0.1
-    ) -> List[Message]:
-        """
-        Get optimized context window for a conversation.
+    ) -> list[Message]:
+        """Get optimized context window for a conversation.
 
         Selects messages based on recency, importance, and token budget.
 
@@ -1060,15 +1036,14 @@ class MindcoreClient:
         self,
         agent_id: str,
         name: str,
-        description: Optional[str] = None,
-        sharing_groups: Optional[List[str]] = None,
+        description: str | None = None,
+        sharing_groups: list[str] | None = None,
         default_visibility: str = "private",
         can_read_public: bool = True,
         can_write_public: bool = False,
         **metadata,
     ) -> AgentProfile:
-        """
-        Register an agent for multi-agent memory sharing.
+        """Register an agent for multi-agent memory sharing.
 
         Args:
             agent_id: Unique agent identifier
@@ -1105,8 +1080,7 @@ class MindcoreClient:
         )
 
     def unregister_agent(self, agent_id: str) -> bool:
-        """
-        Unregister an agent.
+        """Unregister an agent.
 
         Args:
             agent_id: Agent identifier to unregister
@@ -1116,9 +1090,8 @@ class MindcoreClient:
         """
         return self._multi_agent_manager.unregister_agent(agent_id)
 
-    def get_agent(self, agent_id: str) -> Optional[AgentProfile]:
-        """
-        Get an agent's profile.
+    def get_agent(self, agent_id: str) -> AgentProfile | None:
+        """Get an agent's profile.
 
         Args:
             agent_id: Agent identifier
@@ -1128,18 +1101,16 @@ class MindcoreClient:
         """
         return self._multi_agent_manager.get_agent(agent_id)
 
-    def list_agents(self) -> List[AgentProfile]:
-        """
-        List all registered agents.
+    def list_agents(self) -> list[AgentProfile]:
+        """List all registered agents.
 
         Returns:
             List of AgentProfile objects
         """
         return self._multi_agent_manager.list_agents()
 
-    def get_multi_agent_stats(self) -> Dict[str, Any]:
-        """
-        Get multi-agent statistics.
+    def get_multi_agent_stats(self) -> dict[str, Any]:
+        """Get multi-agent statistics.
 
         Returns:
             Dictionary with multi-agent mode stats including:
@@ -1155,9 +1126,8 @@ class MindcoreClient:
     # Adaptive Preferences
     # -------------------------------------------------------------------------
 
-    def apply_learned_preferences(self, user_id: str) -> List[tuple]:
-        """
-        Apply learned preferences for a user.
+    def apply_learned_preferences(self, user_id: str) -> list[tuple]:
+        """Apply learned preferences for a user.
 
         Updates user preferences based on patterns observed in their messages.
 
@@ -1169,9 +1139,8 @@ class MindcoreClient:
         """
         return self._adaptive_learner.apply_updates(user_id)
 
-    def get_preference_signals(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get summary of accumulated preference signals for a user.
+    def get_preference_signals(self, user_id: str) -> dict[str, Any]:
+        """Get summary of accumulated preference signals for a user.
 
         Args:
             user_id: User identifier
@@ -1182,8 +1151,7 @@ class MindcoreClient:
         return self._adaptive_learner.get_signal_summary(user_id)
 
     def get_user_preferences(self, user_id: str):
-        """
-        Get user preferences.
+        """Get user preferences.
 
         Args:
             user_id: User identifier
@@ -1197,9 +1165,8 @@ class MindcoreClient:
     # Cache Management
     # -------------------------------------------------------------------------
 
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """
-        Get cache statistics including invalidation metrics.
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Get cache statistics including invalidation metrics.
 
         Returns:
             Dictionary with cache and invalidation stats
@@ -1213,8 +1180,7 @@ class MindcoreClient:
         }
 
     def invalidate_cache_by_topic(self, topic: str) -> int:
-        """
-        Invalidate all cached data related to a topic.
+        """Invalidate all cached data related to a topic.
 
         Args:
             topic: Topic to invalidate
@@ -1225,8 +1191,7 @@ class MindcoreClient:
         return self._cache_invalidation.invalidate_by_topic(topic)
 
     def invalidate_stale_cache(self, max_age_seconds: int = 3600) -> int:
-        """
-        Invalidate cache entries older than max_age.
+        """Invalidate cache entries older than max_age.
 
         Args:
             max_age_seconds: Maximum age in seconds
@@ -1240,9 +1205,8 @@ class MindcoreClient:
     # Prometheus Metrics
     # -------------------------------------------------------------------------
 
-    def get_prometheus_metrics(self) -> Dict[str, Any]:
-        """
-        Get current Prometheus metrics as a dictionary.
+    def get_prometheus_metrics(self) -> dict[str, Any]:
+        """Get current Prometheus metrics as a dictionary.
 
         Useful for monitoring dashboards or debugging.
 
@@ -1256,8 +1220,7 @@ class MindcoreClient:
         return self._metrics.get_metrics_dict()
 
     def start_metrics_server(self, port: int = 9090) -> bool:
-        """
-        Start HTTP server for Prometheus metrics scraping.
+        """Start HTTP server for Prometheus metrics scraping.
 
         The server exposes metrics at http://localhost:{port}/metrics
 
@@ -1285,10 +1248,8 @@ class MindcoreClient:
             self._enrichment_running = False
             if hasattr(self, "_enrichment_futures"):
                 for future in self._enrichment_futures:
-                    try:
+                    with contextlib.suppress(Exception):
                         future.result(timeout=5.0)
-                    except Exception:
-                        pass
             if hasattr(self, "_enrichment_executor"):
                 self._enrichment_executor.shutdown(wait=True)
             workers = getattr(self, "_enrichment_workers", 1)
@@ -1313,7 +1274,7 @@ Mindcore = MindcoreClient
 
 
 def initialize(
-    config_path: Optional[str] = None, use_sqlite: bool = False, llm_provider: Optional[str] = None
+    config_path: str | None = None, use_sqlite: bool = False, llm_provider: str | None = None
 ) -> MindcoreClient:
     """Initialize global Mindcore instance (thread-safe singleton)."""
     global _mindcore_instance
@@ -1355,21 +1316,21 @@ atexit.register(_cleanup_on_exit)
 
 # Modular Context Layer
 from .context_layer import (
+    BasicContextLayer,
     ContextLayer,
     ContextLayerConfig,
     ContextLayerTier,
-    BasicContextLayer,
-    VectorContextLayer,
     FullContextLayer,
+    VectorContextLayer,
 )
 
 # Knowledge Store (unified single/multi-agent interface)
 from .knowledge_store import (
-    KnowledgeStore,
-    KnowledgeItem,
     AgentConfig,
-    StoreMode,
+    KnowledgeItem,
+    KnowledgeStore,
     SimpleKnowledgeStore,
+    StoreMode,
 )
 
 
@@ -1390,99 +1351,99 @@ def get_connectors():
 
 # Public API
 __all__ = [
-    # Version
-    "__version__",
-    # Main client
-    "MindcoreClient",
-    "Mindcore",
-    "initialize",
-    "get_client",
+    "AdaptiveConfig",
+    # Adaptive Preferences
+    "AdaptivePreferencesLearner",
+    "AgentConfig",
+    "AgentProfile",
+    "AgentVisibility",
+    "AssembledContext",
+    "BaseAgent",
+    # LLM Providers
+    "BaseLLMProvider",
+    "BasicContextLayer",
+    # Cache Invalidation
+    "CacheInvalidationManager",
+    "CacheManager",
+    "CommunicationStyle",
+    # Core managers
+    "ConfigLoader",
     # Modular Context Layer
     "ContextLayer",
     "ContextLayerConfig",
     "ContextLayerTier",
-    "BasicContextLayer",
-    "VectorContextLayer",
+    "ContextRequest",
+    "ContextTools",
+    "DatabaseManager",
+    "EntityType",
+    "FallbackProvider",
     "FullContextLayer",
+    "IngestRequest",
+    "Intent",
+    "InvalidationReason",
+    "KnowledgeItem",
     # Knowledge Store
     "KnowledgeStore",
-    "SimpleKnowledgeStore",
-    "KnowledgeItem",
-    "AgentConfig",
-    "StoreMode",
-    # AI Agents
-    "MetadataAgent",
-    "SmartContextAgent",
-    "ContextTools",
-    "SummarizationAgent",
-    "BaseAgent",
-    "TrivialMessageDetector",
-    "TrivialCategory",
-    "get_trivial_detector",
-    # VocabularyManager
-    "VocabularyManager",
-    "VocabularySource",
-    "Intent",
-    "Sentiment",
-    "CommunicationStyle",
-    "EntityType",
-    "get_vocabulary",
-    # Worker Monitoring
-    "WorkerMonitor",
-    "WorkerMetrics",
-    "WorkerStatus",
-    "get_worker_monitor",
-    # Adaptive Preferences
-    "AdaptivePreferencesLearner",
-    "AdaptiveConfig",
-    "get_adaptive_learner",
-    # Retention Policy
-    "RetentionPolicyManager",
-    "RetentionConfig",
-    "MemoryTier",
-    "get_retention_policy",
-    # Cache Invalidation
-    "CacheInvalidationManager",
-    "InvalidationReason",
-    "get_cache_invalidation",
-    # Prometheus Metrics
-    "MindcoreMetrics",
-    "get_prometheus_metrics",
-    "start_metrics_server",
-    "is_prometheus_available",
-    # Multi-Agent Support
-    "MultiAgentConfig",
-    "MultiAgentManager",
-    "MemorySharingMode",
-    "AgentVisibility",
-    "AgentProfile",
-    "get_multi_agent_manager",
-    "configure_multi_agent",
-    # LLM Providers
-    "BaseLLMProvider",
     "LLMResponse",
     "LlamaCppProvider",
-    "OpenAIProvider",
-    "FallbackProvider",
-    "ProviderType",
-    "create_provider",
-    "get_provider_type",
+    "MemorySharingMode",
+    "MemoryTier",
     # Core data structures
     "Message",
     "MessageMetadata",
     "MessageRole",
-    "AssembledContext",
-    "ContextRequest",
-    "IngestRequest",
-    "ThreadSummary",
-    "UserPreferences",
-    # Core managers
-    "ConfigLoader",
-    "DatabaseManager",
-    "SQLiteManager",
-    "CacheManager",
+    # AI Agents
+    "MetadataAgent",
+    "Mindcore",
+    # Main client
+    "MindcoreClient",
+    # Prometheus Metrics
+    "MindcoreMetrics",
+    # Multi-Agent Support
+    "MultiAgentConfig",
+    "MultiAgentManager",
+    "OpenAIProvider",
     "PreferencesManager",
+    "ProviderType",
+    "RetentionConfig",
+    # Retention Policy
+    "RetentionPolicyManager",
+    "SQLiteManager",
+    "Sentiment",
+    "SimpleKnowledgeStore",
+    "SmartContextAgent",
+    "StoreMode",
+    "SummarizationAgent",
+    "ThreadSummary",
+    "TrivialCategory",
+    "TrivialMessageDetector",
+    "UserPreferences",
+    "VectorContextLayer",
+    # VocabularyManager
+    "VocabularyManager",
+    "VocabularySource",
+    "WorkerMetrics",
+    # Worker Monitoring
+    "WorkerMonitor",
+    "WorkerStatus",
+    # Version
+    "__version__",
+    "configure_multi_agent",
+    "create_provider",
+    "get_adaptive_learner",
+    "get_cache_invalidation",
+    "get_client",
+    "get_connectors",
+    "get_multi_agent_manager",
+    "get_prometheus_metrics",
+    "get_provider_type",
+    "get_retention_policy",
+    "get_trivial_detector",
     # Lazy imports
     "get_vector_stores",
-    "get_connectors",
+    "get_vocabulary",
+    "get_worker_monitor",
+    "initialize",
+    "is_prometheus_available",
+    "start_metrics_server",
 ]

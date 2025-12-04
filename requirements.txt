@@ -1,5 +1,5 @@
 # Mindcore Framework Dependencies
-# Version: 0.2.0
+# Version: 0.1.0
 
 # =============================================================================
 # Core Dependencies
@@ -8,8 +8,8 @@
 # LLM Providers
 openai>=1.0.0                    # OpenAI API client (also supports compatible APIs)
 
-# Database
-psycopg2-binary>=2.9.0           # PostgreSQL adapter
+# Database (psycopg v3 - modern async-capable driver)
+psycopg[binary,pool]>=3.1.0      # PostgreSQL adapter with connection pooling
 
 # API Framework
 fastapi>=0.100.0                 # Modern async web framework
@@ -28,8 +28,14 @@ huggingface-hub>=0.20.0          # Model downloads
 cachetools>=5.0.0                # TTL cache, LRU cache, etc.
 limits>=3.0.0                    # Rate limiting (Redis-ready for cloud)
 
+# Persistent Queue (survives crashes/restarts)
+persist-queue>=1.1.0
+
+# Disk-backed cache (SQLite, survives restarts)
+diskcache>=5.6.3
+
 # Logging
-structlog>=24.0.0                # Structured logging (cloud-ready)
+structlog>=25.1.0                # Structured logging (cloud-ready)
 
 # =============================================================================
 # Optional: Local LLM Support
@@ -44,7 +50,8 @@ structlog>=24.0.0                # Structured logging (cloud-ready)
 # pytest>=7.0.0
 # pytest-asyncio>=0.21.0
 # pytest-cov>=4.0.0
-# black>=23.0.0
-# flake8>=6.0.0
+# ruff>=0.8.0
 # mypy>=1.0.0
-# isort>=5.12.0
+# bandit>=1.7.0
+# safety>=2.3.0
+# pre-commit>=3.0.0

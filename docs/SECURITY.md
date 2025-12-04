@@ -13,16 +13,19 @@ Mindcore implements multiple layers of security to protect against common vulner
 **Status:** ✅ **PROTECTED**
 
 **Implementation:**
-- All database queries use **parameterized statements** via psycopg2
+
+- All database queries use **parameterized statements** via psycopg v3
 - No string concatenation for SQL queries
 - Defense-in-depth validation checks for SQL injection patterns in user inputs
 - Input sanitization for IDs and text fields
 
 **Code Location:**
+
 - `mindcore/core/db_manager.py` - All database operations
 - `mindcore/utils/security.py` - SecurityValidator class
 
 **Example:**
+
 ```python
 # SAFE - Parameterized query
 cursor.execute(
@@ -35,6 +38,7 @@ cursor.execute(
 ```
 
 **Verification:**
+
 ```bash
 # Run security audit
 python -c "from mindcore.utils import SecurityAuditor; SecurityAuditor.verify_parameterized_queries()"
@@ -47,6 +51,7 @@ python -c "from mindcore.utils import SecurityAuditor; SecurityAuditor.verify_pa
 **Status:** ✅ **IMPLEMENTED**
 
 **Features:**
+
 - Maximum length enforcement (100k chars for text, 255 for IDs)
 - Role validation (only allowed: user, assistant, system, tool)
 - ID format validation (alphanumeric + `_`, `-`, `:`)
@@ -57,6 +62,7 @@ python -c "from mindcore.utils import SecurityAuditor; SecurityAuditor.verify_pa
 **Code Location:** `mindcore/utils/security.py`
 
 **Usage:**
+
 ```python
 from mindcore.utils import SecurityValidator
 
@@ -70,6 +76,7 @@ is_valid, error = SecurityValidator.validate_query_params(user_id, thread_id, qu
 ```
 
 **Validated Fields:**
+
 - `user_id`: Max 255 chars, alphanumeric + `_-:`
 - `thread_id`: Max 255 chars, alphanumeric + `_-:`
 - `session_id`: Max 255 chars, alphanumeric + `_-:`
@@ -84,6 +91,7 @@ is_valid, error = SecurityValidator.validate_query_params(user_id, thread_id, qu
 **Status:** ✅ **AVAILABLE**
 
 **Implementation:**
+
 - Token bucket algorithm
 - Configurable limits (default: 100 requests/60 seconds)
 - Per-user/per-IP tracking
@@ -92,6 +100,7 @@ is_valid, error = SecurityValidator.validate_query_params(user_id, thread_id, qu
 **Code Location:** `mindcore/utils/security.py`
 
 **Usage:**
+
 ```python
 from mindcore.utils import get_rate_limiter
 
@@ -105,6 +114,7 @@ remaining = rate_limiter.get_remaining(user_id)
 ```
 
 **Configuration:**
+
 ```python
 # Custom rate limiter
 from mindcore.utils import RateLimiter
@@ -119,6 +129,7 @@ limiter = RateLimiter(max_requests=1000, window_seconds=3600)
 **Status:** ✅ **RECOMMENDED**
 
 **Headers Provided:**
+
 ```python
 from mindcore.utils import SecurityAuditor
 
@@ -133,6 +144,7 @@ headers = SecurityAuditor.get_security_headers()
 ```
 
 **Application in FastAPI:**
+
 ```python
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,12 +168,14 @@ async def add_security_headers(request, call_next):
 **Status:** ✅ **IMPLEMENTED**
 
 **Features:**
+
 - Connection pooling with limits (1-10 connections)
 - Automatic connection cleanup
 - Context managers for safe connection handling
 - No credentials in code (environment variables)
 
 **Best Practices:**
+
 ```yaml
 # config.yaml
 database:
@@ -185,11 +199,13 @@ export DB_PASSWORD="your-secure-password"
 **Status:** ✅ **IMPLEMENTED**
 
 **Features:**
+
 - API keys loaded from environment variables
 - Never stored in code or version control
 - Warning if API key not found
 
 **Configuration:**
+
 ```bash
 export OPENAI_API_KEY="sk-your-api-key"
 ```
@@ -302,7 +318,7 @@ logging.basicConfig(
 If you discover a security vulnerability in Mindcore:
 
 1. **DO NOT** open a public GitHub issue
-2. Email: security@mindcore.example.com (replace with actual contact)
+2. Email: <security@mindcore.example.com> (replace with actual contact)
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce
@@ -332,7 +348,7 @@ safety check --json
 
 ```bash
 # Update dependencies
-pip install --upgrade openai psycopg2-binary fastapi uvicorn
+pip install --upgrade openai 'psycopg[binary,pool]' fastapi uvicorn
 
 # Check for outdated packages
 pip list --outdated
@@ -431,8 +447,9 @@ Mindcore is designed to support:
 ## 📞 Contact
 
 For security questions or concerns:
-- GitHub Issues: https://github.com/yourusername/mindcore/issues
-- Security Email: security@example.com
+
+- GitHub Issues: <https://github.com/yourusername/mindcore/issues>
+- Security Email: <security@example.com>
 
 ---
 

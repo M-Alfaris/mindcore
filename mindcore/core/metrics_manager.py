@@ -1,5 +1,4 @@
-"""
-Metrics and observability data manager for Mindcore dashboard.
+"""Metrics and observability data manager for Mindcore dashboard.
 
 This module provides persistent storage for:
 - Performance metrics (LLM response times, enrichment times)
@@ -42,18 +41,18 @@ Usage:
 import json
 import sqlite3
 import threading
-from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class MetricsManager:
-    """
-    Manages metrics and observability data storage.
+    """Manages metrics and observability data storage.
 
     Provides persistent storage for dashboard analytics including:
     - LLM performance metrics
@@ -65,8 +64,7 @@ class MetricsManager:
     """
 
     def __init__(self, db_path: str = "mindcore.db"):
-        """
-        Initialize metrics manager.
+        """Initialize metrics manager.
 
         Args:
             db_path: Path to SQLite database file.
@@ -96,15 +94,14 @@ class MetricsManager:
         try:
             yield conn
         except sqlite3.Error as e:
-            logger.error(f"SQLite error: {e}")
+            logger.exception(f"SQLite error: {e}")
             conn.rollback()
             raise
         finally:
             pass
 
     def initialize_schema(self) -> None:
-        """
-        Create metrics database schema.
+        """Create metrics database schema.
 
         Tables:
             - performance_metrics: LLM calls, enrichment, retrieval timing
@@ -228,14 +225,13 @@ class MetricsManager:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         success: bool = True,
-        error_message: Optional[str] = None,
-        user_id: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        message_id: Optional[str] = None,
-        metadata: Optional[Dict] = None,
+        error_message: str | None = None,
+        user_id: str | None = None,
+        thread_id: str | None = None,
+        message_id: str | None = None,
+        metadata: dict | None = None,
     ) -> bool:
-        """
-        Record an LLM API call metric.
+        """Record an LLM API call metric.
 
         Args:
             model: Model name (e.g., 'gpt-4o-mini')
@@ -272,7 +268,7 @@ class MetricsManager:
         message_id: str,
         total_time_ms: int,
         success: bool = True,
-        metadata: Optional[Dict] = None,
+        metadata: dict | None = None,
     ) -> bool:
         """Record message enrichment timing."""
         return self._record_metric(
@@ -307,15 +303,15 @@ class MetricsManager:
         metric_type: str,
         operation: str,
         total_time_ms: int,
-        model: Optional[str] = None,
+        model: str | None = None,
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         success: bool = True,
-        error_message: Optional[str] = None,
-        user_id: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        message_id: Optional[str] = None,
-        metadata: Optional[Dict] = None,
+        error_message: str | None = None,
+        user_id: str | None = None,
+        thread_id: str | None = None,
+        message_id: str | None = None,
+        metadata: dict | None = None,
     ) -> bool:
         """Internal method to record a performance metric."""
         insert_sql = """
@@ -348,7 +344,7 @@ class MetricsManager:
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"Failed to record metric: {e}")
+            logger.exception(f"Failed to record metric: {e}")
             return False
 
     # =========================================================================
@@ -359,17 +355,16 @@ class MetricsManager:
         self,
         tool_name: str,
         execution_time_ms: int,
-        tool_call_id: Optional[str] = None,
-        message_id: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        tool_call_id: str | None = None,
+        message_id: str | None = None,
+        thread_id: str | None = None,
+        user_id: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
-        input_data: Optional[Dict] = None,
-        output_data: Optional[str] = None,
+        error_message: str | None = None,
+        input_data: dict | None = None,
+        output_data: str | None = None,
     ) -> bool:
-        """
-        Record a tool call execution.
+        """Record a tool call execution.
 
         Args:
             tool_name: Name of the tool
@@ -417,7 +412,7 @@ class MetricsManager:
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"Failed to record tool call: {e}")
+            logger.exception(f"Failed to record tool call: {e}")
             return False
 
     # =========================================================================
@@ -425,10 +420,9 @@ class MetricsManager:
     # =========================================================================
 
     def get_performance_stats(
-        self, time_range: str = "24h", metric_type: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Get performance statistics for the dashboard.
+        self, time_range: str = "24h", metric_type: str | None = None
+    ) -> dict[str, Any]:
+        """Get performance statistics for the dashboard.
 
         Args:
             time_range: Time range - '1h', '24h', '7d', '30d'
@@ -527,7 +521,7 @@ class MetricsManager:
                     ],
                 }
         except Exception as e:
-            logger.error(f"Failed to get performance stats: {e}")
+            logger.exception(f"Failed to get performance stats: {e}")
             return {
                 "total_llm_calls": 0,
                 "avg_response_time_ms": 0,
@@ -535,9 +529,8 @@ class MetricsManager:
                 "latency_distribution": [0, 0, 0, 0, 0],
             }
 
-    def get_tool_stats(self, time_range: str = "24h") -> Dict[str, Any]:
-        """
-        Get tool usage statistics.
+    def get_tool_stats(self, time_range: str = "24h") -> dict[str, Any]:
+        """Get tool usage statistics.
 
         Args:
             time_range: Time range - '1h', '24h', '7d'
@@ -595,7 +588,7 @@ class MetricsManager:
                     "tools": tools,
                 }
         except Exception as e:
-            logger.error(f"Failed to get tool stats: {e}")
+            logger.exception(f"Failed to get tool stats: {e}")
             return {"total_calls": 0, "success_rate": 100, "tools": []}
 
     # =========================================================================
@@ -616,17 +609,17 @@ class MetricsManager:
                     setting_type = row["setting_type"]
                     if setting_type == "number":
                         return int(value)
-                    elif setting_type == "boolean":
+                    if setting_type == "boolean":
                         return value.lower() == "true"
-                    elif setting_type == "json":
+                    if setting_type == "json":
                         return json.loads(value)
                     return value
                 return default
         except Exception as e:
-            logger.error(f"Failed to get setting {key}: {e}")
+            logger.exception(f"Failed to get setting {key}: {e}")
             return default
 
-    def set_setting(self, key: str, value: Any, description: Optional[str] = None) -> bool:
+    def set_setting(self, key: str, value: Any, description: str | None = None) -> bool:
         """Set a dashboard setting value."""
         try:
             with self.get_connection() as conn:
@@ -653,10 +646,10 @@ class MetricsManager:
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"Failed to set setting {key}: {e}")
+            logger.exception(f"Failed to set setting {key}: {e}")
             return False
 
-    def get_all_settings(self) -> Dict[str, Any]:
+    def get_all_settings(self) -> dict[str, Any]:
         """Get all dashboard settings."""
         try:
             with self.get_connection() as conn:
@@ -679,16 +672,15 @@ class MetricsManager:
                     }
                 return settings
         except Exception as e:
-            logger.error(f"Failed to get all settings: {e}")
+            logger.exception(f"Failed to get all settings: {e}")
             return {}
 
     # =========================================================================
     # Cleanup
     # =========================================================================
 
-    def cleanup_old_metrics(self, days: Optional[int] = None) -> int:
-        """
-        Delete metrics older than specified days.
+    def cleanup_old_metrics(self, days: int | None = None) -> int:
+        """Delete metrics older than specified days.
 
         Args:
             days: Days to retain. Uses setting if not specified.
@@ -721,7 +713,7 @@ class MetricsManager:
                 logger.info(f"Cleaned up {total} old metric records")
                 return total
         except Exception as e:
-            logger.error(f"Failed to cleanup old metrics: {e}")
+            logger.exception(f"Failed to cleanup old metrics: {e}")
             return 0
 
     def close(self) -> None:

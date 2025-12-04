@@ -1,15 +1,12 @@
-"""
-Helper utilities for Mindcore framework.
-"""
+"""Helper utilities for Mindcore framework."""
 
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Any
 
 
 def generate_message_id() -> str:
-    """
-    Generate a unique message ID.
+    """Generate a unique message ID.
 
     Returns:
         UUID-based message ID.
@@ -18,8 +15,7 @@ def generate_message_id() -> str:
 
 
 def generate_session_id() -> str:
-    """
-    Generate a unique session ID.
+    """Generate a unique session ID.
 
     Returns:
         UUID-based session ID.
@@ -28,8 +24,7 @@ def generate_session_id() -> str:
 
 
 def generate_thread_id() -> str:
-    """
-    Generate a unique thread ID.
+    """Generate a unique thread ID.
 
     Returns:
         UUID-based thread ID.
@@ -38,8 +33,7 @@ def generate_thread_id() -> str:
 
 
 def current_timestamp() -> datetime:
-    """
-    Get current UTC timestamp.
+    """Get current UTC timestamp.
 
     Returns:
         Current datetime in UTC.
@@ -47,9 +41,8 @@ def current_timestamp() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def sanitize_text(text: str, max_length: Optional[int] = None) -> str:
-    """
-    Sanitize text input.
+def sanitize_text(text: str, max_length: int | None = None) -> str:
+    """Sanitize text input.
 
     Args:
         text: Input text.
@@ -68,9 +61,8 @@ def sanitize_text(text: str, max_length: Optional[int] = None) -> str:
     return sanitized
 
 
-def merge_metadata(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merge metadata dictionaries.
+def merge_metadata(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    """Merge metadata dictionaries.
 
     Args:
         base: Base metadata dictionary.
@@ -95,9 +87,8 @@ def merge_metadata(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, A
     return merged
 
 
-def validate_message_dict(message_dict: Dict[str, Any]) -> bool:
-    """
-    Validate message dictionary has required fields.
+def validate_message_dict(message_dict: dict[str, Any]) -> bool:
+    """Validate message dictionary has required fields.
 
     Args:
         message_dict: Message dictionary to validate.
@@ -107,16 +98,11 @@ def validate_message_dict(message_dict: Dict[str, Any]) -> bool:
     """
     required_fields = ["user_id", "thread_id", "session_id", "role", "text"]
 
-    for field in required_fields:
-        if field not in message_dict:
-            return False
-
-    return True
+    return all(field in message_dict for field in required_fields)
 
 
-def format_context_for_prompt(context: Dict[str, Any]) -> str:
-    """
-    Format assembled context for inclusion in LLM prompt.
+def format_context_for_prompt(context: dict[str, Any]) -> str:
+    """Format assembled context for inclusion in LLM prompt.
 
     Args:
         context: Assembled context dictionary.

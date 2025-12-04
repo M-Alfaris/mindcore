@@ -1,5 +1,4 @@
-"""
-Logging utility for Mindcore framework.
+"""Logging utility for Mindcore framework.
 
 Uses structlog for structured, cloud-ready logging with JSON output support.
 Provides configurable logging with fine-grained control over log levels
@@ -26,11 +25,10 @@ Configuration:
 """
 
 import logging
-import sys
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Any, Set
 from enum import Enum
+from typing import Any
 
 import structlog
 
@@ -50,8 +48,7 @@ class LogCategory(Enum):
 
 @dataclass
 class LogConfig:
-    """
-    Configuration for Mindcore logging.
+    """Configuration for Mindcore logging.
 
     Allows fine-grained control over which log categories are enabled
     and at what level.
@@ -116,7 +113,7 @@ class LogConfig:
     def from_env(cls) -> "LogConfig":
         """Create LogConfig from environment variables."""
 
-        def parse_bool(val: Optional[str]) -> bool:
+        def parse_bool(val: str | None) -> bool:
             return val is not None and val.lower() in ("1", "true", "yes")
 
         return cls(
@@ -139,8 +136,7 @@ _log_config: LogConfig = LogConfig.from_env()
 
 
 def _make_category_filter(config: LogConfig):
-    """
-    Create a structlog processor that filters logs based on category config.
+    """Create a structlog processor that filters logs based on category config.
 
     This processor checks if a log should be emitted based on:
     1. The log level (errors/warnings always pass if configured)
@@ -175,8 +171,7 @@ def _make_category_filter(config: LogConfig):
 
 
 def _configure_structlog(config: LogConfig) -> None:
-    """
-    Configure structlog with appropriate processors.
+    """Configure structlog with appropriate processors.
 
     Args:
         config: LogConfig instance with logging settings.
@@ -193,13 +188,14 @@ def _configure_structlog(config: LogConfig) -> None:
 
     if config.json_logs:
         # Production: JSON output for log aggregation
-        processors = shared_processors + [
+        processors = [
+            *shared_processors,
             structlog.processors.dict_tracebacks,
             structlog.processors.JSONRenderer(),
         ]
     else:
         # Development: colored console output
-        processors = shared_processors + [structlog.dev.ConsoleRenderer(colors=True)]
+        processors = [*shared_processors, structlog.dev.ConsoleRenderer(colors=True)]
 
     structlog.configure(
         processors=processors,
@@ -218,12 +214,11 @@ _configure_structlog(_log_config)
 
 def get_logger(
     name: str,
-    level: Optional[str] = None,
-    format_string: Optional[str] = None,  # Ignored, kept for backward compatibility
-    category: Optional[LogCategory] = None,
+    level: str | None = None,
+    format_string: str | None = None,  # Ignored, kept for backward compatibility
+    category: LogCategory | None = None,
 ) -> Any:
-    """
-    Get a configured structlog logger instance.
+    """Get a configured structlog logger instance.
 
     Args:
         name: Logger name (typically __name__).
@@ -260,12 +255,11 @@ def get_config() -> LogConfig:
 
 def configure_logging(
     level: str = "INFO",
-    format_string: Optional[str] = None,  # Ignored
-    json_logs: Optional[bool] = None,
-    config: Optional[LogConfig] = None,
+    format_string: str | None = None,  # Ignored
+    json_logs: bool | None = None,
+    config: LogConfig | None = None,
 ) -> None:
-    """
-    Configure global logging settings.
+    """Configure global logging settings.
 
     Args:
         level: Logging level.
@@ -305,8 +299,7 @@ def configure_logging(
 
 
 def bind_context(**kwargs: Any) -> None:
-    """
-    Bind context variables to all subsequent log messages.
+    """Bind context variables to all subsequent log messages.
 
     Useful for adding request IDs, user IDs, etc. to all logs in a request.
 

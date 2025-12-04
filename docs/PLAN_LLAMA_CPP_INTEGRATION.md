@@ -3,6 +3,7 @@
 ## Executive Summary
 
 This plan outlines how to integrate **llama.cpp** into Mindcore for CPU-only agents that handle:
+
 1. **Metadata Enrichment** - Enriching messages with topics, categories, importance, sentiment, intent, tags, entities, and key phrases
 2. **Context Retrieval** - Fast, low-latency retrieval assistance without blocking the main workflow
 
@@ -13,7 +14,8 @@ OpenAI API will remain as a fallback for reliability, but llama.cpp becomes the 
 ## Architecture Overview
 
 ### Current Architecture
-```
+
+```text
 MindcoreClient
 ├── MetadataAgent (OpenAI GPT-4o-mini)
 ├── ContextAgent (OpenAI GPT-4o-mini)
@@ -22,7 +24,8 @@ MindcoreClient
 ```
 
 ### Proposed Architecture
-```
+
+```text
 MindcoreClient
 ├── LLMProvider (abstraction layer)
 │   ├── LlamaCppProvider (primary - CPU-optimized)
@@ -42,6 +45,7 @@ MindcoreClient
 **Goal:** Create a unified interface that abstracts LLM backends
 
 #### 1.1 Create `mindcore/llm/__init__.py`
+
 ```python
 from .base_provider import BaseLLMProvider, LLMResponse
 from .llama_cpp_provider import LlamaCppProvider
@@ -59,6 +63,7 @@ __all__ = [
 ```
 
 #### 1.2 Create `mindcore/llm/base_provider.py`
+
 ```python
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -100,6 +105,7 @@ class BaseLLMProvider(ABC):
 ```
 
 #### 1.3 Create `mindcore/llm/llama_cpp_provider.py`
+
 ```python
 import os
 import time
@@ -208,6 +214,7 @@ class LlamaCppProvider(BaseLLMProvider):
 ```
 
 #### 1.4 Create `mindcore/llm/openai_provider.py`
+
 ```python
 import time
 from typing import List, Dict, Optional
@@ -281,6 +288,7 @@ class OpenAIProvider(BaseLLMProvider):
 ```
 
 #### 1.5 Create `mindcore/llm/provider_factory.py`
+
 ```python
 from enum import Enum
 from typing import Optional
@@ -375,6 +383,7 @@ def create_provider(
 ### Phase 2: Update Configuration
 
 #### 2.1 Update `config.yaml`
+
 ```yaml
 # Mindcore Configuration File
 # Version: 0.2.0
@@ -440,7 +449,9 @@ logging:
 ```
 
 #### 2.2 Update `ConfigLoader`
+
 Add new method in `mindcore/core/config_loader.py`:
+
 ```python
 def get_llm_config(self) -> Dict[str, Any]:
     """Get LLM provider configuration."""
@@ -463,7 +474,9 @@ def get_llm_config(self) -> Dict[str, Any]:
 ### Phase 3: Refactor Agents to Use Provider
 
 #### 3.1 Update `BaseAgent`
+
 Modify `mindcore/agents/base_agent.py`:
+
 ```python
 class BaseAgent(ABC):
     """Abstract base class for AI agents using LLM providers."""
@@ -504,7 +517,9 @@ class BaseAgent(ABC):
 ```
 
 #### 3.2 Update `EnrichmentAgent` and `ContextAssemblerAgent`
+
 Update constructors to accept LLM provider:
+
 ```python
 class EnrichmentAgent(BaseAgent):
     def __init__(
@@ -529,6 +544,7 @@ class EnrichmentAgent(BaseAgent):
 ### Phase 4: Update MindcoreClient
 
 #### 4.1 Modify `MindcoreClient.__init__`
+
 ```python
 def __init__(
     self,
@@ -566,6 +582,7 @@ def __init__(
 ### Phase 5: Model Download & Setup Utilities
 
 #### 5.1 Create `mindcore/llm/model_manager.py`
+
 ```python
 import os
 import hashlib
@@ -656,6 +673,7 @@ def list_local_models(models_dir: Optional[Path] = None) -> list:
 ```
 
 #### 5.2 Create CLI Setup Script `mindcore/cli.py`
+
 ```python
 import argparse
 from .llm.model_manager import download_model, list_local_models, RECOMMENDED_MODELS
@@ -701,10 +719,11 @@ if __name__ == "__main__":
 ### Phase 6: Update Dependencies
 
 #### 6.1 Update `requirements.txt`
-```
+
+```text
 # Core dependencies
 pyyaml>=6.0
-psycopg2-binary>=2.9.0
+psycopg[binary,pool]>=3.1.0
 
 # LLM Providers
 openai>=1.0.0
@@ -724,7 +743,9 @@ python-dotenv>=1.0.0
 ```
 
 #### 6.2 Update `setup.py` / `pyproject.toml`
+
 Add entry point for CLI:
+
 ```python
 entry_points={
     "console_scripts": [
@@ -738,6 +759,7 @@ entry_points={
 ### Phase 7: Quick Start Documentation
 
 #### 7.1 Update README with Quick Start
+
 ```markdown
 ## Quick Start with Local LLM (No OpenAI Required!)
 
@@ -747,16 +769,19 @@ entry_points={
    ```
 
 2. **Download a model:**
+
    ```bash
    mindcore download-model  # Downloads ~2GB Llama-3.2-3B
    ```
 
 3. **Set the model path:**
+
    ```bash
    export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
    ```
 
 4. **Use Mindcore:**
+
    ```python
    from mindcore import MindcoreClient
 
@@ -791,14 +816,14 @@ entry_points={
 
 After implementation, the new structure will be:
 
-```
+```text
 mindcore/
-├── __init__.py              # Updated with new imports
+├── **init**.py              # Updated with new imports
 ├── config.yaml              # Updated with llm section
 ├── cli.py                   # NEW: CLI for model management
 │
 ├── llm/                     # NEW: LLM Provider Layer
-│   ├── __init__.py
+│   ├── **init**.py
 │   ├── base_provider.py     # Abstract provider interface
 │   ├── llama_cpp_provider.py # llama.cpp implementation
 │   ├── openai_provider.py   # OpenAI implementation
@@ -815,6 +840,7 @@ mindcore/
 │   └── context_assembler_agent.py  # Updated constructor
 │
 └── ...
+
 ```
 
 ---

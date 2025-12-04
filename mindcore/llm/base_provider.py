@@ -1,18 +1,16 @@
-"""
-Base LLM Provider interface for Mindcore.
+"""Base LLM Provider interface for Mindcore.
 
 Provides a unified abstraction layer for different LLM backends.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 
 @dataclass
 class LLMResponse:
-    """
-    Unified response from any LLM provider.
+    """Unified response from any LLM provider.
 
     Attributes:
         content: The generated text response
@@ -25,33 +23,26 @@ class LLMResponse:
 
     content: str
     model: str
-    tokens_used: Optional[int] = None
+    tokens_used: int | None = None
     provider: str = "unknown"
-    latency_ms: Optional[float] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    latency_ms: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMProviderError(Exception):
     """Base exception for LLM provider errors."""
 
-    pass
-
 
 class ModelNotFoundError(LLMProviderError):
     """Raised when the specified model cannot be found."""
-
-    pass
 
 
 class GenerationError(LLMProviderError):
     """Raised when text generation fails."""
 
-    pass
-
 
 class BaseLLMProvider(ABC):
-    """
-    Abstract base class for LLM providers.
+    """Abstract base class for LLM providers.
 
     This interface allows Mindcore to work with different LLM backends
     (llama.cpp, OpenAI, etc.) through a unified API.
@@ -66,13 +57,12 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     def generate(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Generate a response from the LLM.
+        """Generate a response from the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
@@ -88,37 +78,30 @@ class BaseLLMProvider(ABC):
             GenerationError: If generation fails
             LLMProviderError: For other provider-specific errors
         """
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
-        """
-        Check if the provider is available and ready to generate.
+        """Check if the provider is available and ready to generate.
 
         Returns:
             True if the provider can accept generation requests
         """
-        pass
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """
-        Provider name for logging and identification.
+        """Provider name for logging and identification.
 
         Returns:
             Human-readable provider name (e.g., "llama.cpp", "openai")
         """
-        pass
 
     def close(self) -> None:
-        """
-        Clean up provider resources.
+        """Clean up provider resources.
 
         Override this method if the provider needs cleanup
         (e.g., unloading models, closing connections).
         """
-        pass
 
     def __enter__(self):
         """Context manager entry."""

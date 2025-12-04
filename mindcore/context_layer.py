@@ -1,5 +1,4 @@
-"""
-Modular Context Layer
+"""Modular Context Layer.
 =====================
 
 A flexible, modular context assembly system that allows you to pick
@@ -33,17 +32,17 @@ Example (Full Configuration):
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 from .utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from .core import SQLiteManager, DatabaseManager, CacheManager, DiskCacheManager
-    from .vectorstores import VectorStore, EmbeddingFunction
     from .connectors import ConnectorRegistry
+    from .vectorstores import EmbeddingFunction, VectorStore
 
 
 class ContextLayerTier(str, Enum):
@@ -57,14 +56,13 @@ class ContextLayerTier(str, Enum):
 
 @dataclass
 class ContextLayerConfig:
-    """
-    Configuration for the context layer.
+    """Configuration for the context layer.
 
     Specifies which components are enabled and their settings.
     """
 
     # Core components (always required)
-    database_url: Optional[str] = None
+    database_url: str | None = None
     use_sqlite: bool = True
     sqlite_path: str = "mindcore.db"
 
@@ -73,20 +71,20 @@ class ContextLayerConfig:
     cache_type: str = "disk"  # "memory" or "disk"
     cache_max_size: int = 1000
     cache_ttl: int = 3600
-    cache_dir: Optional[str] = None
+    cache_dir: str | None = None
 
     # Vector store settings
     vector_store_enabled: bool = False
-    vector_store_type: Optional[str] = None  # "chroma", "pinecone", "pgvector", "memory"
-    vector_store_config: Dict[str, Any] = field(default_factory=dict)
+    vector_store_type: str | None = None  # "chroma", "pinecone", "pgvector", "memory"
+    vector_store_config: dict[str, Any] = field(default_factory=dict)
 
     # Embedding settings
     embedding_provider: str = "openai"  # "openai", "sentence_transformers", "ollama"
-    embedding_config: Dict[str, Any] = field(default_factory=dict)
+    embedding_config: dict[str, Any] = field(default_factory=dict)
 
     # External connectors settings
     connectors_enabled: bool = False
-    connectors_config: Dict[str, Any] = field(default_factory=dict)
+    connectors_config: dict[str, Any] = field(default_factory=dict)
 
     # LLM settings (for agents)
     llm_provider: str = "auto"  # "auto", "llama_cpp", "openai"
@@ -129,8 +127,7 @@ class ContextLayerConfig:
 
 
 class ContextLayer:
-    """
-    Modular context layer that assembles context from multiple sources.
+    """Modular context layer that assembles context from multiple sources.
 
     The context layer is the core abstraction for retrieving relevant
     context for AI conversations. It can be configured to use different
@@ -161,16 +158,15 @@ class ContextLayer:
 
     def __init__(
         self,
-        config: Optional[ContextLayerConfig] = None,
+        config: ContextLayerConfig | None = None,
         # Direct component injection
-        database: Optional[Any] = None,
-        cache: Optional[Any] = None,
-        vector_store: Optional["VectorStore"] = None,
-        embedding: Optional["EmbeddingFunction"] = None,
-        connectors: Optional["ConnectorRegistry"] = None,
+        database: Any | None = None,
+        cache: Any | None = None,
+        vector_store: "VectorStore | None" = None,
+        embedding: "EmbeddingFunction | None" = None,
+        connectors: "ConnectorRegistry | None" = None,
     ):
-        """
-        Initialize context layer.
+        """Initialize context layer.
 
         Args:
             config: Configuration object
@@ -209,10 +205,9 @@ class ContextLayer:
             from .core import SQLiteManager
 
             return SQLiteManager(self.config.sqlite_path)
-        else:
-            from .core import DatabaseManager
+        from .core import DatabaseManager
 
-            return DatabaseManager({"url": self.config.database_url})
+        return DatabaseManager({"url": self.config.database_url})
 
     def _create_cache(self):
         """Create cache manager based on config."""
@@ -224,12 +219,9 @@ class ContextLayer:
                 ttl_seconds=self.config.cache_ttl,
                 cache_dir=self.config.cache_dir,
             )
-        else:
-            from .core import CacheManager
+        from .core import CacheManager
 
-            return CacheManager(
-                max_size=self.config.cache_max_size, ttl_seconds=self.config.cache_ttl
-            )
+        return CacheManager(max_size=self.config.cache_max_size, ttl_seconds=self.config.cache_ttl)
 
     def _create_embedding(self):
         """Create embedding function based on config."""
@@ -249,7 +241,7 @@ class ContextLayer:
 
             return InMemoryVectorStore(embedding=self._embedding)
 
-        elif vs_type == "chroma":
+        if vs_type == "chroma":
             from .vectorstores import get_chroma_store
 
             ChromaVectorStore = get_chroma_store()
@@ -264,7 +256,7 @@ class ContextLayer:
                 },
             )
 
-        elif vs_type == "pinecone":
+        if vs_type == "pinecone":
             from .vectorstores import get_pinecone_store
 
             PineconeVectorStore = get_pinecone_store()
@@ -280,7 +272,7 @@ class ContextLayer:
                 },
             )
 
-        elif vs_type == "pgvector":
+        if vs_type == "pgvector":
             from .vectorstores import get_pgvector_store
 
             PGVectorStore = get_pgvector_store()
@@ -295,9 +287,8 @@ class ContextLayer:
                 },
             )
 
-        else:
-            logger.warning(f"Unknown vector store type: {vs_type}")
-            return None
+        logger.warning(f"Unknown vector store type: {vs_type}")
+        return None
 
     def _create_connectors(self):
         """Create connector registry based on config."""
@@ -321,8 +312,7 @@ class ContextLayer:
 
     @classmethod
     def basic(cls, sqlite_path: str = "mindcore.db", **kwargs) -> "ContextLayer":
-        """
-        Create a basic context layer with just messages and cache.
+        """Create a basic context layer with just messages and cache.
 
         Args:
             sqlite_path: Path to SQLite database
@@ -339,8 +329,7 @@ class ContextLayer:
 
     @classmethod
     def with_connectors(cls, sqlite_path: str = "mindcore.db", **kwargs) -> "ContextLayer":
-        """
-        Create context layer with external connectors enabled.
+        """Create context layer with external connectors enabled.
 
         Args:
             sqlite_path: Path to SQLite database
@@ -363,8 +352,7 @@ class ContextLayer:
         embedding_provider: str = "openai",
         **kwargs,
     ) -> "ContextLayer":
-        """
-        Create context layer with vector store for semantic search.
+        """Create context layer with vector store for semantic search.
 
         Args:
             vector_store_type: Type of vector store ("chroma", "pinecone", "pgvector", "memory")
@@ -394,8 +382,7 @@ class ContextLayer:
     def full(
         cls, vector_store_type: str = "chroma", sqlite_path: str = "mindcore.db", **kwargs
     ) -> "ContextLayer":
-        """
-        Create fully-featured context layer with all components.
+        """Create fully-featured context layer with all components.
 
         Args:
             vector_store_type: Type of vector store
@@ -424,12 +411,12 @@ class ContextLayer:
         return self._cache
 
     @property
-    def vector_store(self) -> Optional["VectorStore"]:
+    def vector_store(self) -> "VectorStore | None":
         """Get the vector store (None if not enabled)."""
         return self._vector_store
 
     @property
-    def connectors(self) -> Optional["ConnectorRegistry"]:
+    def connectors(self) -> "ConnectorRegistry | None":
         """Get the connector registry (None if not enabled)."""
         return self._connectors
 
@@ -443,9 +430,8 @@ class ContextLayer:
         """Check if connectors are available."""
         return self._connectors is not None
 
-    def get_recent_messages(self, user_id: str, thread_id: str, limit: int = 20) -> List[Any]:
-        """
-        Get recent messages from cache or database.
+    def get_recent_messages(self, user_id: str, thread_id: str, limit: int = 20) -> list[Any]:
+        """Get recent messages from cache or database.
 
         Args:
             user_id: User identifier
@@ -468,12 +454,11 @@ class ContextLayer:
         self,
         user_id: str,
         query: str,
-        thread_id: Optional[str] = None,
+        thread_id: str | None = None,
         limit: int = 10,
         use_vector_search: bool = True,
-    ) -> List[Any]:
-        """
-        Search messages using available methods.
+    ) -> list[Any]:
+        """Search messages using available methods.
 
         If vector store is available and use_vector_search=True,
         uses semantic search. Otherwise falls back to metadata search.
@@ -494,17 +479,15 @@ class ContextLayer:
             if thread_id:
                 filter_dict["thread_id"] = thread_id
 
-            results = self._vector_store.similarity_search(query=query, k=limit, filter=filter_dict)
-            return results
+            return self._vector_store.similarity_search(query=query, k=limit, filter=filter_dict)
 
         # Fall back to database metadata search
         return self._database.search_by_relevance(user_id=user_id, thread_id=thread_id, limit=limit)
 
     async def get_external_context(
-        self, user_id: str, topics: List[str], context: Dict[str, Any]
-    ) -> List[Any]:
-        """
-        Get context from external connectors.
+        self, user_id: str, topics: list[str], context: dict[str, Any]
+    ) -> list[Any]:
+        """Get context from external connectors.
 
         Args:
             user_id: User identifier
@@ -523,14 +506,13 @@ class ContextLayer:
         self,
         user_id: str,
         query: str,
-        thread_id: Optional[str] = None,
+        thread_id: str | None = None,
         max_messages: int = 20,
         max_vector_results: int = 5,
-        topics: Optional[List[str]] = None,
+        topics: list[str] | None = None,
         include_external: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Get assembled context from all available sources.
+    ) -> dict[str, Any]:
+        """Get assembled context from all available sources.
 
         This is the main method for retrieving context for an AI conversation.
         It combines:
@@ -596,12 +578,11 @@ class ContextLayer:
 
     def add_to_vector_store(
         self,
-        texts: List[str],
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
-    ) -> Optional[List[str]]:
-        """
-        Add texts to the vector store.
+        texts: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
+    ) -> list[str] | None:
+        """Add texts to the vector store.
 
         Args:
             texts: Texts to add
@@ -618,8 +599,7 @@ class ContextLayer:
         return self._vector_store.add_texts(texts, metadatas, ids)
 
     def register_connector(self, connector: Any) -> None:
-        """
-        Register an external connector.
+        """Register an external connector.
 
         Args:
             connector: Connector instance to register
@@ -630,9 +610,8 @@ class ContextLayer:
 
         self._connectors.register(connector)
 
-    def health_check(self) -> Dict[str, bool]:
-        """
-        Check health of all components.
+    def health_check(self) -> dict[str, bool]:
+        """Check health of all components.
 
         Returns:
             Dictionary mapping component names to health status

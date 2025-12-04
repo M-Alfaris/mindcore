@@ -1,5 +1,4 @@
-"""
-llama.cpp LLM Provider for Mindcore.
+"""llama.cpp LLM Provider for Mindcore.
 
 Provides CPU-optimized local inference using llama-cpp-python bindings.
 Supports GGUF models for memory-efficient operation.
@@ -7,23 +6,24 @@ Supports GGUF models for memory-efficient operation.
 
 import os
 import time
-from typing import List, Dict, Optional, Any
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .base_provider import (
     BaseLLMProvider,
-    LLMResponse,
-    LLMProviderError,
-    ModelNotFoundError,
     GenerationError,
+    LLMProviderError,
+    LLMResponse,
+    ModelNotFoundError,
 )
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class LlamaCppProvider(BaseLLMProvider):
-    """
-    llama.cpp provider for CPU-optimized local inference.
+    """llama.cpp provider for CPU-optimized local inference.
 
     Uses llama-cpp-python bindings for efficient CPU inference with
     quantized GGUF models. Ideal for metadata enrichment and context
@@ -56,14 +56,13 @@ class LlamaCppProvider(BaseLLMProvider):
         self,
         model_path: str,
         n_ctx: int = 4096,
-        n_threads: Optional[int] = None,
+        n_threads: int | None = None,
         n_gpu_layers: int = 0,
-        chat_format: Optional[str] = None,
+        chat_format: str | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ):
-        """
-        Initialize llama.cpp provider.
+        """Initialize llama.cpp provider.
 
         Args:
             model_path: Path to GGUF model file. Supports ~ expansion.
@@ -102,8 +101,7 @@ class LlamaCppProvider(BaseLLMProvider):
         self._load_model()
 
     def _load_model(self) -> None:
-        """
-        Load the llama.cpp model.
+        """Load the llama.cpp model.
 
         Raises:
             LLMProviderError: If loading fails
@@ -143,18 +141,17 @@ class LlamaCppProvider(BaseLLMProvider):
             logger.info(f"Model loaded successfully: {self._model_name}")
 
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
+            logger.exception(f"Failed to load model: {e}")
             raise LLMProviderError(f"Failed to load llama.cpp model: {e}") from e
 
     def generate(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 1000,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Generate a response using llama.cpp.
+        """Generate a response using llama.cpp.
 
         Args:
             messages: List of message dicts with 'role' and 'content'
@@ -216,7 +213,7 @@ class LlamaCppProvider(BaseLLMProvider):
 
         except Exception as e:
             latency_ms = (time.time() - start_time) * 1000
-            logger.error(f"Generation failed after {latency_ms:.0f}ms: {e}")
+            logger.exception(f"Generation failed after {latency_ms:.0f}ms: {e}")
             raise GenerationError(f"llama.cpp generation failed: {e}") from e
 
     def is_available(self) -> bool:
@@ -240,9 +237,8 @@ class LlamaCppProvider(BaseLLMProvider):
             # llama-cpp-python handles cleanup via __del__
             self._llm = None
 
-    def get_model_info(self) -> Dict[str, Any]:
-        """
-        Get information about the loaded model.
+    def get_model_info(self) -> dict[str, Any]:
+        """Get information about the loaded model.
 
         Returns:
             Dict with model metadata

@@ -1,5 +1,4 @@
-"""
-Mindcore Vector Stores Package
+"""Mindcore Vector Stores Package.
 ==============================
 
 Modular vector store integrations inspired by LangChain's architecture.
@@ -61,21 +60,21 @@ Using Local Embeddings (No API Required):
 
 # Base classes
 from .base import (
-    VectorStore,
-    Document,
-    SearchResult,
-    EmbeddingFunction,
     DistanceMetric,
-    VectorStoreRetriever,
+    Document,
+    EmbeddingFunction,
     InMemoryVectorStore,
+    SearchResult,
+    VectorStore,
+    VectorStoreRetriever,
 )
 
 # Embedding providers
 from .embeddings import (
+    CustomEmbeddings,
+    OllamaEmbeddings,
     OpenAIEmbeddings,
     SentenceTransformerEmbeddings,
-    OllamaEmbeddings,
-    CustomEmbeddings,
     create_embeddings,
 )
 
@@ -109,7 +108,7 @@ def _missing_dep_class(name: str, install_cmd: str):
     class MissingDependency:
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                f"{name} requires additional dependencies. " f"Install with: {install_cmd}"
+                f"{name} requires additional dependencies. Install with: {install_cmd}"
             )
 
         def __repr__(self):
@@ -144,26 +143,26 @@ except ImportError:
 
 
 __all__ = [
-    # Base classes
-    "VectorStore",
-    "Document",
-    "SearchResult",
-    "EmbeddingFunction",
-    "DistanceMetric",
-    "VectorStoreRetriever",
-    "InMemoryVectorStore",
-    # Embedding providers
-    "OpenAIEmbeddings",
-    "SentenceTransformerEmbeddings",
-    "OllamaEmbeddings",
-    "CustomEmbeddings",
-    "create_embeddings",
     # Vector store implementations (may be None if deps not installed)
     "ChromaVectorStore",
-    "PineconeVectorStore",
+    "CustomEmbeddings",
+    "DistanceMetric",
+    "Document",
+    "EmbeddingFunction",
+    "InMemoryVectorStore",
+    "OllamaEmbeddings",
+    # Embedding providers
+    "OpenAIEmbeddings",
     "PGVectorStore",
+    "PineconeVectorStore",
+    "SearchResult",
+    "SentenceTransformerEmbeddings",
+    # Base classes
+    "VectorStore",
+    "VectorStoreRetriever",
+    "create_embeddings",
     # Lazy loaders
     "get_chroma_store",
-    "get_pinecone_store",
     "get_pgvector_store",
+    "get_pinecone_store",
 ]

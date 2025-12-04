@@ -1,19 +1,20 @@
-"""
-Retrieval Query Agent.
+"""Retrieval Query Agent.
 
 Uses LLM with tool calling to analyze queries and extract search parameters.
 NO keyword matching or regex - pure LLM understanding of semantic intent.
 """
 
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from mindcore.core.schemas import DEFAULT_METADATA_SCHEMA, MetadataSchema
+from mindcore.utils.logger import get_logger
 
 from .base_agent import BaseAgent
-from ..core.schemas import MetadataSchema, DEFAULT_METADATA_SCHEMA
-from ..utils.logger import get_logger
+
 
 if TYPE_CHECKING:
-    from ..llm import BaseLLMProvider
+    from mindcore.llm import BaseLLMProvider
 
 logger = get_logger(__name__)
 
@@ -22,18 +23,17 @@ logger = get_logger(__name__)
 class QueryIntent:
     """Structured query intent from LLM analysis."""
 
-    topics: List[str]
-    categories: List[str]
-    intent: Optional[str]
-    entities: List[Dict[str, str]]
+    topics: list[str]
+    categories: list[str]
+    intent: str | None
+    entities: list[dict[str, str]]
     time_scope: str
     search_current_thread_only: bool
     confidence: str
 
 
 class RetrievalQueryAgent(BaseAgent):
-    """
-    AI agent that analyzes queries to extract search parameters.
+    """AI agent that analyzes queries to extract search parameters.
 
     Uses LLM with tool calling to understand semantic INTENT of queries,
     not just keywords. This is critical for handling cases like:
@@ -57,10 +57,9 @@ class RetrievalQueryAgent(BaseAgent):
         llm_provider: "BaseLLMProvider",
         temperature: float = 0.2,
         max_tokens: int = 500,
-        metadata_schema: Optional[MetadataSchema] = None,
+        metadata_schema: MetadataSchema | None = None,
     ):
-        """
-        Initialize retrieval query agent.
+        """Initialize retrieval query agent.
 
         Args:
             llm_provider: LLM provider instance
@@ -103,9 +102,8 @@ Guidelines for search_current_thread_only:
 
 Return ONLY valid JSON."""
 
-    def process(self, query: str, recent_context: Optional[str] = None) -> QueryIntent:
-        """
-        Analyze a query to extract search parameters.
+    def process(self, query: str, recent_context: str | None = None) -> QueryIntent:
+        """Analyze a query to extract search parameters.
 
         Args:
             query: User's query string.
@@ -116,9 +114,8 @@ Return ONLY valid JSON."""
         """
         return self.analyze_query(query, recent_context)
 
-    def analyze_query(self, query: str, recent_context: Optional[str] = None) -> QueryIntent:
-        """
-        Analyze query using LLM to extract search parameters.
+    def analyze_query(self, query: str, recent_context: str | None = None) -> QueryIntent:
+        """Analyze query using LLM to extract search parameters.
 
         This method uses LLM understanding instead of keyword matching,
         which correctly handles negations and semantic nuance.

@@ -1,5 +1,4 @@
-"""
-Data Retention Policy Manager.
+"""Data Retention Policy Manager.
 
 Manages data lifecycle including:
 - Tier migration (mid-term to long-term memory)
@@ -8,15 +7,17 @@ Manages data lifecycle including:
 - Context window management
 """
 
-from typing import Dict, Any, Optional, List, Callable
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from enum import Enum
-import threading
 import math
+import threading
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Any
 
-from .schemas import Message, MessageMetadata, ThreadSummary
-from ..utils.logger import get_logger
+from mindcore.utils.logger import get_logger
+
+from .schemas import Message, ThreadSummary
+
 
 logger = get_logger(__name__)
 
@@ -66,12 +67,11 @@ class TierMigrationResult:
     messages_migrated: int
     threads_summarized: int
     messages_deleted: int
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class RetentionPolicyManager:
-    """
-    Manages data retention and tier migration.
+    """Manages data retention and tier migration.
 
     Handles:
     - Automatic tier migration based on age and importance
@@ -90,11 +90,8 @@ class RetentionPolicyManager:
         >>> importance = policy.get_decayed_importance(message)
     """
 
-    def __init__(
-        self, db_manager, summarization_agent=None, config: Optional[RetentionConfig] = None
-    ):
-        """
-        Initialize retention policy manager.
+    def __init__(self, db_manager, summarization_agent=None, config: RetentionConfig | None = None):
+        """Initialize retention policy manager.
 
         Args:
             db_manager: Database manager instance
@@ -109,11 +106,10 @@ class RetentionPolicyManager:
     def get_decayed_importance(
         self,
         message: Message,
-        base_importance: Optional[float] = None,
-        reference_time: Optional[datetime] = None,
+        base_importance: float | None = None,
+        reference_time: datetime | None = None,
     ) -> float:
-        """
-        Calculate importance with time-based decay.
+        """Calculate importance with time-based decay.
 
         Uses exponential decay where importance halves every half_life_days.
 
@@ -163,8 +159,7 @@ class RetentionPolicyManager:
         return max(decayed, self.config.min_importance)
 
     def get_message_tier(self, message: Message) -> MemoryTier:
-        """
-        Determine the appropriate tier for a message.
+        """Determine the appropriate tier for a message.
 
         Args:
             message: Message to categorize
@@ -186,16 +181,14 @@ class RetentionPolicyManager:
 
         if age_days < self.config.short_term_days:
             return MemoryTier.SHORT_TERM
-        elif age_days < self.config.mid_term_days:
+        if age_days < self.config.mid_term_days:
             return MemoryTier.MID_TERM
-        elif age_days < self.config.long_term_days:
+        if age_days < self.config.long_term_days:
             return MemoryTier.LONG_TERM
-        else:
-            return MemoryTier.ARCHIVE
+        return MemoryTier.ARCHIVE
 
     def should_delete_message(self, message: Message) -> bool:
-        """
-        Check if a message should be deleted based on retention policy.
+        """Check if a message should be deleted based on retention policy.
 
         Args:
             message: Message to check
@@ -221,16 +214,12 @@ class RetentionPolicyManager:
             return True
 
         # Check archived data deletion
-        if age_days > self.config.delete_archived_after_days:
-            return True
-
-        return False
+        return age_days > self.config.delete_archived_after_days
 
     def should_summarize_thread(
-        self, thread_id: str, message_count: int, last_message_time: Optional[datetime] = None
+        self, thread_id: str, message_count: int, last_message_time: datetime | None = None
     ) -> bool:
-        """
-        Check if a thread should be summarized.
+        """Check if a thread should be summarized.
 
         Args:
             thread_id: Thread identifier
@@ -260,10 +249,9 @@ class RetentionPolicyManager:
         return False
 
     def run_migration(
-        self, user_id: Optional[str] = None, dry_run: bool = False
+        self, user_id: str | None = None, dry_run: bool = False
     ) -> TierMigrationResult:
-        """
-        Run tier migration for all or specific user's data.
+        """Run tier migration for all or specific user's data.
 
         Args:
             user_id: Optional user to migrate (all users if None)
@@ -322,11 +310,11 @@ class RetentionPolicyManager:
 
             except Exception as e:
                 result.errors.append(str(e))
-                logger.error(f"Migration error: {e}")
+                logger.exception(f"Migration error: {e}")
 
         return result
 
-    def _get_messages_for_migration(self, user_id: Optional[str] = None) -> List[Message]:
+    def _get_messages_for_migration(self, user_id: str | None = None) -> list[Message]:
         """Get messages that may need tier migration."""
         # Query messages older than short-term threshold
         cutoff = datetime.now(timezone.utc) - timedelta(days=self.config.short_term_days)
@@ -343,7 +331,7 @@ class RetentionPolicyManager:
 
         return [m for m in messages if self.get_message_tier(m) != MemoryTier.SHORT_TERM]
 
-    def _get_threads_for_summarization(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _get_threads_for_summarization(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """Get threads that may need summarization."""
         if hasattr(self.db, "get_thread_stats"):
             return self.db.get_thread_stats(user_id=user_id)
@@ -363,13 +351,13 @@ class RetentionPolicyManager:
             return self.db.delete_message(message.message_id)
         return False
 
-    def _summarize_thread(self, thread_info: Dict[str, Any]) -> Optional[ThreadSummary]:
+    def _summarize_thread(self, thread_info: dict[str, Any]) -> ThreadSummary | None:
         """Summarize a thread using the summarization agent."""
         if not self.summarization_agent:
             return None
 
         thread_id = thread_info["thread_id"]
-        user_id = thread_info.get("user_id")
+        thread_info.get("user_id")
 
         # Get thread messages
         messages = self.db.fetch_thread_messages(thread_id, limit=100)
@@ -387,19 +375,18 @@ class RetentionPolicyManager:
             return summary
 
         except Exception as e:
-            logger.error(f"Failed to summarize thread {thread_id}: {e}")
+            logger.exception(f"Failed to summarize thread {thread_id}: {e}")
             return None
 
     def get_context_window(
         self,
         user_id: str,
         thread_id: str,
-        max_messages: Optional[int] = None,
-        max_tokens: Optional[int] = None,
+        max_messages: int | None = None,
+        max_tokens: int | None = None,
         min_importance: float = 0.1,
-    ) -> List[Message]:
-        """
-        Get optimized context window for a conversation.
+    ) -> list[Message]:
+        """Get optimized context window for a conversation.
 
         Selects messages based on recency, importance, and token budget.
 
@@ -418,7 +405,9 @@ class RetentionPolicyManager:
 
         # Fetch recent messages
         messages = self.db.fetch_recent_messages(
-            user_id, thread_id, limit=max_msgs * 2  # Fetch extra for filtering
+            user_id,
+            thread_id,
+            limit=max_msgs * 2,  # Fetch extra for filtering
         )
 
         # Score and filter messages
@@ -435,7 +424,7 @@ class RetentionPolicyManager:
         selected = []
         estimated_tokens = 0
 
-        for msg, importance in scored_messages:
+        for msg, _importance in scored_messages:
             # Rough token estimation (4 chars per token)
             msg_tokens = len(msg.raw_text or msg.content or "") // 4
 
@@ -454,12 +443,12 @@ class RetentionPolicyManager:
 
 
 # Singleton instance
-_policy_manager: Optional[RetentionPolicyManager] = None
+_policy_manager: RetentionPolicyManager | None = None
 _policy_lock = threading.Lock()
 
 
 def get_retention_policy(
-    db_manager=None, summarization_agent=None, config: Optional[RetentionConfig] = None
+    db_manager=None, summarization_agent=None, config: RetentionConfig | None = None
 ) -> RetentionPolicyManager:
     """Get or create the singleton retention policy manager."""
     global _policy_manager

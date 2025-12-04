@@ -1,5 +1,4 @@
-"""
-Async Mindcore client for high-performance applications.
+"""Async Mindcore client for high-performance applications.
 
 Provides async/await interface for non-blocking operations in asyncio applications.
 
@@ -25,39 +24,43 @@ Usage:
     asyncio.run(main())
 """
 
-from typing import Optional, Dict, Any
 import asyncio
+import contextlib
+from typing import Any
 
+from .agents import (
+    ContextAssemblerAgent as ContextAgent,
+)
+from .agents import (
+    ContextTools,
+    SmartContextAgent,
+)
+from .agents import (
+    EnrichmentAgent as MetadataAgent,
+)
 from .core import (
-    ConfigLoader,
+    AssembledContext,
     CacheManager,
+    ConfigLoader,
     DiskCacheManager,
     Message,
     MessageMetadata,
-    AssembledContext,
     MessageRole,
 )
-from .utils import generate_message_id
-from .core.async_db import AsyncSQLiteManager, AsyncDatabaseManager
-from .agents import (
-    EnrichmentAgent as MetadataAgent,
-    ContextAssemblerAgent as ContextAgent,
-    SmartContextAgent,
-    ContextTools,
-)
+from .core.async_db import AsyncDatabaseManager, AsyncSQLiteManager
 from .llm import (
     BaseLLMProvider,
     create_provider,
     get_provider_type,
 )
-from .utils import get_logger, SecurityValidator
+from .utils import SecurityValidator, generate_message_id, get_logger
+
 
 logger = get_logger(__name__)
 
 
 class AsyncMindcoreClient:
-    """
-    Async Mindcore client for non-blocking operations.
+    """Async Mindcore client for non-blocking operations.
 
     Ideal for:
     - FastAPI applications
@@ -73,15 +76,14 @@ class AsyncMindcoreClient:
 
     def __init__(
         self,
-        config_path: Optional[str] = None,
+        config_path: str | None = None,
         use_sqlite: bool = False,
         sqlite_path: str = "mindcore.db",
-        llm_provider: Optional[str] = None,
+        llm_provider: str | None = None,
         persistent_cache: bool = True,
-        cache_dir: Optional[str] = None,
+        cache_dir: str | None = None,
     ):
-        """
-        Initialize async Mindcore client.
+        """Initialize async Mindcore client.
 
         Note: Call `await client.connect()` or use `async with` context manager
         to establish database connections.
@@ -121,8 +123,7 @@ class AsyncMindcoreClient:
         await self.close()
 
     async def connect(self) -> None:
-        """
-        Initialize connections and agents.
+        """Initialize connections and agents.
 
         Must be called before using the client, or use `async with` context manager.
         """
@@ -178,16 +179,15 @@ class AsyncMindcoreClient:
 
         # Background enrichment queue
         self._enrichment_queue: asyncio.Queue = asyncio.Queue()
-        self._enrichment_task: Optional[asyncio.Task] = None
+        self._enrichment_task: asyncio.Task | None = None
 
         self._connected = True
         db_type = "SQLite" if self._use_sqlite else "PostgreSQL"
         logger.info(
-            f"Async Mindcore initialized with {db_type} and "
-            f"{self._llm_provider.name} LLM provider"
+            f"Async Mindcore initialized with {db_type} and {self._llm_provider.name} LLM provider"
         )
 
-    def _create_llm_provider(self, provider_type_str: Optional[str]) -> BaseLLMProvider:
+    def _create_llm_provider(self, provider_type_str: str | None) -> BaseLLMProvider:
         """Create LLM provider based on configuration."""
         llm_config = self.config.get_llm_config()
 
@@ -241,9 +241,8 @@ class AsyncMindcoreClient:
         """Get the name of the active LLM provider."""
         return self._llm_provider.name if self._llm_provider else "not_initialized"
 
-    async def ingest_message(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Ingest a message with automatic metadata enrichment.
+    async def ingest_message(self, message_dict: dict[str, Any]) -> Message:
+        """Ingest a message with automatic metadata enrichment.
 
         Args:
             message_dict: Dictionary containing message data.
@@ -278,9 +277,8 @@ class AsyncMindcoreClient:
         logger.info(f"Message {message.message_id} ingested successfully (async)")
         return message
 
-    async def ingest_message_fast(self, message_dict: Dict[str, Any]) -> Message:
-        """
-        Ingest a message immediately without blocking on enrichment.
+    async def ingest_message_fast(self, message_dict: dict[str, Any]) -> Message:
+        """Ingest a message immediately without blocking on enrichment.
 
         The message is stored immediately with empty metadata, cached for the
         current session, and queued for background enrichment. This is ideal
@@ -409,7 +407,7 @@ class AsyncMindcoreClient:
                     logger.debug(f"Background enrichment completed for {message_id} (async)")
 
                 except Exception as e:
-                    logger.error(f"Background enrichment failed for {message_id}: {e}")
+                    logger.exception(f"Background enrichment failed for {message_id}: {e}")
                     # Mark as failed in database
                     failed_metadata = MessageMetadata(
                         enrichment_failed=True, enrichment_error=str(e)
@@ -417,15 +415,14 @@ class AsyncMindcoreClient:
                     await self.db.update_message_metadata(message_id, failed_metadata)
 
             except Exception as e:
-                logger.error(f"Async enrichment worker error: {e}")
+                logger.exception(f"Async enrichment worker error: {e}")
 
         logger.info("Async background enrichment worker stopped")
 
     async def get_context(
         self, user_id: str, thread_id: str, query: str, max_messages: int = 50
     ) -> AssembledContext:
-        """
-        Get intelligently assembled context for a query.
+        """Get intelligently assembled context for a query.
 
         Args:
             user_id: User identifier.
@@ -474,12 +471,10 @@ class AsyncMindcoreClient:
         logger.info(f"Retrieved {len(cached_messages)} messages for context assembly (async)")
 
         # Assemble context (sync operation - LLM call)
-        context = self.context_agent.process(cached_messages, query)
-        return context
+        return self.context_agent.process(cached_messages, query)
 
     def _get_smart_context_agent(self) -> SmartContextAgent:
-        """
-        Get or create the SmartContextAgent (lazy initialization).
+        """Get or create the SmartContextAgent (lazy initialization).
 
         Creates ContextTools callbacks that connect the agent to
         cache and database for fetching context data.
@@ -494,15 +489,15 @@ class AsyncMindcoreClient:
             try:
                 return self.cache.get_recent_messages(user_id, thread_id, limit)
             except Exception as e:
-                logger.error(f"Error fetching recent messages: {e}")
+                logger.exception(f"Error fetching recent messages: {e}")
                 return []
 
         def search_history(
             user_id: str,
-            thread_id: Optional[str],
+            thread_id: str | None,
             topics: list,
             categories: list,
-            intent: Optional[str],
+            intent: str | None,
             limit: int,
         ) -> list:
             # This runs in a thread pool executor (from get_context_smart),
@@ -530,14 +525,14 @@ class AsyncMindcoreClient:
                     # No running loop - we're in the executor thread, safe to use asyncio.run
                     return asyncio.run(coro)
             except Exception as e:
-                logger.error(f"Error searching history: {e}")
+                logger.exception(f"Error searching history: {e}")
                 return []
 
         def get_session_metadata(user_id: str, thread_id: str) -> dict:
             try:
                 return self.cache.get_session_metadata(user_id, thread_id)
             except Exception as e:
-                logger.error(f"Error fetching session metadata: {e}")
+                logger.exception(f"Error fetching session metadata: {e}")
                 return {"topics": [], "categories": [], "intents": [], "message_count": 0}
 
         tools = ContextTools(
@@ -561,10 +556,9 @@ class AsyncMindcoreClient:
         return self._smart_context_agent
 
     async def get_context_smart(
-        self, user_id: str, thread_id: str, query: str, additional_context: Optional[str] = None
+        self, user_id: str, thread_id: str, query: str, additional_context: str | None = None
     ) -> AssembledContext:
-        """
-        Get context using single LLM call with tool calling (optimized latency).
+        """Get context using single LLM call with tool calling (optimized latency).
 
         This method uses SmartContextAgent which combines query analysis and
         context assembly into a single LLM call with tools. The agent
@@ -627,13 +621,13 @@ class AsyncMindcoreClient:
         )
         return context
 
-    async def get_message(self, message_id: str) -> Optional[Message]:
+    async def get_message(self, message_id: str) -> Message | None:
         """Get a single message by ID."""
         if not self._connected:
             raise RuntimeError("Client not connected. Use 'async with' or call connect() first.")
         return await self.db.get_message_by_id(message_id)
 
-    def clear_cache(self, user_id: Optional[str] = None, thread_id: Optional[str] = None) -> None:
+    def clear_cache(self, user_id: str | None = None, thread_id: str | None = None) -> None:
         """Clear message cache."""
         if user_id and thread_id:
             self.cache.clear_thread(user_id, thread_id)
@@ -650,10 +644,8 @@ class AsyncMindcoreClient:
             and not self._enrichment_task.done()
         ):
             self._enrichment_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._enrichment_task
-            except asyncio.CancelledError:
-                pass
             logger.info("Background enrichment task cancelled")
 
         # Close cache (DiskCacheManager needs explicit close)

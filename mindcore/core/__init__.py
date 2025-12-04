@@ -1,84 +1,82 @@
-"""
-Core modules for Mindcore framework.
-"""
+"""Core modules for Mindcore framework."""
 
-from .config_loader import ConfigLoader
-from .db_manager import DatabaseManager, DatabaseConnectionError
-from .sqlite_manager import SQLiteManager
-from .cache_manager import CacheManager
-from .disk_cache_manager import DiskCacheManager
-from .metrics_manager import MetricsManager
-from .preferences_manager import PreferencesManager, AsyncPreferencesManager
-from .schemas import (
-    Message,
-    MessageMetadata,
-    MessageRole,
-    KnowledgeVisibility,
-    AssembledContext,
-    ContextRequest,
-    IngestRequest,
-    MetadataSchema,  # Deprecated: use VocabularyManager instead
-    DEFAULT_METADATA_SCHEMA,  # Deprecated: use get_vocabulary() instead
-    ThreadSummary,
-    UserPreferences,
-)
-from .vocabulary import (
-    VocabularyManager,
-    VocabularySource,
-    VocabularyEntry,
-    Intent,
-    Sentiment,
-    CommunicationStyle,
-    EntityType,
-    get_vocabulary,
-    reset_vocabulary,
-)
-from .worker_monitor import (
-    WorkerMonitor,
-    WorkerMetrics,
-    WorkerStatus,
-    get_worker_monitor,
-    reset_worker_monitor,
-)
 from .adaptive_preferences import (
-    AdaptivePreferencesLearner,
     AdaptiveConfig,
+    AdaptivePreferencesLearner,
     PreferenceSignal,
     get_adaptive_learner,
     reset_adaptive_learner,
 )
-from .retention_policy import (
-    RetentionPolicyManager,
-    RetentionConfig,
-    MemoryTier,
-    TierMigrationResult,
-    get_retention_policy,
-    reset_retention_policy,
-)
 from .cache_invalidation import (
     CacheInvalidationManager,
-    InvalidationReason,
     InvalidationEvent,
+    InvalidationReason,
     InvalidationStats,
     get_cache_invalidation,
     reset_cache_invalidation,
 )
+from .cache_manager import CacheManager
+from .config_loader import ConfigLoader
+from .db_manager import DatabaseConnectionError, DatabaseManager
+from .disk_cache_manager import DiskCacheManager
+from .metrics_manager import MetricsManager
 from .multi_agent import (
+    AgentProfile,
+    AgentVisibility,
+    MemorySharingMode,
     MultiAgentConfig,
     MultiAgentManager,
-    MemorySharingMode,
-    AgentVisibility,
-    AgentProfile,
+    configure_multi_agent,
     get_multi_agent_manager,
     reset_multi_agent_manager,
-    configure_multi_agent,
 )
+from .preferences_manager import AsyncPreferencesManager, PreferencesManager
 from .prometheus_metrics import (
     MindcoreMetrics,
     get_metrics,
+    is_prometheus_available,
     reset_metrics,
     start_metrics_server,
-    is_prometheus_available,
+)
+from .retention_policy import (
+    MemoryTier,
+    RetentionConfig,
+    RetentionPolicyManager,
+    TierMigrationResult,
+    get_retention_policy,
+    reset_retention_policy,
+)
+from .schemas import (
+    DEFAULT_METADATA_SCHEMA,  # Deprecated: use get_vocabulary() instead
+    AssembledContext,
+    ContextRequest,
+    IngestRequest,
+    KnowledgeVisibility,
+    Message,
+    MessageMetadata,
+    MessageRole,
+    MetadataSchema,  # Deprecated: use VocabularyManager instead
+    ThreadSummary,
+    UserPreferences,
+)
+from .sqlite_manager import SQLiteManager
+from .vocabulary import (
+    CommunicationStyle,
+    EntityType,
+    Intent,
+    Sentiment,
+    VocabularyEntry,
+    VocabularyManager,
+    VocabularySource,
+    get_vocabulary,
+    reset_vocabulary,
+)
+from .worker_monitor import (
+    WorkerMetrics,
+    WorkerMonitor,
+    WorkerStatus,
+    get_worker_monitor,
+    reset_worker_monitor,
 )
 
 
@@ -106,8 +104,7 @@ def get_access_control_manager():
 
 
 def get_casbin_access_control():
-    """
-    Get CasbinAccessControlManager class (requires: pip install casbin>=1.50.0).
+    """Get CasbinAccessControlManager class (requires: pip install casbin>=1.50.0).
 
     Example:
         CasbinACM = get_casbin_access_control()
@@ -119,81 +116,81 @@ def get_casbin_access_control():
 
 
 __all__ = [
-    "ConfigLoader",
-    "DatabaseManager",
-    "DatabaseConnectionError",
-    "SQLiteManager",
-    "CacheManager",
-    "DiskCacheManager",
-    "MetricsManager",
-    "PreferencesManager",
+    "DEFAULT_METADATA_SCHEMA",  # Deprecated
+    "AdaptiveConfig",
+    # Adaptive preferences
+    "AdaptivePreferencesLearner",
+    "AgentProfile",
+    "AgentVisibility",
+    "AssembledContext",
     "AsyncPreferencesManager",
+    # Cache invalidation
+    "CacheInvalidationManager",
+    "CacheManager",
+    "CommunicationStyle",
+    "ConfigLoader",
+    "ContextRequest",
+    "DatabaseConnectionError",
+    "DatabaseManager",
+    "DiskCacheManager",
+    "EntityType",
+    "IngestRequest",
+    "Intent",
+    "InvalidationEvent",
+    "InvalidationReason",
+    "InvalidationStats",
+    "KnowledgeVisibility",
+    "MemorySharingMode",
+    "MemoryTier",
     "Message",
     "MessageMetadata",
     "MessageRole",
-    "KnowledgeVisibility",
-    "AssembledContext",
-    "ContextRequest",
-    "IngestRequest",
     "MetadataSchema",  # Deprecated
-    "DEFAULT_METADATA_SCHEMA",  # Deprecated
-    "ThreadSummary",
-    "UserPreferences",
-    # VocabularyManager (central vocabulary control)
-    "VocabularyManager",
-    "VocabularySource",
-    "VocabularyEntry",
-    "Intent",
-    "Sentiment",
-    "CommunicationStyle",
-    "EntityType",
-    "get_vocabulary",
-    "reset_vocabulary",
-    # Worker monitoring
-    "WorkerMonitor",
-    "WorkerMetrics",
-    "WorkerStatus",
-    "get_worker_monitor",
-    "reset_worker_monitor",
-    # Adaptive preferences
-    "AdaptivePreferencesLearner",
-    "AdaptiveConfig",
-    "PreferenceSignal",
-    "get_adaptive_learner",
-    "reset_adaptive_learner",
-    # Retention policy
-    "RetentionPolicyManager",
-    "RetentionConfig",
-    "MemoryTier",
-    "TierMigrationResult",
-    "get_retention_policy",
-    "reset_retention_policy",
-    # Cache invalidation
-    "CacheInvalidationManager",
-    "InvalidationReason",
-    "InvalidationEvent",
-    "InvalidationStats",
-    "get_cache_invalidation",
-    "reset_cache_invalidation",
+    "MetricsManager",
+    # Prometheus metrics
+    "MindcoreMetrics",
     # Multi-agent
     "MultiAgentConfig",
     "MultiAgentManager",
-    "MemorySharingMode",
-    "AgentVisibility",
-    "AgentProfile",
-    "get_multi_agent_manager",
-    "reset_multi_agent_manager",
+    "PreferenceSignal",
+    "PreferencesManager",
+    "RetentionConfig",
+    # Retention policy
+    "RetentionPolicyManager",
+    "SQLiteManager",
+    "Sentiment",
+    "ThreadSummary",
+    "TierMigrationResult",
+    "UserPreferences",
+    "VocabularyEntry",
+    # VocabularyManager (central vocabulary control)
+    "VocabularyManager",
+    "VocabularySource",
+    "WorkerMetrics",
+    # Worker monitoring
+    "WorkerMonitor",
+    "WorkerStatus",
     "configure_multi_agent",
-    # Prometheus metrics
-    "MindcoreMetrics",
-    "get_metrics",
-    "reset_metrics",
-    "start_metrics_server",
-    "is_prometheus_available",
-    # Async helpers
-    "get_async_sqlite_manager",
-    "get_async_database_manager",
     # Access control helpers
     "get_access_control_manager",
+    "get_adaptive_learner",
+    "get_async_database_manager",
+    # Async helpers
+    "get_async_sqlite_manager",
+    "get_cache_invalidation",
     "get_casbin_access_control",
+    "get_metrics",
+    "get_multi_agent_manager",
+    "get_retention_policy",
+    "get_vocabulary",
+    "get_worker_monitor",
+    "is_prometheus_available",
+    "reset_adaptive_learner",
+    "reset_cache_invalidation",
+    "reset_metrics",
+    "reset_multi_agent_manager",
+    "reset_retention_policy",
+    "reset_vocabulary",
+    "reset_worker_monitor",
+    "start_metrics_server",
 ]

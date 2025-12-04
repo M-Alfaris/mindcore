@@ -1,5 +1,4 @@
-"""
-Async database managers for high-performance applications.
+"""Async database managers for high-performance applications.
 
 Provides async alternatives to sync database managers:
 - AsyncSQLiteManager: Uses aiosqlite for non-blocking SQLite operations
@@ -14,17 +13,18 @@ Usage:
 """
 
 import json
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+from mindcore.utils.logger import get_logger
 
 from .schemas import Message, MessageMetadata, MessageRole
-from ..utils.logger import get_logger
+
 
 logger = get_logger(__name__)
 
 
 class AsyncSQLiteManager:
-    """
-    Async SQLite database manager using aiosqlite.
+    """Async SQLite database manager using aiosqlite.
 
     Provides non-blocking database operations for asyncio applications.
 
@@ -35,8 +35,7 @@ class AsyncSQLiteManager:
     """
 
     def __init__(self, db_path: str = "mindcore.db"):
-        """
-        Initialize async SQLite manager.
+        """Initialize async SQLite manager.
 
         Args:
             db_path: Path to SQLite database file.
@@ -113,8 +112,7 @@ class AsyncSQLiteManager:
         logger.info("Async SQLite schema initialized")
 
     async def insert_message(self, message: Message) -> bool:
-        """
-        Insert a message into the database.
+        """Insert a message into the database.
 
         Args:
             message: Message object to insert.
@@ -153,14 +151,13 @@ class AsyncSQLiteManager:
             logger.debug(f"Message {message.message_id} inserted (async)")
             return True
         except Exception as e:
-            logger.error(f"Failed to insert message (async): {e}")
+            logger.exception(f"Failed to insert message (async): {e}")
             return False
 
     async def fetch_recent_messages(
         self, user_id: str, thread_id: str, limit: int = 50
-    ) -> List[Message]:
-        """
-        Fetch recent messages for a user and thread.
+    ) -> list[Message]:
+        """Fetch recent messages for a user and thread.
 
         Args:
             user_id: User identifier.
@@ -202,12 +199,11 @@ class AsyncSQLiteManager:
             logger.debug(f"Fetched {len(messages)} messages (async) for {user_id}/{thread_id}")
             return messages
         except Exception as e:
-            logger.error(f"Failed to fetch messages (async): {e}")
+            logger.exception(f"Failed to fetch messages (async): {e}")
             return []
 
-    async def get_message_by_id(self, message_id: str) -> Optional[Message]:
-        """
-        Get a single message by ID.
+    async def get_message_by_id(self, message_id: str) -> Message | None:
+        """Get a single message by ID.
 
         Args:
             message_id: Message identifier.
@@ -238,12 +234,11 @@ class AsyncSQLiteManager:
                 )
             return None
         except Exception as e:
-            logger.error(f"Failed to get message by ID (async): {e}")
+            logger.exception(f"Failed to get message by ID (async): {e}")
             return None
 
     async def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
-        """
-        Update the metadata of an existing message.
+        """Update the metadata of an existing message.
 
         Used by background enrichment to update messages that were
         initially stored with empty metadata.
@@ -270,26 +265,24 @@ class AsyncSQLiteManager:
             if cursor.rowcount > 0:
                 logger.debug(f"Updated metadata for message {message_id} (async)")
                 return True
-            else:
-                logger.warning(f"Message {message_id} not found for metadata update (async)")
-                return False
+            logger.warning(f"Message {message_id} not found for metadata update (async)")
+            return False
         except Exception as e:
-            logger.error(f"Failed to update message metadata (async): {e}")
+            logger.exception(f"Failed to update message metadata (async): {e}")
             return False
 
     async def search_by_relevance(
         self,
         user_id: str,
-        topics: Optional[List[str]] = None,
-        categories: Optional[List[str]] = None,
-        intent: Optional[str] = None,
+        topics: list[str] | None = None,
+        categories: list[str] | None = None,
+        intent: str | None = None,
         min_importance: float = 0.0,
-        thread_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        thread_id: str | None = None,
+        session_id: str | None = None,
         limit: int = 20,
-    ) -> List[Message]:
-        """
-        Search messages by relevance using metadata filters.
+    ) -> list[Message]:
+        """Search messages by relevance using metadata filters.
 
         Args:
             user_id: User identifier.
@@ -306,8 +299,8 @@ class AsyncSQLiteManager:
         """
         self._ensure_connected()
         # Build dynamic query
-        conditions: List[str] = ["user_id = ?"]
-        params: List[Any] = [user_id]
+        conditions: list[str] = ["user_id = ?"]
+        params: list[Any] = [user_id]
 
         if thread_id:
             conditions.append("thread_id = ?")
@@ -374,7 +367,7 @@ class AsyncSQLiteManager:
             logger.debug(f"Search found {len(messages)} relevant messages (async SQLite)")
             return messages
         except Exception as e:
-            logger.error(f"Failed to search by relevance (async): {e}")
+            logger.exception(f"Failed to search by relevance (async): {e}")
             return []
 
     async def close(self) -> None:
@@ -386,8 +379,7 @@ class AsyncSQLiteManager:
 
 
 class AsyncDatabaseManager:
-    """
-    Async PostgreSQL database manager using asyncpg.
+    """Async PostgreSQL database manager using asyncpg.
 
     Provides non-blocking database operations with connection pooling.
 
@@ -397,9 +389,8 @@ class AsyncDatabaseManager:
             messages = await db.fetch_recent_messages(user_id, thread_id)
     """
 
-    def __init__(self, db_config: Dict[str, Any]):
-        """
-        Initialize async database manager.
+    def __init__(self, db_config: dict[str, Any]):
+        """Initialize async database manager.
 
         Args:
             db_config: Database configuration dictionary.
@@ -479,8 +470,7 @@ class AsyncDatabaseManager:
         logger.info("Async PostgreSQL schema initialized")
 
     async def insert_message(self, message: Message) -> bool:
-        """
-        Insert a message into the database.
+        """Insert a message into the database.
 
         Args:
             message: Message object to insert.
@@ -520,14 +510,13 @@ class AsyncDatabaseManager:
             logger.debug(f"Message {message.message_id} inserted (async)")
             return True
         except Exception as e:
-            logger.error(f"Failed to insert message (async): {e}")
+            logger.exception(f"Failed to insert message (async): {e}")
             return False
 
     async def fetch_recent_messages(
         self, user_id: str, thread_id: str, limit: int = 50
-    ) -> List[Message]:
-        """
-        Fetch recent messages for a user and thread.
+    ) -> list[Message]:
+        """Fetch recent messages for a user and thread.
 
         Args:
             user_id: User identifier.
@@ -572,12 +561,11 @@ class AsyncDatabaseManager:
             logger.debug(f"Fetched {len(messages)} messages (async) for {user_id}/{thread_id}")
             return messages
         except Exception as e:
-            logger.error(f"Failed to fetch messages (async): {e}")
+            logger.exception(f"Failed to fetch messages (async): {e}")
             return []
 
-    async def get_message_by_id(self, message_id: str) -> Optional[Message]:
-        """
-        Get a single message by ID.
+    async def get_message_by_id(self, message_id: str) -> Message | None:
+        """Get a single message by ID.
 
         Args:
             message_id: Message identifier.
@@ -611,12 +599,11 @@ class AsyncDatabaseManager:
                 )
             return None
         except Exception as e:
-            logger.error(f"Failed to get message by ID (async): {e}")
+            logger.exception(f"Failed to get message by ID (async): {e}")
             return None
 
     async def update_message_metadata(self, message_id: str, metadata: MessageMetadata) -> bool:
-        """
-        Update the metadata of an existing message.
+        """Update the metadata of an existing message.
 
         Used by background enrichment to update messages that were
         initially stored with empty metadata.
@@ -644,26 +631,24 @@ class AsyncDatabaseManager:
             if result and result.endswith("1"):
                 logger.debug(f"Updated metadata for message {message_id} (async)")
                 return True
-            else:
-                logger.warning(f"Message {message_id} not found for metadata update (async)")
-                return False
+            logger.warning(f"Message {message_id} not found for metadata update (async)")
+            return False
         except Exception as e:
-            logger.error(f"Failed to update message metadata (async): {e}")
+            logger.exception(f"Failed to update message metadata (async): {e}")
             return False
 
     async def search_by_relevance(
         self,
         user_id: str,
-        topics: Optional[List[str]] = None,
-        categories: Optional[List[str]] = None,
-        intent: Optional[str] = None,
+        topics: list[str] | None = None,
+        categories: list[str] | None = None,
+        intent: str | None = None,
         min_importance: float = 0.0,
-        thread_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        thread_id: str | None = None,
+        session_id: str | None = None,
         limit: int = 20,
-    ) -> List[Message]:
-        """
-        Search messages by relevance using metadata filters.
+    ) -> list[Message]:
+        """Search messages by relevance using metadata filters.
 
         Uses PostgreSQL JSONB operators for efficient filtering.
 
@@ -682,8 +667,8 @@ class AsyncDatabaseManager:
         """
         self._ensure_pool()
         # Build dynamic query with JSONB operators
-        conditions: List[str] = ["user_id = $1"]
-        params: List[Any] = [user_id]
+        conditions: list[str] = ["user_id = $1"]
+        params: list[Any] = [user_id]
         param_idx = 2
 
         if thread_id:
@@ -755,7 +740,7 @@ class AsyncDatabaseManager:
             logger.debug(f"Search found {len(messages)} relevant messages (async PostgreSQL)")
             return messages
         except Exception as e:
-            logger.error(f"Failed to search by relevance (async): {e}")
+            logger.exception(f"Failed to search by relevance (async): {e}")
             return []
 
     async def close(self) -> None:

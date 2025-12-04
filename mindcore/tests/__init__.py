@@ -1,3 +1,1 @@
-"""
-Test suite for Mindcore framework.
-"""
+"""Test suite for Mindcore framework."""

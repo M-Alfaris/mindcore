@@ -1,5 +1,4 @@
-"""
-Security and validation utilities for Mindcore framework.
+"""Security and validation utilities for Mindcore framework.
 
 This module provides:
 - Input validation and sanitization
@@ -9,19 +8,18 @@ This module provides:
 """
 
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 from limits import parse, storage, strategies
 
 from .logger import get_logger
 
+
 logger = get_logger(__name__)
 
 
 class SecurityValidator:
-    """
-    Validates and sanitizes inputs to prevent security vulnerabilities.
-    """
+    """Validates and sanitizes inputs to prevent security vulnerabilities."""
 
     # Maximum allowed lengths
     MAX_TEXT_LENGTH = 100000  # 100k characters
@@ -36,9 +34,8 @@ class SecurityValidator:
     ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-:\.@]+$")
 
     @classmethod
-    def validate_message_dict(cls, message_dict: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
-        """
-        Validate message dictionary for security and correctness.
+    def validate_message_dict(cls, message_dict: dict[str, Any]) -> tuple[bool, str | None]:
+        """Validate message dictionary for security and correctness.
 
         Args:
             message_dict: Message dictionary to validate.
@@ -97,8 +94,7 @@ class SecurityValidator:
 
     @classmethod
     def _validate_id(cls, id_value: str) -> bool:
-        """
-        Validate ID field (user_id, thread_id, session_id).
+        """Validate ID field (user_id, thread_id, session_id).
 
         IDs must be:
         - Non-empty strings
@@ -118,15 +114,11 @@ class SecurityValidator:
             return False
 
         # Allow alphanumeric, underscore, hyphen, colon, dot, and @ (for emails/namespacing)
-        if not cls.ID_PATTERN.match(id_value):
-            return False
-
-        return True
+        return cls.ID_PATTERN.match(id_value)
 
     @classmethod
     def sanitize_text(cls, text: str) -> str:
-        """
-        Sanitize text input.
+        """Sanitize text input.
 
         Args:
             text: Text to sanitize.
@@ -141,16 +133,13 @@ class SecurityValidator:
         text = text.strip()
 
         # Normalize line endings
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-
-        return text
+        return text.replace("\r\n", "\n").replace("\r", "\n")
 
     @classmethod
     def validate_query_params(
         cls, user_id: str, thread_id: str, query: str
-    ) -> Tuple[bool, Optional[str]]:
-        """
-        Validate context query parameters.
+    ) -> tuple[bool, str | None]:
+        """Validate context query parameters.
 
         Args:
             user_id: User identifier.
@@ -176,8 +165,7 @@ class SecurityValidator:
 
 
 class RateLimiter:
-    """
-    Rate limiter for API endpoints using the limits library.
+    """Rate limiter for API endpoints using the limits library.
 
     Supports in-memory storage (default) and Redis for distributed deployments.
     Uses moving window strategy for accurate rate limiting.
@@ -189,16 +177,16 @@ class RateLimiter:
     """
 
     def __init__(
-        self, max_requests: int = 100, window_seconds: int = 60, storage_uri: Optional[str] = None
+        self, max_requests: int = 100, window_seconds: int = 60, storage_uri: str | None = None
     ):
-        """
-        Initialize rate limiter.
+        """Initialize rate limiter.
 
         Args:
             max_requests: Maximum requests per window.
             window_seconds: Time window in seconds.
             storage_uri: Optional storage URI for distributed rate limiting.
-                        Examples:
+
+        Examples:
                         - None: In-memory (default)
                         - "memory://": Explicit in-memory
                         - "redis://localhost:6379": Redis backend
@@ -222,8 +210,7 @@ class RateLimiter:
         self._strategy = strategies.MovingWindowRateLimiter(self._storage)
 
     def is_allowed(self, identifier: str) -> bool:
-        """
-        Check if request is allowed for identifier.
+        """Check if request is allowed for identifier.
 
         Args:
             identifier: Unique identifier (e.g., user_id, IP address).
@@ -239,8 +226,7 @@ class RateLimiter:
         return allowed
 
     def get_remaining(self, identifier: str) -> int:
-        """
-        Get remaining requests for identifier.
+        """Get remaining requests for identifier.
 
         Args:
             identifier: Unique identifier.
@@ -253,8 +239,7 @@ class RateLimiter:
         return window_stats[1]
 
     def reset(self, identifier: str) -> None:
-        """
-        Reset rate limit for a specific identifier.
+        """Reset rate limit for a specific identifier.
 
         Args:
             identifier: Unique identifier to reset.
@@ -262,9 +247,8 @@ class RateLimiter:
         self._storage.reset()
         logger.info(f"Rate limit reset for {identifier}")
 
-    def get_stats(self, identifier: str) -> Dict[str, Any]:
-        """
-        Get detailed rate limit stats for an identifier.
+    def get_stats(self, identifier: str) -> dict[str, Any]:
+        """Get detailed rate limit stats for an identifier.
 
         Args:
             identifier: Unique identifier.
@@ -283,29 +267,25 @@ class RateLimiter:
 
 
 class SecurityAuditor:
-    """
-    Security auditing and monitoring utilities.
-    """
+    """Security auditing and monitoring utilities."""
 
     @staticmethod
     def verify_parameterized_queries() -> bool:
-        """
-        Verify that all database queries use parameterized statements.
+        """Verify that all database queries use parameterized statements.
 
-        This is a static check to ensure we're using psycopg2 correctly.
+        This is a static check to ensure we're using psycopg correctly.
 
         Returns:
             True if verification passes.
         """
-        # This is verified by code review and using psycopg2's cursor.execute()
+        # This is verified by code review and using psycopg's cursor.execute()
         # with parameterized queries throughout db_manager.py
         logger.info("Database queries verified to use parameterized statements")
         return True
 
     @staticmethod
-    def audit_dependencies() -> Dict[str, Any]:
-        """
-        Audit dependencies for known vulnerabilities.
+    def audit_dependencies() -> dict[str, Any]:
+        """Audit dependencies for known vulnerabilities.
 
         Returns:
             Dictionary with audit results.
@@ -317,9 +297,8 @@ class SecurityAuditor:
         }
 
     @staticmethod
-    def get_security_headers() -> Dict[str, str]:
-        """
-        Get recommended security headers for API.
+    def get_security_headers() -> dict[str, str]:
+        """Get recommended security headers for API.
 
         Returns:
             Dictionary of security headers.
@@ -334,14 +313,13 @@ class SecurityAuditor:
 
 
 # Global rate limiter instance
-_rate_limiter: Optional[RateLimiter] = None
+_rate_limiter: RateLimiter | None = None
 
 
 def get_rate_limiter(
-    max_requests: int = 100, window_seconds: int = 60, storage_uri: Optional[str] = None
+    max_requests: int = 100, window_seconds: int = 60, storage_uri: str | None = None
 ) -> RateLimiter:
-    """
-    Get global rate limiter instance.
+    """Get global rate limiter instance.
 
     Args:
         max_requests: Maximum requests per window.
