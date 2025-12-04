@@ -333,3 +333,91 @@ class ConnectorRegistry:
                 logger.exception(f"Health check failed for {name}: {e}")
                 results[name] = False
         return results
+
+    def get_connectors_for_topics(self, topics: list[str]) -> list[BaseConnector]:
+        """Get all connectors that handle any of the given topics.
+
+        Used by Context Lake for parallel data fetching.
+
+        Args:
+            topics: List of topics to match
+
+        Returns:
+            List of matching connectors (deduplicated)
+        """
+        seen = set()
+        connectors = []
+
+        for topic in topics:
+            connector = self._topic_map.get(topic)
+            if connector and connector.name not in seen and connector.enabled:
+                seen.add(connector.name)
+                connectors.append(connector)
+
+        return connectors
+
+    def fetch(
+        self,
+        user_id: str,
+        context: dict[str, Any],
+        topics: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Synchronous fetch for Context Lake integration.
+
+        Wraps the async lookup in an event loop for sync contexts.
+
+        Args:
+            user_id: User identifier
+            context: Context with extracted entities
+            topics: Optional topics to filter connectors
+
+        Returns:
+            List of fetched data dictionaries
+        """
+        if topics is None:
+            topics = list(self._topic_map.keys())
+
+        try:
+            # Try to get existing event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is running, create a new thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        self.lookup(user_id, topics, context)
+                    )
+                    results = future.result(timeout=15.0)
+            else:
+                results = loop.run_until_complete(
+                    self.lookup(user_id, topics, context)
+                )
+        except RuntimeError:
+            # No event loop, create one
+            results = asyncio.run(self.lookup(user_id, topics, context))
+
+        return [r.to_dict() for r in results if r.success]
+
+    def get_vocabulary_topics(self) -> list[str]:
+        """Get all topics registered with vocabulary from connectors.
+
+        Returns:
+            List of connector-registered topics
+        """
+        from mindcore.core.vocabulary import get_vocabulary
+        vocabulary = get_vocabulary()
+        return vocabulary.get_connector_topics()
+
+    def get_status(self) -> dict[str, Any]:
+        """Get registry status for monitoring.
+
+        Returns:
+            Status dictionary with connector info
+        """
+        return {
+            "connectors": self.list_connectors(),
+            "topics": self.list_topics(),
+            "cache_enabled": self._cache_enabled,
+            "cache_size": len(self._cache),
+        }
