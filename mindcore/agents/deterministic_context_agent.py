@@ -17,7 +17,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from mindcore.core.schemas import AssembledContext, Message, ThreadSummary, UserPreferences
 from mindcore.core.vocabulary import VocabularyManager, get_vocabulary
@@ -68,12 +68,12 @@ class ContextToolCallbacks:
     All callbacks should be synchronous (the agent handles parallelization).
     """
 
-    get_recent_messages: callable  # (user_id, thread_id, limit) -> list[Message]
-    search_history: callable  # (user_id, thread_id, topics, categories, intent, limit) -> list[Message]
-    get_session_metadata: callable  # (user_id, thread_id) -> dict
-    get_historical_summaries: callable | None = None  # (user_id, topics, limit) -> list[ThreadSummary]
-    get_user_preferences: callable | None = None  # (user_id) -> UserPreferences
-    lookup_external_data: callable | None = None  # (user_id, topics, context) -> list[Any]
+    get_recent_messages: Callable  # (user_id, thread_id, limit) -> list[Message]
+    search_history: Callable  # (user_id, thread_id, topics, categories, intent, limit) -> list[Message]
+    get_session_metadata: Callable  # (user_id, thread_id) -> dict
+    get_historical_summaries: Callable | None = None  # (user_id, topics, limit) -> list[ThreadSummary]
+    get_user_preferences: Callable | None = None  # (user_id) -> UserPreferences
+    lookup_external_data: Callable | None = None  # (user_id, topics, context) -> list[Any]
 
 
 class DeterministicContextAgent(BaseAgent):
