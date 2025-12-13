@@ -34,7 +34,7 @@ Example:
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from .access import AccessController, Permission
 from .clst import CLST, CompressionStrategy
@@ -73,17 +73,16 @@ class Mindcore:
         storage: str | BaseStorage = "sqlite:///mindcore.db",
         vocabulary: VocabularySchema | None = None,
         enable_multi_agent: bool = False,
-        auto_extract_llm: Callable[[str], str] | None = None,
     ):
         """Initialize Mindcore.
 
         Args:
             storage: Storage backend or connection string
                 - "sqlite:///path.db" for SQLite
+                - "postgresql://..." for PostgreSQL
                 - BaseStorage instance for custom backends
             vocabulary: Vocabulary schema for metadata control
             enable_multi_agent: Enable multi-agent access control
-            auto_extract_llm: LLM function for enhanced auto-extraction
         """
         # Initialize storage
         if isinstance(storage, str):
@@ -107,10 +106,7 @@ class Mindcore:
         self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
 
         # Initialize extractor
-        self._extractor = MemoryExtractor(
-            vocabulary=self._vocabulary,
-            auto_extract_llm=auto_extract_llm,
-        )
+        self._extractor = MemoryExtractor(vocabulary=self._vocabulary)
 
     # === Core Memory Operations ===
 
@@ -251,58 +247,29 @@ class Mindcore:
         llm_response: dict[str, Any],
         user_id: str,
         agent_id: str | None = None,
-        messages: list[dict[str, Any]] | None = None,
         auto_store: bool = True,
     ) -> list[Memory]:
-        """Extract memories from LLM response.
+        """Extract memories from LLM structured output.
 
-        Combines structured output parsing and auto-extraction.
-
-        Args:
-            llm_response: LLM structured output
-            user_id: User identifier
-            agent_id: Agent identifier
-            messages: Conversation messages for auto-extraction
-            auto_store: Automatically store extracted memories
-
-        Returns:
-            List of extracted memories
-        """
-        result = self._extractor.extract_from_response(
-            llm_response=llm_response,
-            user_id=user_id,
-            agent_id=agent_id,
-            messages=messages,
-        )
-
-        if auto_store:
-            for memory in result.memories:
-                self._clst.store(memory, validate=False)
-
-        return result.memories
-
-    def auto_extract(
-        self,
-        messages: list[dict[str, Any]],
-        user_id: str,
-        agent_id: str | None = None,
-        auto_store: bool = True,
-    ) -> list[Memory]:
-        """Auto-extract memories from conversation.
-
-        Mem0-style extraction of implicit memories.
+        Parses the memories_to_store field from LLM response.
+        Fails hard on validation errors - no fallbacks.
 
         Args:
-            messages: Conversation messages
+            llm_response: LLM structured output with memories_to_store
             user_id: User identifier
             agent_id: Agent identifier
             auto_store: Automatically store extracted memories
 
         Returns:
             List of extracted memories
+
+        Raises:
+            TypeError: If response format is wrong
+            KeyError: If required fields are missing
+            ValueError: If validation fails
         """
-        result = self._extractor.auto_extract(
-            messages=messages,
+        result = self._extractor.extract(
+            output=llm_response,
             user_id=user_id,
             agent_id=agent_id,
         )

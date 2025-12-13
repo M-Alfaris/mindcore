@@ -72,6 +72,7 @@ from .access import (
 )
 from .storage import (
     BaseStorage,
+    PostgresStorage,
     SQLiteStorage,
 )
 from .server import (
@@ -116,6 +117,7 @@ __all__ = [
     "Permission",
     # Storage
     "BaseStorage",
+    "PostgresStorage",
     "SQLiteStorage",
     # Server
     "MCPServer",

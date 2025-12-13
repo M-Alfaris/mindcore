@@ -276,16 +276,27 @@ class SQLiteStorage(BaseStorage):
         params = []
 
         if query:
-            # Use FTS for text search
+            # Use FTS for text search with word matching
             conditions.append("""
                 memory_id IN (
                     SELECT memory_id FROM memories_fts
                     WHERE memories_fts MATCH ?
                 )
             """)
-            # Escape special FTS characters
-            safe_query = query.replace('"', '""')
-            params.append(f'"{safe_query}"')
+            # Convert to FTS5 OR query for word matching
+            words = []
+            for word in query.split():
+                # Clean word - keep only alphanumeric
+                clean = ''.join(c for c in word if c.isalnum())
+                if clean and len(clean) > 2:  # Skip very short words
+                    words.append(clean)
+            # Use OR matching for flexibility
+            if words:
+                fts_query = ' OR '.join(words)
+            else:
+                # Fallback to original query if no valid words
+                fts_query = query.replace('"', '""')
+            params.append(fts_query)
 
         if user_id:
             conditions.append("user_id = ?")
