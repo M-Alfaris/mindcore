@@ -5,14 +5,12 @@
 
 ## Quick Reference
 
-| Component | Status | Location | Purpose |
-|-----------|--------|----------|---------|
-| `mindcore/v2/` | **ACTIVE** | Primary | Modern memory layer with FLR/CLST protocols |
-| `mindcore/context_lake/` | **ACTIVE** | Plugin | Unified context aggregation |
-| `mindcore/agents/` | MIXED | Legacy+Active | Agent implementations |
-| `mindcore/core/` | LEGACY | Deprecated | Old core infrastructure |
-| `mindcore/vectorstores/` | LEGACY | Deprecated | Old vector store adapters |
-| `mindcore/api/` | LEGACY | Deprecated | Old REST API |
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `mindcore/v2/` | Primary | Modern memory layer with FLR/CLST protocols |
+| `mindcore/context_lake/` | Plugin | Unified context aggregation |
+| `mindcore/observability/` | Optional | Metrics, alerts, quality scoring |
+| `mindcore/utils/` | Utilities | Logging |
 
 ---
 
@@ -46,7 +44,7 @@ Mindcore is a **memory layer** for AI agents. It provides:
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Mindcore v2                                │
+│                         Mindcore                                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
 │  │ MCP Server  │  │  REST API   │  │  Direct Python Import   │ │
 │  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘ │
@@ -75,94 +73,30 @@ Mindcore is a **memory layer** for AI agents. It provides:
 
 ---
 
-## 3. Version Status
-
-### v2 (ACTIVE) - `mindcore/v2/`
-
-The current, actively developed version. Use this for all new projects.
+## 3. Installation
 
 ```python
-from mindcore.v2 import Mindcore
+# Basic usage
+from mindcore import Mindcore
 
-memory = Mindcore(storage="postgresql://localhost/mindcore")
-memory.store("User prefers dark mode", "preference", "user123", topics=["settings"])
-result = memory.recall("user preferences", "user123")
+memory = Mindcore(storage="sqlite:///dev.db")
+
+# Production with PostgreSQL
+memory = Mindcore(storage="postgresql://user:pass@localhost/mindcore")
 ```
 
-### v1/Legacy (DEPRECATED) - `mindcore/core/`, `mindcore/agents/`, etc.
-
-Original implementation with complex agent pipelines. **Do not use for new projects.**
-
 ---
 
-## 4. Feature Status Matrix
+## 4. Core Components
 
-### Active Features (v2)
-
-| Feature | Module | Description |
-|---------|--------|-------------|
-| FLR Protocol | `v2/flr/` | Fast retrieval, caching, scoring |
-| CLST Protocol | `v2/clst/` | Long-term storage, compression, sync |
-| Vocabulary Schema | `v2/vocabulary/` | Versioned metadata with JSON Schema export |
-| Memory Extraction | `v2/extraction/` | Parse structured LLM output |
-| Access Control | `v2/access/` | Multi-agent permissions |
-| PostgreSQL Storage | `v2/storage/postgres.py` | Production backend with FTS |
-| SQLite Storage | `v2/storage/sqlite.py` | Development backend with FTS5 |
-| MCP Server | `v2/server/mcp.py` | Model Context Protocol integration |
-| REST API | `v2/server/rest.py` | FastAPI REST endpoints |
-
-### Active Features (Plugins)
-
-| Feature | Module | Description |
-|---------|--------|-------------|
-| Context Lake | `context_lake/lake.py` | Unified context aggregation |
-| API Listener | `context_lake/api_listener.py` | External API context ingestion |
-| Knowledge Base | `context_lake/knowledge_base.py` | Static knowledge storage |
-
-### Active Agents
-
-| Agent | Module | Description |
-|-------|--------|-------------|
-| DeterministicContextAgent | `agents/deterministic_context_agent.py` | 2-call context retrieval (no randomness) |
-
-### Legacy/Deprecated Features
-
-| Feature | Module | Status | Replacement |
-|---------|--------|--------|-------------|
-| SmartContextAgent | `agents/smart_context_agent.py` | DEPRECATED | DeterministicContextAgent |
-| EnrichmentAgent | `agents/enrichment_agent.py` | DEPRECATED | Structured output extraction |
-| SummarizationAgent | `agents/summarization_agent.py` | DEPRECATED | CLST compression |
-| RetrievalQueryAgent | `agents/retrieval_query_agent.py` | DEPRECATED | FLR.query() |
-| ContextAssemblerAgent | `agents/context_assembler_agent.py` | DEPRECATED | FLR.update_context() |
-| TrivialDetector | `agents/trivial_detector.py` | DEPRECATED | Not needed |
-| Old Vocabulary | `core/vocabulary.py` | DEPRECATED | v2/vocabulary/schema.py |
-| Old Access Control | `core/access_control.py` | DEPRECATED | v2/access/permissions.py |
-| CacheManager | `core/cache_manager.py` | DEPRECATED | FLR hot cache |
-| Celery Workers | `workers/` | DEPRECATED | Not needed for v2 |
-| Vector Stores | `vectorstores/` | DEPRECATED | FTS (vector optional) |
-| Old REST API | `api/` | DEPRECATED | v2/server/rest.py |
-| Observability | `observability/` | AVAILABLE | Use if needed |
-
-### Experimental/Future
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| pgvector Support | PLANNED | Optional semantic search |
-| Embedding Generation | PLANNED | External function hook |
-| Cross-Agent Sync | PARTIAL | CLST.sync() implemented |
-
----
-
-## 5. v2 Core Components
-
-### 5.1 Mindcore Class
+### 4.1 Mindcore Class
 
 **Location:** `mindcore/v2/mindcore.py`
 
 Main entry point for all operations.
 
 ```python
-from mindcore.v2 import Mindcore
+from mindcore import Mindcore
 
 # Initialize
 memory = Mindcore(
@@ -208,20 +142,20 @@ memories = memory.extract_from_response(llm_response, user_id="user123")
 schema = memory.get_json_schema()
 ```
 
-### 5.2 FLR Protocol
+### 4.2 FLR Protocol
 
 **Location:** `mindcore/v2/flr/recall.py`
 
 Fast Learning Recall - hot path for inference-time memory access.
 
 ```python
-from mindcore.v2.flr import FLR, Memory, RecallResult
+from mindcore import FLR, Memory, RecallResult
 
 # Query with scoring
 result: RecallResult = flr.query(
     query="order status",
     user_id="user123",
-    attention_hints=["orders"],
+    attention_hints=["order"],
     limit=10,
 )
 
@@ -240,14 +174,14 @@ flr.promote(memory_id)
 - `attention_focus`: Top topics to focus on
 - `suggested_memory_types`: Relevant memory types
 
-### 5.3 CLST Protocol
+### 4.3 CLST Protocol
 
 **Location:** `mindcore/v2/clst/storage.py`
 
 Cognitive Long-term Storage Transfer - cold path for persistent storage.
 
 ```python
-from mindcore.v2.clst import CLST, CompressionStrategy
+from mindcore import CLST, CompressionStrategy
 
 # Store memory
 memory_id = clst.store(memory, validate=True)
@@ -270,19 +204,19 @@ result = clst.sync(
 manifest = clst.transfer(memories, destination="backup")
 ```
 
-### 5.4 Vocabulary Schema
+### 4.4 Vocabulary Schema
 
 **Location:** `mindcore/v2/vocabulary/schema.py`
 
 Versioned vocabulary with JSON Schema export for LLM structured output.
 
 ```python
-from mindcore.v2.vocabulary import VocabularySchema, DEFAULT_VOCABULARY
+from mindcore import VocabularySchema, DEFAULT_VOCABULARY
 
 # Create custom vocabulary
 vocab = VocabularySchema(
     version="1.0.0",
-    topics=["billing", "orders", "support"],
+    topics=["billing", "order", "product"],
     categories=["urgent", "normal"],
     memory_types=["episodic", "semantic", "preference"],
 )
@@ -324,14 +258,14 @@ temporal     - Time-bound info (auto-expires)
 working      - Current session context (cleared)
 ```
 
-### 5.5 Memory Extraction
+### 4.5 Memory Extraction
 
 **Location:** `mindcore/v2/extraction/extractor.py`
 
 Parses memories from LLM structured output. **Fails hard on errors.**
 
 ```python
-from mindcore.v2.extraction import MemoryExtractor
+from mindcore import MemoryExtractor
 
 extractor = MemoryExtractor(vocabulary=vocab)
 
@@ -352,14 +286,14 @@ result = extractor.extract(
 # - ValueError: Validation failure
 ```
 
-### 5.6 Access Control
+### 4.6 Access Control
 
 **Location:** `mindcore/v2/access/permissions.py`
 
 Multi-agent access control with permission levels.
 
 ```python
-from mindcore.v2.access import AccessController, Permission
+from mindcore import AccessController, Permission
 
 controller = AccessController()
 
@@ -386,14 +320,14 @@ if decision.allowed:
 
 ---
 
-## 6. Storage Backends
+## 5. Storage Backends
 
 ### PostgreSQL (Production)
 
 **Location:** `mindcore/v2/storage/postgres.py`
 
 ```python
-from mindcore.v2 import Mindcore, PostgresStorage
+from mindcore import Mindcore, PostgresStorage
 
 # Via connection string
 memory = Mindcore(storage="postgresql://user:pass@localhost:5432/mindcore")
@@ -412,30 +346,12 @@ memory = Mindcore(storage=storage)
 - JSONB for topics, categories, entities
 - GIN indexes for array containment
 
-**Schema:**
-```sql
-CREATE TABLE memories (
-    memory_id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    memory_type TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    agent_id TEXT,
-    topics JSONB,
-    categories JSONB,
-    search_vector TSVECTOR,  -- Auto-updated
-    ...
-);
-
-CREATE INDEX idx_memories_search ON memories USING GIN(search_vector);
-CREATE INDEX idx_memories_topics ON memories USING GIN(topics);
-```
-
 ### SQLite (Development)
 
 **Location:** `mindcore/v2/storage/sqlite.py`
 
 ```python
-from mindcore.v2 import Mindcore
+from mindcore import Mindcore
 
 # Development mode
 memory = Mindcore(storage="sqlite:///dev.db")
@@ -451,7 +367,7 @@ memory = Mindcore(storage="sqlite:///:memory:")
 
 ---
 
-## 7. API Reference
+## 6. API Servers
 
 ### MCP Server
 
@@ -460,7 +376,7 @@ memory = Mindcore(storage="sqlite:///:memory:")
 Model Context Protocol server for native LLM tool integration.
 
 ```python
-from mindcore.v2 import Mindcore
+from mindcore import Mindcore
 
 memory = Mindcore(storage="...")
 mcp = memory.get_mcp_server()
@@ -485,7 +401,7 @@ response = mcp.handle_json_rpc({
 FastAPI REST endpoints.
 
 ```python
-from mindcore.v2 import Mindcore
+from mindcore import Mindcore
 
 memory = Mindcore(storage="...")
 memory.serve_rest(host="0.0.0.0", port=8000)
@@ -506,7 +422,9 @@ GET    /health                - Health check
 
 ---
 
-## 8. Context Lake (Plugin)
+## 7. Plugins
+
+### Context Lake
 
 **Location:** `mindcore/context_lake/`
 
@@ -529,29 +447,47 @@ context = lake.get_context(
 )
 ```
 
+### Observability
+
+**Location:** `mindcore/observability/`
+
+Optional metrics, alerts, and quality scoring.
+
+```python
+from mindcore.observability import Observer, QualityScorer
+
+observer = Observer()
+observer.record_recall(query, result, latency_ms)
+
+scorer = QualityScorer()
+score = scorer.score_memory(memory)
+```
+
 ---
 
-## 9. Testing
+## 8. Testing
 
-### Run v2 Tests
+### Run All Tests
 
 ```bash
-# All v2 tests
+# v2 tests
 pytest mindcore/v2/tests/ -v
 
-# Specific test
-pytest mindcore/v2/tests/test_mindcore_v2.py::TestMindcoreBasics -v
+# All tests
+pytest mindcore/tests/ -v
 ```
 
-### Test Coverage
+### Test Files
 
-```bash
-pytest mindcore/v2/tests/ --cov=mindcore/v2 --cov-report=html
-```
+| Test | Purpose |
+|------|---------|
+| `v2/tests/test_mindcore_v2.py` | Core v2 functionality |
+| `tests/test_context_lake.py` | Context lake plugin |
+| `tests/test_observability.py` | Observability tests |
 
 ---
 
-## 10. Configuration
+## 9. Configuration
 
 ### Environment Variables
 
@@ -569,7 +505,7 @@ MINDCORE_LOG_LEVEL=INFO
 ### Programmatic Configuration
 
 ```python
-from mindcore.v2 import Mindcore, VocabularySchema
+from mindcore import Mindcore, VocabularySchema
 
 memory = Mindcore(
     storage="postgresql://...",
@@ -584,58 +520,15 @@ memory = Mindcore(
 
 ---
 
-## 11. Migration Guide
-
-### From v1 to v2
-
-1. **Replace imports:**
-   ```python
-   # Old
-   from mindcore.core import MindcoreClient
-   from mindcore.agents import SmartContextAgent
-
-   # New
-   from mindcore.v2 import Mindcore
-   ```
-
-2. **Replace agents with direct calls:**
-   ```python
-   # Old
-   agent = SmartContextAgent(client)
-   context = agent.get_context(query, user_id)
-
-   # New
-   result = memory.recall(query, user_id)
-   ```
-
-3. **Replace auto-extraction with structured output:**
-   ```python
-   # Old
-   memories = agent.extract_memories(messages)
-
-   # New - LLM outputs structured JSON
-   memories = memory.extract_from_response(llm_response, user_id)
-   ```
-
-4. **Update storage:**
-   ```python
-   # Old
-   client = MindcoreClient(db_path="mindcore.db")
-
-   # New
-   memory = Mindcore(storage="sqlite:///mindcore.db")
-   # or
-   memory = Mindcore(storage="postgresql://...")
-   ```
-
----
-
-## 12. File Structure
+## 10. File Structure
 
 ```
 mindcore/
-├── v2/                          # ACTIVE - Modern memory layer
-│   ├── mindcore.py              # Main class
+├── __init__.py                  # Main exports (v2 + utils)
+├── py.typed                     # PEP 561 marker
+│
+├── v2/                          # Core memory layer
+│   ├── mindcore.py              # Main Mindcore class
 │   ├── flr/                     # Fast Learning Recall
 │   │   ├── recall.py            # FLR protocol
 │   │   └── __init__.py
@@ -664,42 +557,38 @@ mindcore/
 │   │   └── test_mindcore_v2.py
 │   └── __init__.py
 │
-├── context_lake/                # ACTIVE - Context aggregation plugin
+├── context_lake/                # Context aggregation plugin
 │   ├── lake.py                  # ContextLake
 │   ├── knowledge_base.py        # Static knowledge
 │   ├── api_listener.py          # External API ingestion
 │   └── __init__.py
 │
-├── agents/                      # MIXED - Some active, most deprecated
-│   ├── deterministic_context_agent.py  # ACTIVE - 2-call context
-│   ├── smart_context_agent.py          # DEPRECATED
-│   ├── enrichment_agent.py             # DEPRECATED
-│   └── ...
-│
-├── observability/               # AVAILABLE - Use if needed
+├── observability/               # Optional observability
 │   ├── observer.py              # Metrics collection
 │   ├── metrics.py               # Metric definitions
 │   ├── alerts.py                # Alert rules
-│   └── quality.py               # Quality scoring
+│   ├── quality.py               # Quality scoring
+│   └── __init__.py
 │
-├── core/                        # DEPRECATED - Old infrastructure
-├── api/                         # DEPRECATED - Old REST API
-├── vectorstores/                # DEPRECATED - Old vector adapters
-├── workers/                     # DEPRECATED - Celery workers
-├── llm/                         # DEPRECATED - LLM providers
-├── integrations/                # DEPRECATED - LangChain/LlamaIndex
-├── connectors/                  # DEPRECATED - External connectors
-└── utils/                       # MIXED - Some utilities still useful
+├── utils/                       # Utilities
+│   ├── logger.py                # Logging
+│   └── __init__.py
+│
+└── tests/                       # Integration tests
+    ├── conftest.py              # Pytest fixtures
+    ├── test_context_lake.py     # Context lake tests
+    └── test_observability.py    # Observability tests
 ```
 
 ---
 
-## 13. Common Patterns
+## 11. Common Patterns
 
 ### Pattern: LLM with Memory
 
 ```python
-from mindcore.v2 import Mindcore
+from mindcore import Mindcore
+import json
 
 memory = Mindcore(storage="postgresql://...")
 
@@ -727,7 +616,7 @@ context = memory.recall(user_query, user_id)
 ### Pattern: Multi-Agent Memory Sharing
 
 ```python
-from mindcore.v2 import Mindcore
+from mindcore import Mindcore
 
 memory = Mindcore(storage="postgresql://...", enable_multi_agent=True)
 
@@ -750,7 +639,7 @@ result = memory.recall("customer interests", user_id="user123", agent_id="sales"
 
 ---
 
-## 14. Troubleshooting
+## 12. Troubleshooting
 
 ### FTS Search Returns Empty
 
@@ -773,7 +662,7 @@ memory.recall("preferences", user_id)  # May not work (no word overlap)
 
 **Solution:** Use topics from `DEFAULT_VOCABULARY` or create custom vocabulary.
 ```python
-from mindcore.v2.vocabulary import DEFAULT_VOCABULARY
+from mindcore import DEFAULT_VOCABULARY
 print(DEFAULT_VOCABULARY.topics)  # See valid topics
 ```
 
@@ -788,7 +677,7 @@ pip install "psycopg[binary]>=3.0"
 
 ---
 
-## 15. Roadmap
+## 13. Roadmap
 
 ### Planned
 - [ ] pgvector support for semantic search
