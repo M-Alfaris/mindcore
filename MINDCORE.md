@@ -8,6 +8,7 @@
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | `mindcore/v2/` | Primary | Modern memory layer with FLR/CLST protocols |
+| `mindcore/v2/cross_agent/` | Primary | Multi-agent memory sharing and routing |
 | `mindcore/context_lake/` | Plugin | Unified context aggregation |
 | `mindcore/observability/` | Optional | Metrics, alerts, quality scoring |
 | `mindcore/utils/` | Utilities | Logging |
@@ -318,6 +319,98 @@ if decision.allowed:
     pass
 ```
 
+### 4.7 Cross-Agent Layer
+
+**Location:** `mindcore/v2/cross_agent/`
+
+Multi-agent memory sharing, synchronization, and intelligent query routing.
+
+```python
+from mindcore import CrossAgentLayer, SQLiteStorage, RoutingStrategy
+
+# Initialize
+storage = SQLiteStorage("mindcore.db")
+layer = CrossAgentLayer(storage)
+
+# Register agents
+layer.register_agent(
+    agent_id="support_bot",
+    name="Support Agent",
+    capabilities=["customer_support", "billing"],
+    specializations=["refunds", "complaints"],
+    teams=["customer_service"],
+)
+
+layer.register_agent(
+    agent_id="sales_bot",
+    name="Sales Agent",
+    capabilities=["sales", "product_info"],
+    teams=["customer_service"],
+)
+
+# Create team
+layer.create_team(
+    team_id="customer_service",
+    name="Customer Service Team",
+    shared_topics=["billing", "orders", "products"],
+)
+
+# Store memory with agent ownership
+from mindcore import Memory
+memory = Memory(
+    memory_id="",
+    content="Customer requested refund for order #123",
+    memory_type="entity",
+    user_id="user123",
+)
+layer.store_memory(memory, agent_id="support_bot", access_level="team")
+
+# Query across agents with routing
+result = layer.query(
+    query="refund requests",
+    user_id="user123",
+    requesting_agent="sales_bot",
+    strategy=RoutingStrategy.CAPABILITY_MATCH,
+    attention_hints=["billing", "refunds"],
+)
+
+# Sync memories between agents
+from mindcore.v2.cross_agent import SyncDirection
+sync_result = layer.sync(
+    source_agent="support_bot",
+    target_agent="sales_bot",
+    user_id="user123",
+    direction=SyncDirection.ONE_WAY,
+)
+```
+
+**Components:**
+
+| Component | Purpose |
+|-----------|---------|
+| `AgentRegistry` | Agent/team registration and management |
+| `CrossAgentMemory` | Memory sharing and synchronization |
+| `AttentionRouter` | Query routing with scoring algorithms |
+| `CrossAgentLayer` | Unified interface combining all above |
+
+**Access Levels:**
+```
+private  - Only owning agent can access
+team     - Agents in same team can access
+shared   - Any agent for same user can access
+global   - All agents can access (knowledge base)
+```
+
+**Routing Strategies:**
+```
+BROADCAST            - Query all agents
+CAPABILITY_MATCH     - Route to agents with matching capabilities
+SPECIALIZATION_MATCH - Route to specialized agents
+TEAM_FIRST           - Prioritize team members
+BEST_MATCH           - Use scoring to find best agent (default)
+ROUND_ROBIN          - Distribute queries evenly
+```
+
 ---
 
 ## 5. Storage Backends
@@ -482,6 +575,7 @@ pytest mindcore/tests/ -v
 | Test | Purpose |
 |------|---------|
 | `v2/tests/test_mindcore_v2.py` | Core v2 functionality |
+| `v2/tests/test_cross_agent.py` | Cross-agent memory layer |
 | `tests/test_context_lake.py` | Context lake plugin |
 | `tests/test_observability.py` | Observability tests |
 
@@ -553,8 +647,15 @@ mindcore/
 │   │   ├── mcp.py               # MCP server
 │   │   ├── rest.py              # REST API
 │   │   └── __init__.py
+│   ├── cross_agent/             # Multi-agent memory layer
+│   │   ├── registry.py          # Agent/Team registration
+│   │   ├── sharing.py           # Memory sharing and sync
+│   │   ├── routing.py           # Attention routing
+│   │   ├── layer.py             # CrossAgentLayer (unified)
+│   │   └── __init__.py
 │   ├── tests/                   # v2 tests
-│   │   └── test_mindcore_v2.py
+│   │   ├── test_mindcore_v2.py  # Core v2 tests
+│   │   └── test_cross_agent.py  # Cross-agent tests
 │   └── __init__.py
 │
 ├── context_lake/                # Context aggregation plugin
@@ -616,25 +717,52 @@ context = memory.recall(user_query, user_id)
 ### Pattern: Multi-Agent Memory Sharing
 
 ```python
-from mindcore import Mindcore
+from mindcore import CrossAgentLayer, SQLiteStorage, Memory, RoutingStrategy
 
-memory = Mindcore(storage="postgresql://...", enable_multi_agent=True)
+# Initialize cross-agent layer
+storage = SQLiteStorage("mindcore.db")
+layer = CrossAgentLayer(storage)
 
-# Register agents
-memory.register_agent("support", "Support Bot", teams=["customer_service"])
-memory.register_agent("sales", "Sales Bot", teams=["customer_service"])
+# Register agents with capabilities
+layer.register_agent(
+    agent_id="support",
+    name="Support Bot",
+    capabilities=["customer_support", "complaints"],
+    teams=["customer_service"],
+)
+layer.register_agent(
+    agent_id="sales",
+    name="Sales Bot",
+    capabilities=["sales", "upselling"],
+    teams=["customer_service"],
+)
+
+# Create shared team
+layer.create_team(
+    team_id="customer_service",
+    name="Customer Service",
+    shared_topics=["customers", "orders"],
+)
 
 # Support agent stores memory with team access
-memory.store(
+memory = Memory(
+    memory_id="",
     content="Customer interested in premium plan",
     memory_type="entity",
     user_id="user123",
-    agent_id="support",
-    access_level="team",  # Visible to sales too
+)
+layer.store_memory(memory, agent_id="support", access_level="team")
+
+# Sales agent can query with intelligent routing
+result = layer.query(
+    query="customer interests",
+    user_id="user123",
+    requesting_agent="sales",
+    strategy=RoutingStrategy.TEAM_FIRST,
 )
 
-# Sales agent can read it
-result = memory.recall("customer interests", user_id="user123", agent_id="sales")
+# Get ranked agent suggestions for a topic
+suggestions = layer.suggest_agents(attention_hints=["upselling"], limit=3)
 ```
 
 ---

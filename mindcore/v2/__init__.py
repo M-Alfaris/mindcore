@@ -80,6 +80,21 @@ from .server import (
     create_app,
     run_server,
 )
+from .cross_agent import (
+    Agent,
+    AgentCapability,
+    AgentRegistry,
+    AgentStatus,
+    AttentionRouter,
+    CrossAgentLayer,
+    CrossAgentMemory,
+    RouteResult,
+    RoutingStrategy,
+    ShareResult,
+    SyncDirection as CrossAgentSyncDirection,
+    SyncResult as CrossAgentSyncResult,
+    Team,
+)
 
 __version__ = "2.0.0"
 
@@ -123,4 +138,18 @@ __all__ = [
     "MCPServer",
     "create_app",
     "run_server",
+    # Cross-Agent
+    "Agent",
+    "AgentCapability",
+    "AgentRegistry",
+    "AgentStatus",
+    "AttentionRouter",
+    "CrossAgentLayer",
+    "CrossAgentMemory",
+    "CrossAgentSyncDirection",
+    "CrossAgentSyncResult",
+    "RouteResult",
+    "RoutingStrategy",
+    "ShareResult",
+    "Team",
 ]
