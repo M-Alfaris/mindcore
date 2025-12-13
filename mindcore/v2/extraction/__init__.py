@@ -1,4 +1,4 @@
-"""Memory Extraction - Structured output and auto-extraction."""
+"""Memory Extraction - Structured output parsing."""
 
 from .extractor import (
     ExtractionResult,
