@@ -9,6 +9,7 @@
 |-----------|----------|---------|
 | `mindcore/v2/` | Primary | Modern memory layer with FLR/CLST protocols |
 | `mindcore/v2/cross_agent/` | Primary | Multi-agent memory sharing and routing |
+| `mindcore/v2/svl/` | Primary | Shared Vocabulary Layer - semantic metadata |
 | `mindcore/context_lake/` | Plugin | Unified context aggregation |
 | `mindcore/observability/` | Optional | Metrics, alerts, quality scoring |
 | `mindcore/utils/` | Utilities | Logging |
@@ -411,6 +412,95 @@ BEST_MATCH           - Use scoring to find best agent (default)
 ROUND_ROBIN          - Distribute queries evenly
 ```
 
+### 4.8 Shared Vocabulary Layer (SVL)
+
+**Location:** `mindcore/v2/svl/`
+
+Semantic spine of MindCore - standardized vocabulary for consistent metadata.
+
+```python
+from mindcore import SharedVocabularyLayer, SemanticMetadata
+
+# Initialize with domain vocabularies
+svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
+
+# Add custom topics/categories
+svl.add_topics("loyalty_program", "gift_cards")
+svl.add_categories("promotion")
+svl.add_subcategory("promotion", "discount", "flash_sale", "seasonal")
+
+# Validate semantic metadata
+is_valid, errors = svl.validate_metadata({
+    "message_type": "query",
+    "message_intent": "check_status",
+    "temporal_qualifier": "current",
+    "urgency": "high",
+    "emotional_classification": "frustration",
+})
+
+# Get JSON schema for LLM structured output
+schema = svl.get_json_schema()
+
+# Create semantic metadata for a memory
+metadata = SemanticMetadata(
+    message_type="query",
+    message_intent="request_action",
+    temporal_qualifier="future_plan",
+    urgency="medium",
+    user_role="customer",
+    preference_type="notification",
+    domain_label="customer_service",
+    confidence="high",
+)
+```
+
+**SVL Ontology:**
+
+| Category | Values |
+|----------|--------|
+| Message Types | query, command, response, clarification, suggestion, notification, error |
+| Message Intents | ask_question, request_action, provide_info, complaint, greeting, confirm, deny |
+| Temporal Qualifiers | daily, weekly, monthly, past_event, current, future_plan, short_term, permanent |
+| Emotional Classifications | joy, sadness, anger, frustration, satisfaction, confusion, excitement, neutral |
+| User Roles | end_user, admin, developer, customer, vip, api_user |
+| Preference Types | communication_style, notification, theme, data_sharing, frequency |
+| Domain Labels | customer_service, sales, engineering, healthcare, finance |
+| Urgency | critical, high, medium, low, informational |
+| Confidence | high, medium, low, inferred |
+
+**Pre-built Domains:**
+
+| Domain | Topics | Key Intents |
+|--------|--------|-------------|
+| `customer_service` | ticket, escalation, sla, feedback | open_ticket, escalate, request_refund |
+| `ecommerce` | cart, checkout, shipping, return | add_to_cart, track_order, initiate_return |
+| `healthcare` | appointment, prescription, diagnosis | schedule_appointment, request_prescription |
+| `finance` | account, transaction, loan, investment | check_balance, transfer_funds, pay_bill |
+| `saas` | subscription, api, integration, team | upgrade_plan, generate_api_key |
+| `hr` | employee, payroll, pto, performance | request_pto, submit_review |
+| `education` | course, lesson, quiz, enrollment | enroll_course, submit_assignment |
+
+```python
+# Use pre-built domains
+from mindcore.v2.svl import ECOMMERCE_DOMAIN, merge_domains, create_custom_domain
+
+# Get domain vocabulary
+ecommerce = ECOMMERCE_DOMAIN
+print(ecommerce.topics)        # ['cart', 'checkout', ...]
+print(ecommerce.subcategories) # {'order': ['pending', 'shipped', ...]}
+
+# Merge multiple domains
+merged = merge_domains("customer_service", "ecommerce")
+
+# Extend a domain
+custom = create_custom_domain(
+    name="my_store",
+    base_domain="ecommerce",
+    topics=["loyalty_program"],
+    intents=["redeem_points"],
+)
+```
+
 ---
 
 ## 5. Storage Backends
@@ -576,6 +666,7 @@ pytest mindcore/tests/ -v
 |------|---------|
 | `v2/tests/test_mindcore_v2.py` | Core v2 functionality |
 | `v2/tests/test_cross_agent.py` | Cross-agent memory layer |
+| `v2/tests/test_svl.py` | Shared Vocabulary Layer |
 | `tests/test_context_lake.py` | Context lake plugin |
 | `tests/test_observability.py` | Observability tests |
 
@@ -653,9 +744,15 @@ mindcore/
 │   │   ├── routing.py           # Attention routing
 │   │   ├── layer.py             # CrossAgentLayer (unified)
 │   │   └── __init__.py
+│   ├── svl/                     # Shared Vocabulary Layer
+│   │   ├── ontology.py          # Core semantic definitions
+│   │   ├── domains.py           # Domain-specific vocabularies
+│   │   ├── layer.py             # SharedVocabularyLayer
+│   │   └── __init__.py
 │   ├── tests/                   # v2 tests
 │   │   ├── test_mindcore_v2.py  # Core v2 tests
-│   │   └── test_cross_agent.py  # Cross-agent tests
+│   │   ├── test_cross_agent.py  # Cross-agent tests
+│   │   └── test_svl.py          # SVL tests
 │   └── __init__.py
 │
 ├── context_lake/                # Context aggregation plugin

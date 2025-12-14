@@ -95,6 +95,30 @@ from .cross_agent import (
     SyncResult as CrossAgentSyncResult,
     Team,
 )
+from .svl import (
+    # Ontology
+    MessageType,
+    MessageIntent,
+    TemporalQualifier,
+    EmotionalClassification,
+    UserRole,
+    PreferenceType,
+    DomainLabel,
+    Urgency,
+    Confidence,
+    SemanticMetadata,
+    # Domains
+    DomainVocabulary,
+    DOMAIN_REGISTRY,
+    get_domain,
+    list_domains,
+    merge_domains,
+    create_custom_domain,
+    # Layer
+    SVLSchema,
+    SharedVocabularyLayer,
+    DEFAULT_SVL,
+)
 
 __version__ = "2.0.0"
 
@@ -152,4 +176,24 @@ __all__ = [
     "RoutingStrategy",
     "ShareResult",
     "Team",
+    # SVL - Shared Vocabulary Layer
+    "MessageType",
+    "MessageIntent",
+    "TemporalQualifier",
+    "EmotionalClassification",
+    "UserRole",
+    "PreferenceType",
+    "DomainLabel",
+    "Urgency",
+    "Confidence",
+    "SemanticMetadata",
+    "DomainVocabulary",
+    "DOMAIN_REGISTRY",
+    "get_domain",
+    "list_domains",
+    "merge_domains",
+    "create_custom_domain",
+    "SVLSchema",
+    "SharedVocabularyLayer",
+    "DEFAULT_SVL",
 ]
