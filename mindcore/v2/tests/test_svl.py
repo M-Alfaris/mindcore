@@ -311,20 +311,22 @@ class TestSVLSchema:
         assert len(schema.get_urgency_levels()) > 0  # Not disabled
 
     def test_to_json_schema(self):
-        """Test generating JSON schema."""
-        schema = SVLSchema(domains=["customer_service"])
-        json_schema = schema.to_json_schema()
+        """Test generating JSON schema via SharedVocabularyLayer."""
+        svl = SharedVocabularyLayer(
+            schema=SVLSchema(domains=["customer_service"])
+        )
+        json_schema = svl.get_json_schema()
 
         assert json_schema["type"] == "object"
         assert "message_type" in json_schema["properties"]
         assert "urgency" in json_schema["properties"]
 
     def test_validate_metadata(self):
-        """Test validating metadata."""
-        schema = SVLSchema()
+        """Test validating metadata via SharedVocabularyLayer."""
+        svl = SharedVocabularyLayer(schema=SVLSchema())
 
         # Valid metadata
-        is_valid, errors = schema.validate_metadata({
+        is_valid, errors = svl.validate_metadata({
             "message_type": "query",
             "urgency": "high",
         })
@@ -332,7 +334,7 @@ class TestSVLSchema:
         assert len(errors) == 0
 
         # Invalid metadata
-        is_valid, errors = schema.validate_metadata({
+        is_valid, errors = svl.validate_metadata({
             "message_type": "invalid_type",
         })
         assert not is_valid
@@ -412,12 +414,18 @@ class TestSharedVocabularyLayer:
     def test_get_full_json_schema(self):
         """Test getting full memory JSON schema."""
         svl = SharedVocabularyLayer(domains=["ecommerce"])
-        schema = svl.get_full_json_schema()
+        # Get memory schema without response wrapper
+        schema = svl.get_full_memory_schema(include_response=False)
 
         assert "content" in schema["properties"]
         assert "memory_type" in schema["properties"]
         assert "semantic_metadata" in schema["properties"]
         assert "cart" in schema["properties"]["topics"]["items"]["enum"]
+
+        # With response wrapper
+        full_schema = svl.get_full_memory_schema(include_response=True)
+        assert "response" in full_schema["properties"]
+        assert "memories_to_store" in full_schema["properties"]
 
     def test_get_prompt_instructions(self):
         """Test getting prompt instructions."""
@@ -425,7 +433,7 @@ class TestSharedVocabularyLayer:
         instructions = svl.get_prompt_instructions()
 
         assert "Shared Vocabulary Layer" in instructions
-        assert "Message Types" in instructions
+        assert "message_type" in instructions
         assert "customer_service" in instructions
 
     def test_enrich_memory(self):

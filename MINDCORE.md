@@ -501,6 +501,57 @@ custom = create_custom_domain(
 )
 ```
 
+**Data Source Mapping:**
+
+SVL can map topics/categories to external data sources. When a topic is used in queries, data is automatically fetched from mapped sources.
+
+```python
+from mindcore import SharedVocabularyLayer, TableSource, APISource, MCPSource
+
+svl = SharedVocabularyLayer(domains=["ecommerce"])
+
+# Map "orders" topic to a database table
+svl.map_source("orders", TableSource(
+    name="orders_db",
+    connection_string="postgresql://user:pass@localhost/db",
+    query_template="SELECT * FROM orders WHERE user_id = :user_id LIMIT 10",
+    param_mapping={"user_id": "user_id"},
+))
+
+# Map "weather" topic to a REST API
+svl.map_source("weather", APISource(
+    name="weather_api",
+    url="https://api.weather.com/current",
+    method="GET",
+    url_params={"location": "city"},
+    headers={"Authorization": "Bearer {api_key}"},
+))
+
+# Map "search" topic to an MCP server
+svl.map_source("search", MCPSource(
+    name="brave_search",
+    server_name="brave-search",
+    tool_name="search",
+    argument_mapping={"query": "search_query"},
+))
+
+# When querying with mapped topics, data is auto-fetched
+results = svl.fetch_for_topics(
+    topics=["orders"],
+    context={"user_id": "123"},
+)
+# Returns: {"orders": [FetchResult(data=[...], success=True)]}
+```
+
+**Source Types:**
+
+| Source | Use Case |
+|--------|----------|
+| `TableSource` | Database queries (PostgreSQL, SQLite) |
+| `APISource` | REST API calls |
+| `MCPSource` | MCP server tool invocations |
+| `FunctionSource` | Custom Python functions |
+
 ---
 
 ## 5. Storage Backends
@@ -744,9 +795,10 @@ mindcore/
 │   │   ├── routing.py           # Attention routing
 │   │   ├── layer.py             # CrossAgentLayer (unified)
 │   │   └── __init__.py
-│   ├── svl/                     # Shared Vocabulary Layer
+│   ├── svl/                     # Shared Vocabulary Layer (unified)
 │   │   ├── ontology.py          # Core semantic definitions
 │   │   ├── domains.py           # Domain-specific vocabularies
+│   │   ├── sources.py           # Data source mapping (Table, API, MCP)
 │   │   ├── layer.py             # SharedVocabularyLayer
 │   │   └── __init__.py
 │   ├── tests/                   # v2 tests

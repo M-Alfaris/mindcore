@@ -1,29 +1,36 @@
-"""Shared Vocabulary Layer (SVL) - Semantic spine of MindCore.
+"""Shared Vocabulary Layer (SVL) - The unified semantic system for MindCore.
 
-SVL provides a standardized vocabulary that ensures all memories have consistent
-metadata and link cleanly into domain-specific tables. Every memory stored or
-recalled passes through this vocabulary layer.
-
-Components:
-- Ontology: Core semantic definitions (message types, intents, temporal, emotional, etc.)
-- Domains: Domain-specific vocabulary extensions (ecommerce, healthcare, etc.)
-- Layer: Main SharedVocabularyLayer class
+SVL is the single vocabulary system for MindCore, replacing VocabularySchema.
+It provides:
+1. Universal ontology (message types, intents, temporal, emotional, etc.)
+2. Domain-specific vocabulary extensions
+3. Memory types, sentiments, access levels
+4. Vocabulary versioning and migrations
+5. JSON Schema, Pydantic, TypeScript code generation
+6. Data source mapping for automatic context enrichment
 
 Example:
-    from mindcore.v2.svl import SharedVocabularyLayer
+    from mindcore.v2.svl import SharedVocabularyLayer, TableSource
 
     svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
 
-    # Validate metadata
-    is_valid, errors = svl.validate_metadata({
-        "message_type": "query",
-        "message_intent": "check_status",
-        "temporal_qualifier": "current",
-        "urgency": "high",
+    # Map topics to data sources
+    svl.map_source("orders", TableSource(
+        name="orders_db",
+        connection_string="postgresql://...",
+        query_template="SELECT * FROM orders WHERE user_id = :user_id",
+        param_mapping={"user_id": "user_id"},
+    ))
+
+    # Validate memory
+    is_valid, errors = svl.validate_memory({
+        "content": "...",
+        "memory_type": "semantic",
+        "topics": ["orders"],
     })
 
-    # Get JSON schema for LLM
-    schema = svl.get_json_schema()
+    # Fetch data for topics
+    data = svl.fetch_for_topics(["orders"], context={"user_id": "123"})
 """
 
 # Ontology - Core semantic types
@@ -76,9 +83,37 @@ from .domains import (
     create_custom_domain,
 )
 
-# Layer - Main interface
+# Sources - Data source mapping
+from .sources import (
+    # Source types
+    SourceType,
+    TriggerCondition,
+    DataSource,
+    FetchResult,
+    # Concrete sources
+    TableSource,
+    APISource,
+    MCPSource,
+    FunctionSource,
+    # Mapping
+    SourceMapping,
+    SourceRegistry,
+    # Factory
+    create_source,
+)
+
+# Layer - Main interface (unified vocabulary)
 from .layer import (
+    # Enums (from VocabularySchema)
+    MemoryType,
+    Sentiment,
+    AccessLevel,
+    # Migration
+    Migration,
+    FieldSchema,
+    # Schema
     SVLSchema,
+    # Main class
     SharedVocabularyLayer,
     DEFAULT_SVL,
 )
@@ -118,7 +153,24 @@ __all__ = [
     "list_domains",
     "merge_domains",
     "create_custom_domain",
-    # Layer
+    # Sources
+    "SourceType",
+    "TriggerCondition",
+    "DataSource",
+    "FetchResult",
+    "TableSource",
+    "APISource",
+    "MCPSource",
+    "FunctionSource",
+    "SourceMapping",
+    "SourceRegistry",
+    "create_source",
+    # Layer (unified vocabulary)
+    "MemoryType",
+    "Sentiment",
+    "AccessLevel",
+    "Migration",
+    "FieldSchema",
     "SVLSchema",
     "SharedVocabularyLayer",
     "DEFAULT_SVL",

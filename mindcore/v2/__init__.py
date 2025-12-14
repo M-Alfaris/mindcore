@@ -3,16 +3,18 @@
 A modern memory layer built on two protocols:
 - FLR (Fast Learning Recall): Inference-time memory access
 - CLST (Cognitive Long-term Storage Transfer): Durable storage
+- SVL (Shared Vocabulary Layer): Unified semantic system
 
 Features:
 - Structured output integration (JSON Schema for LLMs)
 - Auto-extraction of memories from conversations
 - Multi-agent support with access control
 - Vocabulary versioning and migrations
+- Data source mapping for context enrichment
 - MCP and REST API interfaces
 
 Quick Start:
-    from mindcore.v2 import Mindcore
+    from mindcore.v2 import Mindcore, SharedVocabularyLayer
 
     # Initialize
     memory = Mindcore()
@@ -31,20 +33,64 @@ Quick Start:
         user_id="user123",
     )
 
-    # Get schema for LLM structured output
-    schema = memory.get_json_schema()
+    # SVL with data source mapping
+    svl = SharedVocabularyLayer(domains=["customer_service"])
+    svl.map_source("orders", TableSource(...))
 """
 
 from .mindcore import Mindcore
-from .vocabulary import (
-    AccessLevel,
-    DEFAULT_VOCABULARY,
-    FieldSchema,
+
+# SVL - The unified vocabulary system (replaces VocabularySchema)
+from .svl import (
+    # Core enums
     MemoryType,
-    Migration,
     Sentiment,
-    VocabularySchema,
+    AccessLevel,
+    # Migration support
+    Migration,
+    FieldSchema,
+    # Ontology
+    MessageType,
+    MessageIntent,
+    TemporalQualifier,
+    EmotionalClassification,
+    UserRole,
+    PreferenceType,
+    DomainLabel,
+    Urgency,
+    Confidence,
+    SemanticMetadata,
+    # Domains
+    DomainVocabulary,
+    DOMAIN_REGISTRY,
+    get_domain,
+    list_domains,
+    merge_domains,
+    create_custom_domain,
+    # Sources
+    SourceType,
+    TriggerCondition,
+    DataSource,
+    FetchResult,
+    TableSource,
+    APISource,
+    MCPSource,
+    FunctionSource,
+    SourceMapping,
+    SourceRegistry,
+    create_source,
+    # Layer
+    SVLSchema,
+    SharedVocabularyLayer,
+    DEFAULT_SVL,
 )
+
+# Legacy VocabularySchema - kept for backwards compatibility
+from .vocabulary import (
+    VocabularySchema,
+    DEFAULT_VOCABULARY,
+)
+
 from .flr import (
     ContextWindow,
     FLR,
@@ -95,44 +141,51 @@ from .cross_agent import (
     SyncResult as CrossAgentSyncResult,
     Team,
 )
-from .svl import (
-    # Ontology
-    MessageType,
-    MessageIntent,
-    TemporalQualifier,
-    EmotionalClassification,
-    UserRole,
-    PreferenceType,
-    DomainLabel,
-    Urgency,
-    Confidence,
-    SemanticMetadata,
-    # Domains
-    DomainVocabulary,
-    DOMAIN_REGISTRY,
-    get_domain,
-    list_domains,
-    merge_domains,
-    create_custom_domain,
-    # Layer
-    SVLSchema,
-    SharedVocabularyLayer,
-    DEFAULT_SVL,
-)
 
 __version__ = "2.0.0"
 
 __all__ = [
     # Main class
     "Mindcore",
-    # Vocabulary
-    "AccessLevel",
-    "DEFAULT_VOCABULARY",
-    "FieldSchema",
+    # SVL - Unified Vocabulary (primary)
     "MemoryType",
-    "Migration",
     "Sentiment",
+    "AccessLevel",
+    "Migration",
+    "FieldSchema",
+    "MessageType",
+    "MessageIntent",
+    "TemporalQualifier",
+    "EmotionalClassification",
+    "UserRole",
+    "PreferenceType",
+    "DomainLabel",
+    "Urgency",
+    "Confidence",
+    "SemanticMetadata",
+    "DomainVocabulary",
+    "DOMAIN_REGISTRY",
+    "get_domain",
+    "list_domains",
+    "merge_domains",
+    "create_custom_domain",
+    "SourceType",
+    "TriggerCondition",
+    "DataSource",
+    "FetchResult",
+    "TableSource",
+    "APISource",
+    "MCPSource",
+    "FunctionSource",
+    "SourceMapping",
+    "SourceRegistry",
+    "create_source",
+    "SVLSchema",
+    "SharedVocabularyLayer",
+    "DEFAULT_SVL",
+    # Legacy Vocabulary (backwards compatibility)
     "VocabularySchema",
+    "DEFAULT_VOCABULARY",
     # FLR
     "ContextWindow",
     "FLR",
@@ -176,24 +229,4 @@ __all__ = [
     "RoutingStrategy",
     "ShareResult",
     "Team",
-    # SVL - Shared Vocabulary Layer
-    "MessageType",
-    "MessageIntent",
-    "TemporalQualifier",
-    "EmotionalClassification",
-    "UserRole",
-    "PreferenceType",
-    "DomainLabel",
-    "Urgency",
-    "Confidence",
-    "SemanticMetadata",
-    "DomainVocabulary",
-    "DOMAIN_REGISTRY",
-    "get_domain",
-    "list_domains",
-    "merge_domains",
-    "create_custom_domain",
-    "SVLSchema",
-    "SharedVocabularyLayer",
-    "DEFAULT_SVL",
 ]
