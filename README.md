@@ -1,19 +1,18 @@
 <div align="center">
 
-# Mindcore
-
-### The Context Protocol for AI Agents
+# Mindcore - The Memory Protocol for AI Agents
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](https://github.com/M-Alfaris/mindcore)
+[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/M-Alfaris/mindcore)
+[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-**A semi-deterministic framework for persistent memory, intelligent context retrieval, and external data integration for AI agents.**
+**A modular memory layer framework built on three foundational protocols: FLR, CLST, and SVL.**
 
-Stop rebuilding memory infrastructure. Start building features.
+Like MCP standardized tool connections, Mindcore standardizes AI agent memory.
 
-[Quick Start](#-quick-start) • [Why Mindcore](#-why-mindcore) • [Architecture](#-architecture) • [Features](#-features) • [Roadmap](#-roadmap)
+[Quick Start](#quick-start) | [Protocols](#the-three-protocols) | [Enterprise](#enterprise-features) | [Architecture](#architecture)
 
 ---
 
@@ -23,21 +22,20 @@ Stop rebuilding memory infrastructure. Start building features.
 
 Every team building AI agents faces the same challenges:
 
-| Challenge | What Teams Do Today | Time Spent |
-|-----------|---------------------|------------|
-| **Memory & Persistence** | Build custom storage, caching, retrieval | 2-4 weeks |
-| **Context Engineering** | Trial and error with vector DBs, embeddings | 3-6 weeks |
-| **User Preferences** | Ad-hoc storage, no consistency | 1-2 weeks |
-| **External Data** | Custom integrations per system | 2-4 weeks per system |
-| **Multi-Agent Consistency** | Each agent has its own memory | Ongoing pain |
+| Challenge | What Teams Do Today | The Pain |
+|-----------|---------------------|----------|
+| **Memory & Persistence** | Build custom storage, caching, retrieval | 2-4 weeks reinventing the wheel |
+| **Multi-Agent Consistency** | Each agent has its own memory silo | Agents contradict each other |
+| **Vocabulary Alignment** | Ad-hoc metadata, no schema | "Is it `topic` or `topics`?" |
+| **Production Features** | DIY rate limiting, audit, encryption | Security vulnerabilities |
 
-**Result**: 2-3 months before you can focus on what matters — your actual product.
+**Result**: Months of infrastructure work before you can focus on your actual product.
 
 ## The Solution
 
-Mindcore is an **open-source Context Protocol** that provides:
+Mindcore provides **three foundational protocols** that standardize AI agent memory:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              YOUR AI AGENTS                                  │
 │         (Support Bot, Sales Assistant, Internal Tools, etc.)                 │
@@ -46,16 +44,25 @@ Mindcore is an **open-source Context Protocol** that provides:
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              MINDCORE                                        │
-│                        The Context Protocol                                  │
+│                        The Memory Protocol Stack                             │
 │                                                                              │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
-│  │ MEMORY LAYER    │  │ INTELLIGENCE    │  │ EXTERNAL CONNECTORS         │  │
-│  │                 │  │                 │  │                             │  │
-│  │ • Messages      │  │ • Enrichment    │  │ • Orders (read-only)        │  │
-│  │ • Summaries     │  │ • Smart Context │  │ • Billing (read-only)       │  │
-│  │ • Preferences   │  │ • Tool Calling  │  │ • CRM (read-only)           │  │
-│  │ • Cache         │  │ • Compression   │  │ • Your Systems...           │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    FLR (Fast Learning Recall)                        │   │
+│  │              Hot-path memory access for inference time               │   │
+│  │     query() | reinforce() | context() | promote() | cache           │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    CLST (Cognitive Long-term Storage)                │   │
+│  │              Cold-path persistence, compression, sync                │   │
+│  │     store() | compress() | sync() | transfer() | migrate()          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    SVL (Shared Vocabulary Layer)                     │   │
+│  │              Unified semantic system with migrations                 │   │
+│  │     validate() | map_source() | enrich() | migrate_memory()         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -69,415 +76,596 @@ Mindcore is an **open-source Context Protocol** that provides:
 
 ---
 
-## Why Mindcore?
-
-### 1. Semi-Deterministic Retrieval (No Vector DB Required)
-
-Most teams assume they need a vector database for context retrieval. **They don't.**
-
-| Approach | How It Works | The Reality |
-|----------|--------------|-------------|
-| **Pure Vector DB** | Embed everything, semantic search | Expensive, unpredictable, overkill for conversations |
-| **Pure Rules** | "Last 10 messages + keyword match" | Misses nuance, brittle |
-| **Mindcore** | LLM enriches metadata → Deterministic retrieval → LLM summarizes | Predictable, debuggable, cost-effective |
-
-```python
-# User: "What did we discuss about billing last week?"
-
-# Mindcore approach:
-# 1. Message metadata already extracted: topics=["billing"], date=2024-03-15
-# 2. Deterministic query: SELECT * WHERE topics @> 'billing' AND date > '2024-03-08'
-# 3. LLM summarizes the filtered results
-
-# Result: Faster, cheaper, and more predictable than vector similarity search
-```
-
-### 2. Shared Memory Across All Your Agents
-
-Without Mindcore:
-```
-Support Bot: "I see you're a new customer!"
-Sales Bot (same day): "Welcome! Interested in our product?"
-User: "I literally just bought it an hour ago..."
-```
-
-With Mindcore:
-```
-All agents share the same memory → Consistent user experience
-```
-
-### 3. External Data Integration (Read-Only)
-
-Connect your AI agents to real business data:
-
-```python
-# User: "What's the status of my order from last week?"
-
-# Mindcore automatically:
-# 1. Detects topic: "orders"
-# 2. Extracts entities: date_range="last week"
-# 3. Queries your Orders DB (read-only)
-# 4. Includes order data in context
-
-# Your agent responds with actual order information
-```
-
-### 4. Production-Ready in Hours, Not Months
-
-```python
-from mindcore import MindcoreClient
-
-# Initialize
-client = MindcoreClient(use_sqlite=True)
-
-# Ingest messages (auto-enriched with metadata)
-client.ingest_message({
-    "user_id": "user_123",
-    "thread_id": "thread_456",
-    "session_id": "session_789",
-    "role": "user",
-    "text": "I need help with my billing issue"
-})
-
-# Get intelligent context for any query
-context = client.get_context_smart(
-    user_id="user_123",
-    thread_id="thread_456",
-    query="What billing issues has this user mentioned?"
-)
-
-# Use in your LLM prompt
-print(context.assembled_context)
-```
-
----
-
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Basic installation
-pip install -e .
-
-# With async support
-pip install -e ".[async]"
-
-# Everything
-pip install -e ".[all]"
-```
-
-### Setup
-
-```bash
-export OPENAI_API_KEY="sk-your-api-key"
+pip install mindcore
 ```
 
 ### Basic Usage
 
 ```python
-from mindcore import MindcoreClient
+from mindcore import Mindcore
 
-client = MindcoreClient(use_sqlite=True)
+# Initialize with SQLite (development)
+memory = Mindcore(storage="sqlite:///dev.db")
 
-# Ingest a message
-message = client.ingest_message({
-    "user_id": "user_123",
-    "thread_id": "thread_456",
-    "session_id": "session_789",
-    "role": "user",
-    "text": "What are the best practices for building AI agents?"
-})
+# Or PostgreSQL (production)
+# memory = Mindcore(storage="postgresql://localhost/mindcore")
 
-# Auto-enriched metadata
-print(message.metadata.topics)      # ['AI', 'agents', 'best practices']
-print(message.metadata.intent)      # 'ask_question'
-print(message.metadata.importance)  # 0.8
-
-# Get intelligent context (single LLM call with tool calling)
-context = client.get_context_smart(
+# Store a memory
+memory_id = memory.store(
+    content="User prefers dark mode and brief responses",
+    memory_type="preference",
     user_id="user_123",
-    thread_id="thread_456",
-    query="AI agent architecture"
+    topics=["settings", "ui"],
+    importance=0.8,
 )
 
-print(context.assembled_context)  # Relevant, summarized context
-print(context.key_points)         # Key insights from history
+# Recall relevant memories
+result = memory.recall(
+    query="user preferences",
+    user_id="user_123",
+    limit=5,
+)
+
+for mem in result.memories:
+    print(f"[{mem.relevance:.2f}] {mem.content}")
+
+# Reinforce positive memories (learning signal)
+memory.reinforce(memory_id, signal=0.5)
+
+# Compress old memories (CLST)
+compression = memory.compress(
+    user_id="user_123",
+    older_than_days=7,
+    strategy="merge",  # or "summarize", "deduplicate"
+)
+print(f"Compressed {compression.original_count} → {compression.compressed_count}")
+```
+
+### Multi-Agent Example
+
+```python
+from mindcore import Mindcore, AccessLevel
+
+memory = Mindcore(storage="sqlite:///shared.db")
+
+# Support agent stores a memory (shared with team)
+memory.store(
+    content="Customer reported billing issue, refund processed",
+    memory_type="episodic",
+    user_id="customer_456",
+    agent_id="support_agent",
+    access_level=AccessLevel.TEAM,  # Visible to all agents
+    topics=["billing", "refund"],
+)
+
+# Sales agent can see it
+result = memory.recall(
+    query="customer history",
+    user_id="customer_456",
+    agent_id="sales_agent",
+    include_cross_agent=True,
+)
+
+# Sales agent now knows about the refund!
+```
+
+---
+
+## The Three Protocols
+
+### FLR (Fast Learning Recall)
+
+The **hot-path** protocol for inference-time memory access.
+
+```python
+from mindcore import FLR, Memory, SQLiteStorage
+
+storage = SQLiteStorage("memories.db")
+flr = FLR(storage)
+
+# Fast query with relevance scoring
+result = flr.query(
+    query="user preferences for notifications",
+    user_id="user_123",
+    attention_hints=["settings", "notifications"],
+    memory_types=["preference", "semantic"],
+    limit=10,
+    min_score=0.3,
+)
+
+# Reinforcement learning signal
+flr.reinforce(memory_id, signal=0.8)  # Positive feedback
+flr.reinforce(memory_id, signal=-0.5)  # Negative feedback
+
+# Context window management (per-session)
+flr.update_context(
+    session_id="session_abc",
+    messages=[{"role": "user", "content": "Hello"}],
+    attention_hints=["greeting"],
+)
+
+# Promote working memory to long-term
+flr.promote(memory_id)
+```
+
+**Key Features:**
+
+- LRU cache with TTL (1000 items, 300s default)
+- 6-factor relevance scoring (similarity, topics, recency, reinforcement, importance, popularity)
+- Bounded reinforcement scores (-1.0 to +1.0) with diminishing returns
+- Per-session context windows
+
+### CLST (Cognitive Long-term Storage Transfer)
+
+The **cold-path** protocol for durable storage and memory management.
+
+```python
+from mindcore import CLST, CompressionStrategy, SyncDirection
+
+clst = CLST(storage, vocabulary=svl)
+
+# Store with vocabulary validation
+memory_id = clst.store(memory, validate=True)
+
+# Compression strategies
+result = clst.compress(
+    user_id="user_123",
+    older_than_days=30,
+    strategy=CompressionStrategy.MERGE,  # Combine similar memories
+    min_memories=10,
+)
+
+# Cross-agent sync
+sync_result = clst.sync(
+    source_agent="support",
+    target_agent="sales",
+    user_id="user_123",
+    direction=SyncDirection.BIDIRECTIONAL,
+    conflict_resolution="source_wins",
+)
+
+# Transfer memories between instances
+manifest = clst.transfer(
+    memories=memories_to_transfer,
+    destination="backup_instance",
+)
+
+# Vocabulary migration with rollback support
+migration_result = clst.migrate(
+    from_version="1.0.0",
+    user_id="user_123",
+    create_checkpoints=True,  # Enable rollback
+)
+
+if migration_result.can_rollback:
+    clst.rollback_migration(migration_result)
+```
+
+**Compression Strategies:**
+
+| Strategy | Description |
+|----------|-------------|
+| `DEDUPLICATE` | Remove duplicate content (MD5 hash) |
+| `MERGE` | Combine memories with same topics |
+| `SUMMARIZE` | LLM-based summarization (requires LLM) |
+| `EXTRACT` | Extract key facts (requires LLM) |
+
+### SVL (Shared Vocabulary Layer)
+
+The **semantic foundation** that ensures consistent metadata across all agents.
+
+```python
+from mindcore import SharedVocabularyLayer, Migration, TableSource
+
+# Create vocabulary with domain
+svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
+
+# Add custom vocabulary
+svl.add_topics("product_feedback", "feature_request")
+svl.add_categories("urgent", "normal", "low")
+svl.add_custom_field(
+    name="priority_score",
+    field_type="number",
+    required=False,
+    description="0-100 priority score",
+)
+
+# Validate memories before storage
+is_valid, errors = svl.validate_memory(memory_dict)
+if not is_valid:
+    print(f"Validation errors: {errors}")
+
+# Map data sources to vocabulary terms
+svl.map_source(
+    term="orders",
+    source=TableSource(
+        connection_string="postgresql://localhost/orders",
+        table="orders",
+        query_template="SELECT * FROM orders WHERE user_id = :user_id",
+    ),
+)
+
+# Fetch data for topics (auto-triggers on query)
+results = svl.fetch_for_topics(
+    topics=["orders", "billing"],
+    context={"user_id": "user_123"},
+)
+
+# Define migrations between vocabulary versions
+migration = Migration(
+    from_version="1.0.0",
+    to_version="2.0.0",
+    renames={"category": "categories"},
+    merges={"topic": {"sources": ["tag", "label"]}},
+    defaults={"priority": "normal"},
+)
+svl.add_migration(migration)
+
+# Migrate a memory with checkpoint (rollback support)
+migrated, checkpoint = svl.migrate_memory(
+    memory_dict,
+    from_version="1.0.0",
+    create_checkpoint=True,
+)
+
+# Rollback if needed
+original = svl.rollback_memory(migrated, checkpoint)
+
+# Generate schema for LLMs
+json_schema = svl.get_json_schema()
+typescript_types = svl.to_typescript()
+pydantic_models = svl.to_pydantic()
+```
+
+**Built-in Domains:**
+
+- `customer_service` - tickets, escalation, satisfaction
+- `ecommerce` - cart, checkout, shipping, returns
+- `healthcare` - appointments, diagnosis, medication
+- `finance` - transactions, accounts, investments
+- `saas` - subscriptions, features, onboarding
+- `hr` - hiring, training, performance
+- `education` - courses, assignments, grades
+
+---
+
+## Enterprise Features
+
+Mindcore includes production-ready enterprise features:
+
+```python
+from mindcore.enterprise import (
+    MindcoreMetrics,
+    MindcoreTracer,
+    RateLimiter,
+    AuditLogger,
+    FieldEncryptor,
+)
+```
+
+### Observability (OpenTelemetry)
+
+```python
+from mindcore.enterprise import MindcoreMetrics, MindcoreTracer, ObservabilityConfig
+
+config = ObservabilityConfig(
+    service_name="my-ai-agent",
+    otlp_endpoint="http://localhost:4317",
+)
+
+metrics = MindcoreMetrics(config)
+tracer = MindcoreTracer(config)
+
+# Auto-instrumented operations
+with tracer.start_span("recall_memories") as span:
+    span.set_attribute("user_id", "user_123")
+    result = memory.recall(query="preferences", user_id="user_123")
+
+    metrics.record_recall(
+        user_id="user_123",
+        result_count=len(result.memories),
+        latency_ms=result.latency_ms,
+    )
+```
+
+### Rate Limiting
+
+```python
+from mindcore.enterprise import RateLimiter, RateLimitConfig
+
+config = RateLimitConfig(
+    default_limit="100/minute",
+    tier_limits={
+        "free": "10/minute",
+        "pro": "100/minute",
+        "enterprise": "1000/minute",
+    },
+    operation_limits={
+        "store": "50/minute",
+        "recall": "200/minute",
+    },
+)
+
+limiter = RateLimiter(config)
+
+# Check before operation
+if limiter.is_allowed("user_123", operation="store", user_tier="pro"):
+    memory.store(...)
+else:
+    remaining = limiter.get_remaining("user_123", "store", "pro")
+    retry_after = limiter.get_reset_time("user_123", "store", "pro")
+    raise RateLimitExceededError(f"Retry after {retry_after}s")
+
+# Or use context manager
+with limiter.limit("user_123", operation="recall"):
+    result = memory.recall(...)
+```
+
+### Audit Logging
+
+```python
+from mindcore.enterprise import AuditLogger, AuditConfig
+
+config = AuditConfig(
+    enabled=True,
+    file_path="/var/log/mindcore/audit.log",
+    include_content=False,  # Don't log sensitive content
+    redact_fields=["password", "token", "secret"],
+)
+
+audit = AuditLogger(config)
+
+# Automatic redaction of sensitive fields
+audit.log_store(
+    user_id="user_123",
+    memory_id="mem_abc",
+    memory_type="preference",
+    metadata={"password": "secret123"},  # Auto-redacted
+)
+
+audit.log_access(
+    user_id="user_123",
+    resource="memories",
+    action="recall",
+    granted=True,
+)
+
+audit.log_security_event(
+    event_type="rate_limit_exceeded",
+    user_id="user_123",
+    details={"limit": "100/minute"},
+)
+```
+
+### Encryption at Rest
+
+```python
+from mindcore.enterprise import FieldEncryptor, EncryptionConfig, KeyRotator
+
+config = EncryptionConfig(
+    key=os.environ["ENCRYPTION_KEY"],  # Fernet key
+    # Or derive from password:
+    # password="strong-password",
+    # salt="unique-salt",
+    # kdf_iterations=1_200_000,  # Django 2025 recommendation
+)
+
+encryptor = FieldEncryptor(config)
+
+# Encrypt sensitive fields before storage
+encrypted_content = encryptor.encrypt("sensitive user data")
+memory.store(content=encrypted_content, ...)
+
+# Decrypt on retrieval
+decrypted = encryptor.decrypt(encrypted_content)
+
+# Key rotation
+rotator = KeyRotator(old_key, new_key)
+rotated_data = rotator.rotate(encrypted_content)
 ```
 
 ---
 
 ## Architecture
 
-### Core Components
+### Protocol Stack
 
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                      Application Layer                           │
+│                  (Your AI Agents, LLM Apps)                       │
+├─────────────────────────────────────────────────────────────────┤
+│                      Mindcore Orchestrator                        │
+│                   store() | recall() | compress()                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────┐ │
+│  │       FLR        │  │       CLST       │  │      SVL       │ │
+│  │   (Hot Path)     │  │   (Cold Path)    │  │  (Semantics)   │ │
+│  │                  │  │                  │  │                │ │
+│  │ • LRU Cache      │  │ • Compression    │  │ • Validation   │ │
+│  │ • Scoring        │  │ • Sync           │  │ • Migrations   │ │
+│  │ • Reinforcement  │  │ • Transfer       │  │ • Data Sources │ │
+│  │ • Context        │  │ • Migration      │  │ • Domains      │ │
+│  └──────────────────┘  └──────────────────┘  └────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
+│                       Storage Abstraction                         │
+│                 SQLiteStorage | PostgresStorage                   │
+├─────────────────────────────────────────────────────────────────┤
+│                        Enterprise Layer                           │
+│    Observability | Rate Limiting | Audit | Encryption             │
+└─────────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           MINDCORE ARCHITECTURE                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         MEMORY LAYER                                   │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
-│  │  │  Hot Messages   │  │ Thread Summaries│  │  User Preferences   │   │  │
-│  │  │  (recent)       │  │ (compressed)    │  │  (amendable)        │   │  │
-│  │  │                 │  │                 │  │                     │   │  │
-│  │  │ Full message    │  │ Old threads →   │  │ • Language          │   │  │
-│  │  │ history with    │  │ LLM-generated   │  │ • Timezone          │   │  │
-│  │  │ rich metadata   │  │ summaries       │  │ • Interests         │   │  │
-│  │  └─────────────────┘  └─────────────────┘  │ • Custom context    │   │  │
-│  │                                            └─────────────────────┘   │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                      INTELLIGENCE LAYER                                │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
-│  │  │ EnrichmentAgent │  │SmartContextAgent│  │ SummarizationAgent  │   │  │
-│  │  │                 │  │                 │  │                     │   │  │
-│  │  │ • Topics        │  │ • Tool calling  │  │ • Compress threads  │   │  │
-│  │  │ • Intent        │  │ • Smart routing │  │ • Extract key facts │   │  │
-│  │  │ • Sentiment     │  │ • Context merge │  │ • Preserve entities │   │  │
-│  │  │ • Entities      │  │                 │  │                     │   │  │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘   │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                    EXTERNAL CONNECTORS (Read-Only)                     │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │  │
-│  │  │   Orders    │  │   Billing   │  │     CRM     │  │  Your APIs  │  │  │
-│  │  │             │  │             │  │             │  │             │  │  │
-│  │  │ topic:orders│  │topic:billing│  │ topic:crm   │  │ topic:...   │  │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │  │
-│  │                                                                       │  │
-│  │  Connectors are READ-ONLY — they fetch data, never modify it          │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+
+### Memory Object
+
+```python
+from mindcore import Memory
+
+memory = Memory(
+    memory_id="mem_abc123",
+    content="User prefers dark mode",
+    memory_type="preference",  # episodic|semantic|procedural|preference|entity|...
+    user_id="user_123",
+    agent_id="support_agent",
+
+    # Semantic metadata
+    topics=["settings", "ui"],
+    categories=["preference"],
+    sentiment="neutral",
+    importance=0.8,
+    entities=["dark mode"],
+
+    # Access control
+    access_level="team",  # private|team|shared|global
+
+    # Learning
+    reinforcement_score=0.0,  # -1.0 to +1.0
+    access_count=0,
+
+    # Versioning
+    vocabulary_version="2.0.0",
+)
 ```
 
 ### Data Flow
 
-```
-                    User Message
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │    ingest_message   │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   EnrichmentAgent   │ ◄── Extracts: topics, intent,
-              │                     │     sentiment, entities, importance
-              └──────────┬──────────┘
-                         │
-           ┌─────────────┴─────────────┐
-           ▼                           ▼
-    ┌─────────────┐             ┌─────────────┐
-    │  Database   │             │    Cache    │
-    │ (persistent)│             │ (fast read) │
-    └─────────────┘             └─────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │  get_context_smart  │ ◄── Query arrives
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │  SmartContextAgent  │ ◄── Single LLM call with tools:
-              │                     │     • get_recent_messages
-              │   Tool Calling      │     • search_history
-              │                     │     • get_historical_summaries
-              │                     │     • get_user_preferences
-              │                     │     • lookup_external_data
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │  AssembledContext   │
-              │                     │
-              │ • Summary           │
-              │ • Key points        │
-              │ • External data     │
-              │ • User preferences  │
-              └─────────────────────┘
+```text
+Store Flow:
+  Content → SVL.validate() → CLST.store() → Storage
+                                  ↓
+                            FLR.cache_update()
+
+Recall Flow:
+  Query → FLR.cache_check() → hit? → return cached
+              ↓ miss
+          FLR.query() → CLST.search() → Storage
+              ↓
+          Score & Rank → Cache → Return
+              ↓
+          Reinforcement signals → Buffer → Batch flush
 ```
 
 ---
 
-## Features
+## Project Structure
 
-### Current Features
-
-| Feature | Description |
-|---------|-------------|
-| **Message Ingestion** | Store messages with automatic metadata enrichment |
-| **Smart Context Retrieval** | Single LLM call with tool calling for intelligent context assembly |
-| **Multi-tenant** | User/thread/session isolation out of the box |
-| **Flexible Storage** | SQLite (dev) or PostgreSQL (production) |
-| **LLM Agnostic** | OpenAI, Anthropic, or any OpenAI-compatible API |
-| **Async Support** | Full async client for high-performance applications |
-| **Background Enrichment** | Persistent queue for reliable metadata processing |
-| **REST API** | FastAPI server with interactive docs |
-| **Web Dashboard** | Vue.js dashboard for monitoring and configuration |
-
-### Planned Features (Roadmap)
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| **Thread Summarization** | Planned | Compress old threads into summaries, reduce storage 90% |
-| **User Preferences** | Planned | Amendable settings (language, timezone, interests) |
-| **External Connectors** | Planned | Read-only access to Orders, Billing, CRM systems |
-| **Forgetting Policies** | Planned | Auto-delete old data based on retention rules |
-| **Cross-thread Context** | Planned | "User mentioned X in another conversation" |
-
----
-
-## Use Cases
-
-### Customer Support Bot
-
-```python
-# Support bot with full context awareness
-context = client.get_context_smart(
-    user_id="customer_123",
-    thread_id="support_ticket_456",
-    query="Customer is asking about their refund"
-)
-
-# Context includes:
-# - Previous support interactions
-# - Order history (via Orders connector)
-# - Billing status (via Billing connector)
-# - User preferences (language, communication style)
-```
-
-### Multi-Agent Organization
-
-```python
-# All agents share the same Mindcore instance
-support_bot = YourSupportBot(mindcore=client)
-sales_bot = YourSalesBot(mindcore=client)
-internal_assistant = YourInternalBot(mindcore=client)
-
-# When a user talks to support, sales bot knows about it
-# No more "I see you're a new customer" after they just purchased
-```
-
-### Enterprise AI Assistant
-
-```python
-# Connect to internal systems
-from mindcore.connectors import OrdersConnector, BillingConnector
-
-client.register_connector(OrdersConnector(
-    db_url="postgresql://readonly:pass@orders-db/orders"
-))
-
-client.register_connector(BillingConnector(
-    db_url="postgresql://readonly:pass@billing-db/billing"
-))
-
-# Now context automatically includes relevant business data
-context = client.get_context_smart(
-    user_id="employee_123",
-    thread_id="internal_chat",
-    query="What's the status of order #12345?"
-)
-# Context includes actual order data from your Orders DB
+```text
+mindcore/
+├── __init__.py                 # Public API exports
+├── mindcore.py                 # Main Mindcore orchestrator
+│
+├── flr/                        # Fast Learning Recall protocol
+│   ├── __init__.py
+│   └── recall.py               # FLR, Memory, RecallResult, ContextWindow
+│
+├── clst/                       # Cognitive Long-term Storage Transfer
+│   ├── __init__.py
+│   └── storage.py              # CLST, CompressionResult, SyncResult
+│
+├── svl/                        # Shared Vocabulary Layer
+│   ├── __init__.py
+│   ├── layer.py                # SharedVocabularyLayer, Migration
+│   ├── ontology.py             # MessageType, Intent, Sentiment enums
+│   ├── domains.py              # Pre-built domain vocabularies
+│   └── sources.py              # TableSource, APISource, MCPSource
+│
+├── storage/                    # Storage backends
+│   ├── base.py                 # BaseStorage abstract class
+│   ├── sqlite.py               # SQLiteStorage
+│   └── postgres.py             # PostgresStorage
+│
+├── cross_agent/                # Multi-agent support
+│   ├── layer.py                # CrossAgentLayer
+│   ├── sharing.py              # Memory sharing logic
+│   ├── registry.py             # AgentRegistry
+│   └── routing.py              # AttentionRouter
+│
+├── enterprise/                 # Enterprise features
+│   ├── observability.py        # OpenTelemetry metrics/tracing
+│   ├── rate_limiting.py        # Rate limiter
+│   ├── audit.py                # Audit logging
+│   └── encryption.py           # Field encryption
+│
+├── server/                     # API servers
+│   ├── mcp.py                  # MCP server
+│   └── rest.py                 # FastAPI REST server
+│
+├── exceptions.py               # Standardized exceptions
+├── tests/                      # Test suite
+│   ├── test_mindcore.py
+│   ├── test_svl.py
+│   ├── test_cross_agent.py
+│   └── test_enterprise.py
+│
+└── utils/                      # Logging utilities
 ```
 
 ---
 
-## Async Support
+## API Reference
 
-For high-performance applications using FastAPI or other async frameworks:
-
-```python
-import asyncio
-from mindcore import get_async_client
-
-async def main():
-    AsyncMindcoreClient = get_async_client()
-
-    async with AsyncMindcoreClient(use_sqlite=True) as client:
-        # Ingest (async)
-        message = await client.ingest_message({
-            "user_id": "user_123",
-            "thread_id": "thread_456",
-            "session_id": "session_789",
-            "role": "user",
-            "text": "Hello!"
-        })
-
-        # Get context (async)
-        context = await client.get_context_smart(
-            user_id="user_123",
-            thread_id="thread_456",
-            query="greeting"
-        )
-
-asyncio.run(main())
-```
-
-### FastAPI Integration
+### Mindcore (Orchestrator)
 
 ```python
-from fastapi import FastAPI
-from contextlib import asynccontextmanager
-from mindcore import get_async_client
-
-mindcore_client = None
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global mindcore_client
-    AsyncMindcoreClient = get_async_client()
-    mindcore_client = AsyncMindcoreClient(use_sqlite=True)
-    await mindcore_client.connect()
-    yield
-    await mindcore_client.close()
-
-app = FastAPI(lifespan=lifespan)
-
-@app.post("/chat")
-async def chat(user_id: str, thread_id: str, message: str):
-    await mindcore_client.ingest_message({
-        "user_id": user_id,
-        "thread_id": thread_id,
-        "session_id": "web",
-        "role": "user",
-        "text": message
-    })
-
-    context = await mindcore_client.get_context_smart(
-        user_id=user_id,
-        thread_id=thread_id,
-        query=message
-    )
-
-    return {"context": context.assembled_context}
+class Mindcore:
+    def store(content, memory_type, user_id, ...) -> str
+    def recall(query, user_id, ...) -> RecallResult
+    def search(query, user_id, ...) -> list[Memory]
+    def reinforce(memory_id, signal) -> float
+    def compress(user_id, older_than_days, strategy) -> CompressionResult
+    def delete(memory_id) -> None
+    def get_json_schema() -> dict
+    def extract_from_response(response, user_id) -> list[Memory]
 ```
 
----
+### FLR
 
-## Cost Comparison
+```python
+class FLR:
+    def query(query, user_id, ...) -> RecallResult
+    def reinforce(memory_id, signal) -> float
+    def promote(memory_id) -> bool
+    def update_context(session_id, ...) -> ContextWindow
+    def get_context(session_id) -> ContextWindow | None
+    def flush_reinforcements() -> int
+```
 
-### Token Usage: Traditional vs Mindcore
+### CLST
 
-| Approach | Tokens per Request | Cost per 1000 Requests | Annual (100k requests) |
-|----------|-------------------|------------------------|------------------------|
-| **Traditional** (full history) | 50,000+ | $130 | $156,000 |
-| **Mindcore** (smart context) | ~1,500 | $4 | $4,800 |
+```python
+class CLST:
+    def store(memory, validate=True) -> str
+    def retrieve(memory_id) -> Memory | None
+    def search(...) -> list[Memory]
+    def compress(user_id, ...) -> CompressionResult
+    def sync(source_agent, target_agent, ...) -> SyncResult
+    def transfer(memories, destination) -> TransferManifest
+    def migrate(from_version, ...) -> MigrationResult
+    def rollback_migration(result) -> MigrationResult
+```
 
-### Why It's Efficient
+### SVL
 
-1. **Metadata extracted once** — Never recomputed
-2. **Deterministic retrieval** — No expensive embedding operations
-3. **Smart summarization** — Only relevant messages processed
+```python
+class SharedVocabularyLayer:
+    def add_domain(domain_name) -> None
+    def add_topics(*topics) -> None
+    def add_custom_field(name, field_type, ...) -> None
+    def validate_memory(memory) -> tuple[bool, list[str]]
+    def map_source(term, source) -> None
+    def fetch_for_topics(topics, context) -> dict
+    def add_migration(migration) -> None
+    def migrate_memory(memory, from_version, create_checkpoint) -> dict | tuple
+    def rollback_memory(memory, checkpoint) -> dict
+    def get_json_schema() -> dict
+    def to_typescript() -> str
+    def to_pydantic() -> str
+```
 
 ---
 
@@ -486,199 +674,104 @@ async def chat(user_id: str, thread_id: str, message: str):
 ### Environment Variables
 
 ```bash
-# LLM Provider
-export OPENAI_API_KEY="sk-your-api-key"
+# Database
+export DATABASE_URL="postgresql://user:pass@localhost/mindcore"
 
-# Self-hosted LLM (optional)
-export MINDCORE_OPENAI_BASE_URL="http://localhost:8000/v1"
-export MINDCORE_OPENAI_MODEL="your-model-name"
-
-# Database (PostgreSQL mode)
-export DB_HOST="localhost"
-export DB_PORT="5432"
-export DB_NAME="mindcore"
-export DB_USER="postgres"
-export DB_PASSWORD="your-password"
+# Enterprise features (optional)
+export ENCRYPTION_KEY="your-fernet-key"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 ```
 
-### Config File (config.yaml)
+### Programmatic Configuration
 
-```yaml
-llm:
-  provider: openai
+```python
+from mindcore import Mindcore, SharedVocabularyLayer
 
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    model: gpt-4o-mini
+# Custom vocabulary
+svl = SharedVocabularyLayer(
+    domains=["customer_service"],
+    version="1.0.0",
+)
+svl.add_topics("custom_topic")
 
-database:
-  host: ${DB_HOST:localhost}
-  port: ${DB_PORT:5432}
-  database: ${DB_NAME:mindcore}
-
-# Coming soon
-summarization:
-  enabled: true
-  max_age_days: 7
-  delete_after_summary: false
-
-preferences:
-  enabled: true
-  include_in_context: true
-
-connectors:
-  cache_ttl: 300
+# Initialize with custom vocabulary
+memory = Mindcore(
+    storage="postgresql://localhost/mindcore",
+    vocabulary=svl,
+    enable_multi_agent=True,
+)
 ```
 
 ---
 
-## CLI Commands
+## Testing
 
 ```bash
-# Check status
-mindcore status
+# Run all tests
+pytest mindcore/tests/ -v
 
-# Show configuration
-mindcore config --show
+# Run with coverage
+pytest mindcore/tests/ --cov=mindcore --cov-report=html
+
+# Run specific test file
+pytest mindcore/tests/test_enterprise.py -v
 ```
 
----
-
-## REST API
-
-```bash
-# Start the server
-python -m mindcore.api.server
-
-# Or with custom host/port
-python -m mindcore.api.server --host 0.0.0.0 --port 8080
-```
-
-### Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ingest` | POST | Ingest a message |
-| `/context` | POST | Get assembled context |
-| `/context/smart` | POST | Get context with tool calling |
-| `/health` | GET | Health check |
-| `/docs` | GET | Interactive API documentation |
-
----
-
-## Roadmap
-
-### Phase 1: Thread Summarization (Next)
-- Compress old threads into LLM-generated summaries
-- 90% storage reduction for threads > 7 days old
-- Background worker for automatic summarization
-
-### Phase 2: User Preferences
-- Amendable settings (language, timezone, interests)
-- Read-only system data separation (orders, billing never modified)
-- Preferences automatically included in context
-
-### Phase 3: External Connectors
-- Read-only connectors for Orders, Billing, CRM
-- Topic-based routing (mention "orders" → query Orders DB)
-- Custom connector SDK for any data source
-
-### Phase 4: Cloud Platform
-- Managed Mindcore service
-- Dashboard with analytics
-- SOC 2 compliance for enterprise
-
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for detailed technical plans.
-
----
-
-## Project Structure
-
-```
-mindcore/
-├── __init__.py              # Main client & public API
-├── async_client.py          # AsyncMindcoreClient
-│
-├── agents/                  # AI agents
-│   ├── enrichment_agent.py  # Metadata extraction
-│   ├── smart_context_agent.py # Tool-calling context assembly
-│   ├── context_assembler_agent.py
-│   └── summarization_agent.py  # (planned)
-│
-├── connectors/              # External data connectors (planned)
-│   ├── base.py
-│   ├── registry.py
-│   └── orders.py
-│
-├── core/                    # Core functionality
-│   ├── schemas.py           # Data models
-│   ├── sqlite_manager.py    # SQLite operations
-│   ├── async_db.py          # Async database managers
-│   ├── cache_manager.py     # In-memory caching
-│   └── preferences_manager.py  # (planned)
-│
-├── llm/                     # LLM providers
-│   ├── openai_provider.py
-│   └── provider_factory.py
-│
-├── api/                     # REST API
-│   └── server.py
-│
-└── workers/                 # Background workers (planned)
-    └── summarization_worker.py
-
-dashboard/                   # Vue.js web dashboard
-```
+Current test status: **140 tests passing, 58% coverage**
 
 ---
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
 ```bash
 # Clone
-git clone https://github.com/YOUR_USERNAME/mindcore.git
+git clone https://github.com/M-Alfaris/mindcore.git
 cd mindcore
 
 # Install with dev dependencies
 pip install -e ".[dev]"
 
+# Run pre-commit hooks
+pre-commit install
+
 # Run tests
 pytest
 
 # Format code
-black mindcore/
+ruff format mindcore/
+ruff check --fix mindcore/
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
 ## Acknowledgments
 
-- **OpenAI** — GPT-4o-mini powers cloud agents
-- **FastAPI** — High-performance API framework
-- **PostgreSQL/SQLite** — Robust storage options
-- **cachetools, limits, structlog** — Battle-tested libraries
+- **OpenTelemetry** - Observability framework
+- **limits** - Rate limiting library
+- **structlog** - Structured logging
+- **cryptography** - Encryption (Fernet)
+- **FastAPI** - REST API framework
+- **PostgreSQL/SQLite** - Storage backends
 
 ---
 
 <div align="center">
 
-### The Context Protocol for AI Agents
-
-**Stop rebuilding memory infrastructure. Start building features.**
+**Like MCP standardized connections, Mindcore standardizes memory.**
 
 ```bash
-pip install -e . && mindcore status
+pip install mindcore
 ```
 
-[Quick Start](#quick-start) • [Architecture](#-architecture) • [Roadmap](#-roadmap)
+[Quick Start](#quick-start) | [Protocols](#the-three-protocols) | [Enterprise](#enterprise-features)
 
 ---
 
