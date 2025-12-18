@@ -18,30 +18,31 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Generator
 from enum import Enum
+from typing import TYPE_CHECKING, Any, Generator
+
 
 if TYPE_CHECKING:
-    from ..storage.base import BaseStorage
-    from ..vocabulary import VocabularySchema
+    from mindcore.v2.storage.base import BaseStorage
+    from mindcore.v2.vocabulary import VocabularySchema
 
-from ..flr import Memory
+from mindcore.v2.flr import Memory
 
 
 class CompressionStrategy(str, Enum):
     """Memory compression strategies."""
 
-    SUMMARIZE = "summarize"    # LLM-based summarization
-    MERGE = "merge"            # Merge similar memories
+    SUMMARIZE = "summarize"  # LLM-based summarization
+    MERGE = "merge"  # Merge similar memories
     DEDUPLICATE = "deduplicate"  # Remove duplicates
-    EXTRACT = "extract"        # Extract key facts
+    EXTRACT = "extract"  # Extract key facts
 
 
 class SyncDirection(str, Enum):
     """Direction for memory sync."""
 
-    PUSH = "push"      # Push to target
-    PULL = "pull"      # Pull from source
+    PUSH = "push"  # Push to target
+    PULL = "pull"  # Pull from source
     BIDIRECTIONAL = "bidirectional"  # Sync both ways
 
 
@@ -107,6 +108,8 @@ class MigrationResult:
     memories_failed: int
     errors: list[str]
     latency_ms: float
+    checkpoints: list[Any] = field(default_factory=list)  # MigrationCheckpoint list
+    can_rollback: bool = True
 
 
 class CLST:
@@ -174,13 +177,13 @@ class CLST:
         """
         # Validate against vocabulary if provided
         if validate and self.vocabulary:
-            is_valid, errors = self.vocabulary.validate(memory.to_dict())
+            is_valid, errors = self.vocabulary.validate_memory(memory.to_dict())
             if not is_valid:
                 raise ValueError(f"Memory validation failed: {errors}")
 
         # Tag with vocabulary version
         if self.vocabulary:
-            memory.vocabulary_version = self.vocabulary.version
+            memory.vocabulary_version = self.vocabulary.schema.version
 
         # Store
         return self.storage.store(memory)
@@ -253,9 +256,16 @@ class CLST:
             limit=limit,
         )
 
-    def delete(self, memory_id: str) -> bool:
-        """Delete a memory."""
-        return self.storage.delete(memory_id)
+    def delete(self, memory_id: str) -> None:
+        """Delete a memory.
+
+        Args:
+            memory_id: Memory identifier
+
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+        """
+        self.storage.delete(memory_id)
 
     def compress(
         self,
@@ -373,10 +383,7 @@ class CLST:
         )
 
         # Filter to shared/team access level
-        shareable = [
-            m for m in source_memories
-            if m.access_level in ["shared", "team", "global"]
-        ]
+        shareable = [m for m in source_memories if m.access_level in ["shared", "team", "global"]]
 
         # Get existing target memories for conflict detection
         target_memories = self.search(
@@ -392,9 +399,7 @@ class CLST:
             # Check for conflict (same content)
             if memory.content in target_contents:
                 conflicts += 1
-                if conflict_resolution == "skip":
-                    continue
-                elif conflict_resolution == "target_wins":
+                if conflict_resolution in {"skip", "target_wins"}:
                     continue
                 # source_wins: overwrite
 
@@ -472,7 +477,7 @@ class CLST:
             target_instance=destination,
             memory_count=len(memories),
             total_size_bytes=size_bytes,
-            vocabulary_version=self.vocabulary.version if self.vocabulary else "unknown",
+            vocabulary_version=self.vocabulary.schema.version if self.vocabulary else "unknown",
             created_at=datetime.now(timezone.utc),
             checksum=checksum,
         )
@@ -501,13 +506,13 @@ class CLST:
             memory = Memory.from_dict(data)
 
             # Migrate vocabulary if needed
-            if self.vocabulary and memory.vocabulary_version != self.vocabulary.version:
-                data = self.vocabulary.migrate_memory(data, memory.vocabulary_version)
-                memory = Memory.from_dict(data)
-                memory.vocabulary_version = self.vocabulary.version
+            if self.vocabulary and memory.vocabulary_version != self.vocabulary.schema.version:
+                migrated_data = self.vocabulary.migrate_memory(data, memory.vocabulary_version)
+                memory = Memory.from_dict(migrated_data)
+                memory.vocabulary_version = self.vocabulary.schema.version
 
             if validate and self.vocabulary:
-                is_valid, errors = self.vocabulary.validate(memory.to_dict())
+                is_valid, _errors = self.vocabulary.validate_memory(memory.to_dict())
                 if not is_valid:
                     continue  # Skip invalid memories
 
@@ -520,6 +525,7 @@ class CLST:
         from_version: str,
         user_id: str | None = None,
         batch_size: int = 100,
+        create_checkpoints: bool = True,
     ) -> MigrationResult:
         """Migrate memories to current vocabulary version.
 
@@ -527,34 +533,44 @@ class CLST:
             from_version: Source vocabulary version
             user_id: Optional user filter
             batch_size: Batch size for processing
+            create_checkpoints: Whether to create rollback checkpoints
 
         Returns:
-            MigrationResult with details
+            MigrationResult with details and checkpoints for rollback
+
+        Raises:
+            ValueError: If vocabulary not set or no migration path exists
         """
         start_time = time.time()
 
         if not self.vocabulary:
             raise ValueError("Vocabulary required for migration")
 
-        if from_version not in self.vocabulary.migrations:
+        if from_version not in self.vocabulary.schema.migrations:
             raise ValueError(f"No migration path from {from_version}")
 
         migrated = 0
         failed = 0
         errors = []
+        checkpoints = []
 
         # Stream memories with old version
         for batch in self._stream_memories_by_version(from_version, user_id, batch_size):
             for memory in batch:
                 try:
-                    # Migrate
+                    # Migrate with checkpoint creation
                     data = memory.to_dict()
-                    migrated_data = self.vocabulary.migrate_memory(data, from_version)
+                    migrated_data, checkpoint = self.vocabulary.migrate_memory(
+                        data, from_version, create_checkpoint=create_checkpoints
+                    )
 
                     # Update in storage
                     updated_memory = Memory.from_dict(migrated_data)
-                    updated_memory.vocabulary_version = self.vocabulary.version
+                    updated_memory.vocabulary_version = self.vocabulary.schema.version
                     self.storage.update(updated_memory)
+
+                    if checkpoint:
+                        checkpoints.append(checkpoint)
 
                     migrated += 1
                 except Exception as e:
@@ -565,11 +581,72 @@ class CLST:
 
         return MigrationResult(
             from_version=from_version,
-            to_version=self.vocabulary.version,
+            to_version=self.vocabulary.schema.version,
             memories_migrated=migrated,
             memories_failed=failed,
             errors=errors[:100],  # Limit error list
             latency_ms=latency,
+            checkpoints=checkpoints,
+            can_rollback=create_checkpoints and len(checkpoints) > 0,
+        )
+
+    def rollback_migration(
+        self,
+        migration_result: MigrationResult,
+    ) -> MigrationResult:
+        """Rollback a previous migration using its checkpoints.
+
+        Args:
+            migration_result: Result from a previous migrate() call with checkpoints
+
+        Returns:
+            MigrationResult with rollback details
+
+        Raises:
+            ValueError: If migration cannot be rolled back (no checkpoints)
+        """
+        start_time = time.time()
+
+        if not migration_result.can_rollback or not migration_result.checkpoints:
+            raise ValueError(
+                "Cannot rollback: no checkpoints available. "
+                "Ensure migration was performed with create_checkpoints=True"
+            )
+
+        if not self.vocabulary:
+            raise ValueError("Vocabulary required for rollback")
+
+        rolled_back = 0
+        failed = 0
+        errors = []
+
+        for checkpoint in migration_result.checkpoints:
+            try:
+                # Restore original data
+                original_data = self.vocabulary.rollback_memory(
+                    checkpoint.migrated_data, checkpoint
+                )
+
+                # Update in storage
+                restored_memory = Memory.from_dict(original_data)
+                self.storage.update(restored_memory)
+
+                rolled_back += 1
+            except Exception as e:
+                failed += 1
+                errors.append(f"Failed to rollback {checkpoint.memory_id}: {e}")
+
+        latency = (time.time() - start_time) * 1000
+
+        return MigrationResult(
+            from_version=migration_result.to_version,
+            to_version=migration_result.from_version,
+            memories_migrated=rolled_back,
+            memories_failed=failed,
+            errors=errors[:100],
+            latency_ms=latency,
+            checkpoints=[],  # Rollbacks don't create new checkpoints
+            can_rollback=False,
         )
 
     def _deduplicate(
@@ -582,8 +659,8 @@ class CLST:
         removed = []
 
         for memory in memories:
-            # Simple content hash
-            content_hash = hashlib.md5(memory.content.encode()).hexdigest()
+            # Simple content hash (not for security, just deduplication)
+            content_hash = hashlib.md5(memory.content.encode(), usedforsecurity=False).hexdigest()
 
             if content_hash in seen_content:
                 # Keep the one with higher importance/reinforcement
@@ -633,9 +710,9 @@ class CLST:
                     user_id=group[0].user_id,
                     agent_id=group[0].agent_id,
                     topics=group[0].topics,
-                    categories=list(set(c for m in group for c in m.categories)),
+                    categories=list({c for m in group for c in m.categories}),
                     importance=max(m.importance for m in group),
-                    entities=list(set(e for m in group for e in m.entities)),
+                    entities=list({e for m in group for e in m.entities}),
                     access_level=group[0].access_level,
                 )
                 merged.append(merged_memory)
@@ -685,8 +762,8 @@ class CLST:
                     memory_type="semantic",
                     user_id=user_id,
                     agent_id=group[0].agent_id,
-                    topics=list(set(t for m in group for t in m.topics))[:5],
-                    categories=list(set(c for m in group for c in m.categories)),
+                    topics=list({t for m in group for t in m.topics})[:5],
+                    categories=list({c for m in group for c in m.categories}),
                     importance=0.7,  # Summaries are important
                     access_level=group[0].access_level,
                 )
@@ -720,7 +797,7 @@ class CLST:
                 memory_type="semantic",
                 user_id=user_id,
                 agent_id=memories[0].agent_id if memories else None,
-                topics=list(set(t for m in memories for t in m.topics))[:10],
+                topics=list({t for m in memories for t in m.topics})[:10],
                 importance=0.8,
                 access_level="shared",
             )
@@ -752,11 +829,12 @@ class CLST:
     def _generate_id(self, prefix: str) -> str:
         """Generate a unique ID."""
         import uuid
+
         return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
     def get_stats(self) -> dict[str, Any]:
         """Get CLST statistics."""
         return {
-            "vocabulary_version": self.vocabulary.version if self.vocabulary else None,
+            "vocabulary_version": self.vocabulary.schema.version if self.vocabulary else None,
             "storage_stats": self.storage.get_stats() if hasattr(self.storage, "get_stats") else {},
         }

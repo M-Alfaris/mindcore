@@ -1,12 +1,21 @@
-"""Base storage interface for Mindcore v2."""
+"""Base storage interface for Mindcore v2.
+
+Storage backends follow the "fail hard" philosophy:
+- Operations raise exceptions on failure rather than returning False/None
+- MemoryNotFoundError is raised when a memory doesn't exist
+- StorageError is raised for connection/database issues
+"""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..flr import Memory
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from mindcore.v2.flr import Memory
 
 
 class BaseStorage(ABC):
@@ -14,6 +23,14 @@ class BaseStorage(ABC):
 
     All storage backends (SQLite, PostgreSQL, etc.) must implement this interface.
     This ensures FLR and CLST can work with any storage backend.
+
+    Error Handling:
+        All methods that can fail raise exceptions rather than returning
+        False/None. This provides predictable behavior and clear error messages.
+
+        - MemoryNotFoundError: When a memory_id doesn't exist
+        - StorageError: For database/connection issues
+        - ValueError: For invalid parameters
     """
 
     @abstractmethod
@@ -26,7 +43,6 @@ class BaseStorage(ABC):
         Returns:
             Memory ID
         """
-        pass
 
     @abstractmethod
     def get(self, memory_id: str) -> Memory | None:
@@ -38,31 +54,30 @@ class BaseStorage(ABC):
         Returns:
             Memory or None if not found
         """
-        pass
 
     @abstractmethod
-    def update(self, memory: Memory) -> bool:
+    def update(self, memory: Memory) -> None:
         """Update an existing memory.
 
         Args:
             memory: Memory with updated fields
 
-        Returns:
-            True if updated, False if not found
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+            StorageError: If update fails
         """
-        pass
 
     @abstractmethod
-    def delete(self, memory_id: str) -> bool:
+    def delete(self, memory_id: str) -> None:
         """Delete a memory.
 
         Args:
             memory_id: Memory identifier
 
-        Returns:
-            True if deleted, False if not found
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+            StorageError: If deletion fails
         """
-        pass
 
     @abstractmethod
     def search(
@@ -99,7 +114,6 @@ class BaseStorage(ABC):
         Returns:
             List of matching memories
         """
-        pass
 
     @abstractmethod
     def search_by_version(
@@ -120,20 +134,23 @@ class BaseStorage(ABC):
         Returns:
             List of memories with matching version
         """
-        pass
 
     @abstractmethod
-    def update_reinforcement(self, memory_id: str, signal: float) -> bool:
+    def update_reinforcement(self, memory_id: str, signal: float) -> None:
         """Update reinforcement score for a memory.
+
+        The reinforcement score is bounded to [-1.0, 1.0] to prevent
+        unbounded accumulation. Implementations should clamp the final
+        score to this range.
 
         Args:
             memory_id: Memory identifier
-            signal: Reinforcement signal to add
+            signal: Reinforcement signal to add (will be clamped)
 
-        Returns:
-            True if updated, False if not found
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+            ValueError: If signal is not a valid number
         """
-        pass
 
     @abstractmethod
     def store_transfer(self, transfer_id: str, data: list[dict]) -> None:
@@ -143,7 +160,6 @@ class BaseStorage(ABC):
             transfer_id: Transfer identifier
             data: Serialized memory data
         """
-        pass
 
     @abstractmethod
     def get_transfer(self, transfer_id: str) -> list[dict] | None:
@@ -155,7 +171,6 @@ class BaseStorage(ABC):
         Returns:
             Serialized memory data or None
         """
-        pass
 
     @abstractmethod
     def get_stats(self) -> dict[str, Any]:
@@ -164,9 +179,7 @@ class BaseStorage(ABC):
         Returns:
             Dict with storage stats
         """
-        pass
 
     @abstractmethod
     def close(self) -> None:
         """Close storage connection."""
-        pass

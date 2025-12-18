@@ -54,64 +54,11 @@ Quick Start:
     svl.map_source("orders", TableSource(...))
 """
 
-from .mindcore import Mindcore
-
-# SVL - The unified vocabulary system (replaces VocabularySchema)
-from .svl import (
-    # Core enums
-    MemoryType,
-    Sentiment,
-    AccessLevel,
-    # Migration support
-    Migration,
-    FieldSchema,
-    # Ontology
-    MessageType,
-    MessageIntent,
-    TemporalQualifier,
-    EmotionalClassification,
-    UserRole,
-    PreferenceType,
-    DomainLabel,
-    Urgency,
-    Confidence,
-    SemanticMetadata,
-    # Domains
-    DomainVocabulary,
-    DOMAIN_REGISTRY,
-    get_domain,
-    list_domains,
-    merge_domains,
-    create_custom_domain,
-    # Sources
-    SourceType,
-    TriggerCondition,
-    DataSource,
-    FetchResult,
-    TableSource,
-    APISource,
-    MCPSource,
-    FunctionSource,
-    SourceMapping,
-    SourceRegistry,
-    create_source,
-    # Layer
-    SVLSchema,
-    SharedVocabularyLayer,
-    DEFAULT_SVL,
-)
-
-# Legacy VocabularySchema - kept for backwards compatibility
-from .vocabulary import (
-    VocabularySchema,
-    DEFAULT_VOCABULARY,
-)
-
-from .flr import (
-    ContextWindow,
-    FLR,
-    Memory,
-    RecallResult,
+from .access import (
+    AccessController,
+    AccessDecision,
+    AgentProfile,
+    Permission,
 )
 from .clst import (
     CLST,
@@ -122,120 +69,216 @@ from .clst import (
     SyncResult,
     TransferManifest,
 )
-from .access import (
-    AccessController,
-    AccessDecision,
-    AgentProfile,
-    Permission,
-)
-from .storage import (
-    BaseStorage,
-    PostgresStorage,
-    SQLiteStorage,
-)
-from .server import (
-    MCPServer,
-    create_app,
-    run_server,
-)
 from .cross_agent import (
     Agent,
     AgentCapability,
     AgentRegistry,
     AgentStatus,
+    AgentSyncDirection,
+    AgentSyncResult,
     AttentionRouter,
     CrossAgentLayer,
     CrossAgentMemory,
     RouteResult,
     RoutingStrategy,
     ShareResult,
-    SyncDirection as CrossAgentSyncDirection,
-    SyncResult as CrossAgentSyncResult,
     Team,
 )
+from .flr import (
+    FLR,
+    ContextWindow,
+    Memory,
+    RecallResult,
+)
+from .mindcore import Mindcore
+from .server import (
+    MCPServer,
+    create_app,
+    run_server,
+)
+from .storage import (
+    BaseStorage,
+    PostgresStorage,
+    SQLiteStorage,
+)
+
+# SVL - The unified vocabulary system (replaces VocabularySchema)
+from .svl import (
+    DEFAULT_SVL,
+    DOMAIN_REGISTRY,
+    AccessLevel,
+    APISource,
+    Confidence,
+    DataSource,
+    DomainLabel,
+    # Domains
+    DomainVocabulary,
+    EmotionalClassification,
+    FetchResult,
+    FieldSchema,
+    FunctionSource,
+    MCPSource,
+    # Core enums
+    MemoryType,
+    MessageIntent,
+    # Ontology
+    MessageType,
+    # Migration support
+    Migration,
+    MigrationCheckpoint,
+    PreferenceType,
+    SemanticMetadata,
+    Sentiment,
+    SharedVocabularyLayer,
+    SourceMapping,
+    SourceRegistry,
+    # Sources
+    SourceType,
+    # Layer
+    SVLSchema,
+    TableSource,
+    TemporalQualifier,
+    TriggerCondition,
+    Urgency,
+    UserRole,
+    create_custom_domain,
+    create_source,
+    get_domain,
+    list_domains,
+    merge_domains,
+)
+from .svl import DEFAULT_SVL as DEFAULT_VOCABULARY
+
+# Legacy VocabularySchema - DEPRECATED, use SharedVocabularyLayer instead
+# These aliases are provided for backwards compatibility only
+from .svl import SharedVocabularyLayer as VocabularySchema
+
+
+# Backwards compatibility aliases for cross_agent sync types
+# DEPRECATED: Use AgentSyncDirection and AgentSyncResult instead
+CrossAgentSyncDirection = AgentSyncDirection
+CrossAgentSyncResult = AgentSyncResult
+
+# Exceptions - Standardized error handling
+from .exceptions import (
+    AccessError,
+    AgentNotFoundError,
+    ConfigurationError,
+    MemoryNotFoundError,
+    MemoryValidationError,
+    MigrationError,
+    MigrationPathError,
+    MindcoreError,
+    MultiAgentNotEnabledError,
+    PermissionDeniedError,
+    RollbackError,
+    StorageConnectionError,
+    StorageError,
+    ValidationError,
+    VocabularyValidationError,
+)
+
 
 __version__ = "2.0.0"
 
+# Enterprise features (optional dependencies)
+# Import as: from mindcore.v2.enterprise import ...
+# or: from mindcore.v2 import enterprise
+try:
+    from . import enterprise
+except ImportError:
+    enterprise = None  # Enterprise dependencies not installed
+
 __all__ = [
-    # Main class
-    "Mindcore",
-    # SVL - Unified Vocabulary (primary)
-    "MemoryType",
-    "Sentiment",
-    "AccessLevel",
-    "Migration",
-    "FieldSchema",
-    "MessageType",
-    "MessageIntent",
-    "TemporalQualifier",
-    "EmotionalClassification",
-    "UserRole",
-    "PreferenceType",
-    "DomainLabel",
-    "Urgency",
-    "Confidence",
-    "SemanticMetadata",
-    "DomainVocabulary",
-    "DOMAIN_REGISTRY",
-    "get_domain",
-    "list_domains",
-    "merge_domains",
-    "create_custom_domain",
-    "SourceType",
-    "TriggerCondition",
-    "DataSource",
-    "FetchResult",
-    "TableSource",
-    "APISource",
-    "MCPSource",
-    "FunctionSource",
-    "SourceMapping",
-    "SourceRegistry",
-    "create_source",
-    "SVLSchema",
-    "SharedVocabularyLayer",
-    "DEFAULT_SVL",
-    # Legacy Vocabulary (backwards compatibility)
-    "VocabularySchema",
-    "DEFAULT_VOCABULARY",
-    # FLR
-    "ContextWindow",
-    "FLR",
-    "Memory",
-    "RecallResult",
-    # CLST
     "CLST",
-    "CompressionResult",
-    "CompressionStrategy",
-    "MigrationResult",
-    "SyncDirection",
-    "SyncResult",
-    "TransferManifest",
-    # Access Control
+    "DEFAULT_SVL",
+    "DEFAULT_VOCABULARY",
+    "DOMAIN_REGISTRY",
+    "FLR",
+    "APISource",
     "AccessController",
     "AccessDecision",
-    "AgentProfile",
-    "Permission",
-    # Storage
-    "BaseStorage",
-    "PostgresStorage",
-    "SQLiteStorage",
-    # Server
-    "MCPServer",
-    "create_app",
-    "run_server",
-    # Cross-Agent
+    "AccessError",
+    "AccessLevel",
     "Agent",
     "AgentCapability",
+    "AgentNotFoundError",
+    "AgentProfile",
     "AgentRegistry",
     "AgentStatus",
+    "AgentSyncDirection",
+    "AgentSyncResult",
     "AttentionRouter",
+    "BaseStorage",
+    "CompressionResult",
+    "CompressionStrategy",
+    "Confidence",
+    "ConfigurationError",
+    "ContextWindow",
     "CrossAgentLayer",
     "CrossAgentMemory",
     "CrossAgentSyncDirection",
     "CrossAgentSyncResult",
+    "DataSource",
+    "DomainLabel",
+    "DomainVocabulary",
+    "EmotionalClassification",
+    "FetchResult",
+    "FieldSchema",
+    "FunctionSource",
+    "MCPServer",
+    "MCPSource",
+    "Memory",
+    "MemoryNotFoundError",
+    "MemoryType",
+    "MemoryValidationError",
+    "MessageIntent",
+    "MessageType",
+    "Migration",
+    "MigrationCheckpoint",
+    "MigrationError",
+    "MigrationPathError",
+    "MigrationResult",
+    "Mindcore",
+    "MindcoreError",
+    "MultiAgentNotEnabledError",
+    "Permission",
+    "PermissionDeniedError",
+    "PostgresStorage",
+    "PreferenceType",
+    "RecallResult",
+    "RollbackError",
     "RouteResult",
     "RoutingStrategy",
+    "SQLiteStorage",
+    "SVLSchema",
+    "SemanticMetadata",
+    "Sentiment",
     "ShareResult",
+    "SharedVocabularyLayer",
+    "SourceMapping",
+    "SourceRegistry",
+    "SourceType",
+    "StorageConnectionError",
+    "StorageError",
+    "SyncDirection",
+    "SyncResult",
+    "TableSource",
     "Team",
+    "TemporalQualifier",
+    "TransferManifest",
+    "TriggerCondition",
+    "Urgency",
+    "UserRole",
+    "ValidationError",
+    "VocabularySchema",
+    "VocabularyValidationError",
+    "create_app",
+    "create_custom_domain",
+    "create_source",
+    "enterprise",
+    "get_domain",
+    "list_domains",
+    "merge_domains",
+    "run_server",
 ]

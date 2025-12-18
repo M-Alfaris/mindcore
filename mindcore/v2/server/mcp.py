@@ -9,15 +9,15 @@ Based on: https://modelcontextprotocol.io/
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
-from datetime import datetime, timezone
+
 
 if TYPE_CHECKING:
-    from ..flr import FLR
-    from ..clst import CLST
-    from ..vocabulary import VocabularySchema
-    from ..access import AccessController
+    from mindcore.v2.access import AccessController
+    from mindcore.v2.clst import CLST
+    from mindcore.v2.flr import FLR
+    from mindcore.v2.vocabulary import VocabularySchema
 
 
 @dataclass
@@ -401,7 +401,7 @@ class MCPServer:
         _agent_id: str | None = None,
     ) -> dict[str, Any]:
         """Handle store_memory tool call."""
-        from ..flr import Memory
+        from mindcore.v2.flr import Memory
 
         memory = Memory(
             memory_id="",  # Will be generated
@@ -445,7 +445,8 @@ class MCPServer:
 
         # Filter by access control if enabled
         if self.access_controller and _agent_id:
-            from ..access import Permission
+            from mindcore.v2.access import Permission
+
             memories = self.access_controller.filter_accessible_memories(
                 _agent_id, memories, Permission.READ
             )
@@ -511,7 +512,8 @@ class MCPServer:
 
         # Filter by access control if enabled
         if self.access_controller and _agent_id:
-            from ..access import Permission
+            from mindcore.v2.access import Permission
+
             recent = self.access_controller.filter_accessible_memories(
                 _agent_id, recent, Permission.READ
             )
@@ -578,9 +580,7 @@ class MCPServer:
                 uri = params.get("uri")
                 result = self.read_resource(uri)
             else:
-                return self.to_json_rpc_response(
-                    request_id, None, f"Unknown method: {method}"
-                )
+                return self.to_json_rpc_response(request_id, None, f"Unknown method: {method}")
 
             return self.to_json_rpc_response(request_id, result)
 

@@ -3,40 +3,40 @@
 import pytest
 
 from mindcore.v2.svl import (
-    # Ontology
-    MessageType,
-    MessageIntent,
-    TemporalQualifier,
-    EmotionalClassification,
-    UserRole,
-    PreferenceType,
-    DomainLabel,
-    Urgency,
-    Confidence,
-    SemanticMetadata,
-    get_message_types,
-    get_message_intents,
-    get_temporal_qualifiers,
-    get_emotional_classifications,
-    get_user_roles,
-    get_preference_types,
-    get_domain_labels,
-    get_urgency_levels,
-    get_confidence_levels,
-    # Domains
-    DomainVocabulary,
     CUSTOMER_SERVICE_DOMAIN,
+    DEFAULT_SVL,
+    DOMAIN_REGISTRY,
     ECOMMERCE_DOMAIN,
     HEALTHCARE_DOMAIN,
-    DOMAIN_REGISTRY,
-    get_domain,
-    list_domains,
-    merge_domains,
-    create_custom_domain,
+    Confidence,
+    DomainLabel,
+    # Domains
+    DomainVocabulary,
+    EmotionalClassification,
+    MessageIntent,
+    # Ontology
+    MessageType,
+    PreferenceType,
+    SemanticMetadata,
+    SharedVocabularyLayer,
     # Layer
     SVLSchema,
-    SharedVocabularyLayer,
-    DEFAULT_SVL,
+    TemporalQualifier,
+    Urgency,
+    UserRole,
+    create_custom_domain,
+    get_confidence_levels,
+    get_domain,
+    get_domain_labels,
+    get_emotional_classifications,
+    get_message_intents,
+    get_message_types,
+    get_preference_types,
+    get_temporal_qualifiers,
+    get_urgency_levels,
+    get_user_roles,
+    list_domains,
+    merge_domains,
 )
 
 
@@ -245,7 +245,7 @@ class TestDomainVocabulary:
 
         assert "customer_service+ecommerce" in merged.name
         assert "ticket" in merged.topics  # From customer_service
-        assert "cart" in merged.topics    # From ecommerce
+        assert "cart" in merged.topics  # From ecommerce
         assert "open_ticket" in merged.intents
         assert "add_to_cart" in merged.intents
 
@@ -312,9 +312,7 @@ class TestSVLSchema:
 
     def test_to_json_schema(self):
         """Test generating JSON schema via SharedVocabularyLayer."""
-        svl = SharedVocabularyLayer(
-            schema=SVLSchema(domains=["customer_service"])
-        )
+        svl = SharedVocabularyLayer(schema=SVLSchema(domains=["customer_service"]))
         json_schema = svl.get_json_schema()
 
         assert json_schema["type"] == "object"
@@ -326,17 +324,21 @@ class TestSVLSchema:
         svl = SharedVocabularyLayer(schema=SVLSchema())
 
         # Valid metadata
-        is_valid, errors = svl.validate_metadata({
-            "message_type": "query",
-            "urgency": "high",
-        })
+        is_valid, errors = svl.validate_metadata(
+            {
+                "message_type": "query",
+                "urgency": "high",
+            }
+        )
         assert is_valid
         assert len(errors) == 0
 
         # Invalid metadata
-        is_valid, errors = svl.validate_metadata({
-            "message_type": "invalid_type",
-        })
+        is_valid, errors = svl.validate_metadata(
+            {
+                "message_type": "invalid_type",
+            }
+        )
         assert not is_valid
         assert len(errors) > 0
 
@@ -391,16 +393,20 @@ class TestSharedVocabularyLayer:
         svl = SharedVocabularyLayer()
 
         # Valid
-        is_valid, errors = svl.validate_metadata({
-            "message_type": "query",
-            "message_intent": "ask_question",
-        })
+        is_valid, _errors = svl.validate_metadata(
+            {
+                "message_type": "query",
+                "message_intent": "ask_question",
+            }
+        )
         assert is_valid
 
         # Invalid
-        is_valid, errors = svl.validate_metadata({
-            "emotional_intensity": 5.0,  # Out of range
-        })
+        is_valid, _errors = svl.validate_metadata(
+            {
+                "emotional_intensity": 5.0,  # Out of range
+            }
+        )
         assert not is_valid
 
     def test_get_json_schema(self):
@@ -476,7 +482,7 @@ class TestIntegration:
             urgency=Urgency.HIGH,
         )
 
-        is_valid, errors = svl.validate_metadata(metadata)
+        is_valid, _errors = svl.validate_metadata(metadata)
         assert is_valid
 
     def test_domain_entity_types(self):
@@ -484,13 +490,13 @@ class TestIntegration:
         svl = SharedVocabularyLayer(domains=["ecommerce", "healthcare"])
 
         entity_types = svl.schema.get_entity_types()
-        assert "order" in entity_types       # From ecommerce
-        assert "patient" in entity_types     # From healthcare
+        assert "order" in entity_types  # From ecommerce
+        assert "patient" in entity_types  # From healthcare
 
     def test_combined_intents(self):
         """Test combined intents from base + domains."""
         svl = SharedVocabularyLayer(domains=["ecommerce"])
 
         intents = svl.schema.get_message_intents()
-        assert "ask_question" in intents     # Base ontology
-        assert "add_to_cart" in intents      # Ecommerce domain
+        assert "ask_question" in intents  # Base ontology
+        assert "add_to_cart" in intents  # Ecommerce domain

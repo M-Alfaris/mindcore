@@ -14,14 +14,20 @@ FLR handles:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
 from collections import OrderedDict
-import hashlib
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
 
 if TYPE_CHECKING:
-    from ..storage.base import BaseStorage
+    from mindcore.v2.cross_agent.registry import AgentRegistry
+    from mindcore.v2.storage.base import BaseStorage
+
+
+# Constants for reinforcement score bounds
+REINFORCEMENT_SCORE_MIN = -1.0
+REINFORCEMENT_SCORE_MAX = 1.0
 
 
 @dataclass
@@ -48,12 +54,44 @@ class Memory:
     expires_at: datetime | None = None
 
     # FLR-specific
-    reinforcement_score: float = 0.0  # Accumulated reinforcement signals
+    reinforcement_score: float = 0.0  # Accumulated reinforcement signals (bounded to [-1, 1])
     access_count: int = 0
     embedding: list[float] | None = None
 
     # Versioning
     vocabulary_version: str = "1.0.0"
+
+    def apply_reinforcement(self, signal: float) -> float:
+        """Apply a reinforcement signal with bounds checking.
+
+        Args:
+            signal: Reinforcement signal to apply (will be clamped to [-1, 1])
+
+        Returns:
+            The new reinforcement score after applying the signal
+        """
+        # Clamp signal to valid range
+        clamped_signal = max(-1.0, min(1.0, signal))
+
+        # Apply signal with exponential decay toward bounds
+        # This prevents score from getting stuck at bounds
+        if clamped_signal > 0:
+            # Positive signal: diminishing returns as we approach max
+            headroom = REINFORCEMENT_SCORE_MAX - self.reinforcement_score
+            effective_signal = clamped_signal * (headroom / 2.0)  # Scale by available headroom
+        else:
+            # Negative signal: diminishing returns as we approach min
+            headroom = self.reinforcement_score - REINFORCEMENT_SCORE_MIN
+            effective_signal = clamped_signal * (headroom / 2.0)
+
+        self.reinforcement_score += effective_signal
+
+        # Ensure bounds are respected (safety clamp)
+        self.reinforcement_score = max(
+            REINFORCEMENT_SCORE_MIN, min(REINFORCEMENT_SCORE_MAX, self.reinforcement_score)
+        )
+
+        return self.reinforcement_score
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -129,15 +167,17 @@ class ContextWindow:
 
     def add_message(self, role: str, content: str, metadata: dict | None = None):
         """Add a message to the context window."""
-        self.messages.append({
-            "role": role,
-            "content": content,
-            "metadata": metadata or {},
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        self.messages.append(
+            {
+                "role": role,
+                "content": content,
+                "metadata": metadata or {},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         # Trim if over limit
         if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages:]
+            self.messages = self.messages[-self.max_messages :]
 
     def clear(self):
         """Clear the context window."""
@@ -175,6 +215,7 @@ class FLR:
         cache_size: int = 1000,
         cache_ttl_seconds: int = 300,
         embedding_fn: callable | None = None,
+        agent_registry: AgentRegistry | None = None,
     ):
         """Initialize FLR.
 
@@ -183,11 +224,13 @@ class FLR:
             cache_size: Max memories in hot cache
             cache_ttl_seconds: Cache TTL
             embedding_fn: Optional function to generate embeddings
+            agent_registry: Optional agent registry for team-based access control
         """
         self.storage = storage
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl_seconds
         self.embedding_fn = embedding_fn
+        self.agent_registry = agent_registry
 
         # Hot cache (LRU)
         self._cache: OrderedDict[str, tuple[Memory, float]] = OrderedDict()
@@ -237,15 +280,17 @@ class FLR:
         sources = []
 
         # 1. Check hot cache first
-        cached_memories = self._query_cache(
-            query, user_id, agent_id, attention_hints, memory_types
-        )
+        cached_memories = self._query_cache(query, user_id, agent_id, attention_hints, memory_types)
         if cached_memories:
             sources.append("cache")
 
         # 2. Query storage (CLST)
         storage_memories = self._query_storage(
-            query, user_id, agent_id, attention_hints, memory_types,
+            query,
+            user_id,
+            agent_id,
+            attention_hints,
+            memory_types,
             limit=limit * 2,  # Get more for scoring
             include_cross_agent=include_cross_agent,
         )
@@ -270,9 +315,7 @@ class FLR:
             memory.access_count += 1
 
         # 7. Extract attention focus
-        attention_focus = self._extract_attention_focus(
-            [m for m, _ in filtered], attention_hints
-        )
+        attention_focus = self._extract_attention_focus([m for m, _ in filtered], attention_hints)
 
         # 8. Suggest memory types
         suggested_types = self._suggest_memory_types(query, [m for m, _ in filtered])
@@ -288,29 +331,49 @@ class FLR:
             suggested_memory_types=suggested_types,
         )
 
-    def reinforce(self, memory_id: str, signal: float) -> None:
+    def reinforce(self, memory_id: str, signal: float) -> float:
         """Reinforce a memory with a learning signal.
 
         Positive signals increase future recall probability.
-        Negative signals decrease it.
+        Negative signals decrease it. Uses bounded reinforcement with
+        diminishing returns as scores approach limits.
 
         Args:
             memory_id: Memory to reinforce
             signal: Reinforcement signal (-1.0 to +1.0)
+
+        Returns:
+            The new reinforcement score (or 0.0 if memory not found in cache)
+
+        Raises:
+            ValueError: If signal is not a valid number
         """
-        signal = max(-1.0, min(1.0, signal))  # Clamp to [-1, 1]
+        if not isinstance(signal, int | float):
+            raise TypeError(f"Signal must be a number, got {type(signal).__name__}")
+
+        # Clamp signal to valid range
+        clamped_signal = max(-1.0, min(1.0, float(signal)))
 
         # Buffer reinforcement (batched writes to storage)
         if memory_id in self._reinforcement_buffer:
-            self._reinforcement_buffer[memory_id] += signal
+            # Buffer stores raw signals, bounds applied on flush
+            self._reinforcement_buffer[memory_id] += clamped_signal
         else:
-            self._reinforcement_buffer[memory_id] = signal
+            self._reinforcement_buffer[memory_id] = clamped_signal
 
-        # Update cache if present
+        # Clamp buffer to prevent unbounded accumulation
+        self._reinforcement_buffer[memory_id] = max(
+            -1.0, min(1.0, self._reinforcement_buffer[memory_id])
+        )
+
+        # Update cache if present using bounded method
+        new_score = 0.0
         if memory_id in self._cache:
             memory, timestamp = self._cache[memory_id]
-            memory.reinforcement_score += signal
+            new_score = memory.apply_reinforcement(clamped_signal)
             self._cache[memory_id] = (memory, timestamp)
+
+        return new_score
 
     def promote(self, memory_id: str) -> bool:
         """Promote a working memory to long-term storage.
@@ -415,15 +478,12 @@ class FLR:
         results = []
 
         # Clean expired entries
-        expired = [
-            mid for mid, (_, ts) in self._cache.items()
-            if now - ts > self.cache_ttl
-        ]
+        expired = [mid for mid, (_, ts) in self._cache.items() if now - ts > self.cache_ttl]
         for mid in expired:
             del self._cache[mid]
 
         # Search cache
-        for memory_id, (memory, _) in self._cache.items():
+        for memory, _ in self._cache.values():
             # Access control
             # Note: For full team-based access control, use CrossAgentLayer which
             # has proper team registration and membership checking. FLR only does
@@ -432,9 +492,9 @@ class FLR:
                 if memory.access_level == "private":
                     continue
                 if memory.access_level == "team" and memory.agent_id != agent_id:
-                    # Basic check: different agent, team-level access
-                    # For proper team membership validation, use CrossAgentLayer.query()
-                    continue
+                    # Check team membership via registry
+                    if not self._check_team_access(agent_id, memory.agent_id):
+                        continue
 
             # Type filter
             if memory_types and memory.memory_type not in memory_types:
@@ -535,11 +595,37 @@ class FLR:
                 return True
 
         # Check entities
-        for entity in memory.entities:
-            if entity.lower() in query_lower:
-                return True
+        return any(entity.lower() in query_lower for entity in memory.entities)
 
-        return False
+    def _check_team_access(
+        self,
+        requesting_agent_id: str | None,
+        memory_agent_id: str | None,
+    ) -> bool:
+        """Check if requesting agent shares a team with memory owner.
+
+        Args:
+            requesting_agent_id: Agent requesting access
+            memory_agent_id: Agent that owns the memory
+
+        Returns:
+            True if agents share at least one team, False otherwise
+        """
+        if not requesting_agent_id or not memory_agent_id:
+            return False
+
+        if not self.agent_registry:
+            # No registry configured - deny team access for safety
+            return False
+
+        requester = self.agent_registry.get_agent(requesting_agent_id)
+        owner = self.agent_registry.get_agent(memory_agent_id)
+
+        if not requester or not owner:
+            return False
+
+        # Use the Agent.shares_team_with method from registry
+        return requester.shares_team_with(owner)
 
     def _deduplicate(self, memories: list[Memory]) -> list[Memory]:
         """Remove duplicate memories."""

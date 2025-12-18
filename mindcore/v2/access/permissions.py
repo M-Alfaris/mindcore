@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 from enum import Enum
+from typing import Any
 
 
 class Permission(str, Enum):
@@ -83,8 +83,7 @@ class AgentProfile:
             "description": self.description,
             "teams": self.teams,
             "permissions": {
-                level: [p.value for p in perms]
-                for level, perms in self.permissions.items()
+                level: [p.value for p in perms] for level, perms in self.permissions.items()
             },
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_active": self.last_active.isoformat() if self.last_active else None,
@@ -393,7 +392,5 @@ class AccessController:
             "total_agents": len(self._agents),
             "active_agents": sum(1 for a in self._agents.values() if a.is_active),
             "total_teams": len(self._teams),
-            "agents_by_team": {
-                team: len(members) for team, members in self._teams.items()
-            },
+            "agents_by_team": {team: len(members) for team, members in self._teams.items()},
         }

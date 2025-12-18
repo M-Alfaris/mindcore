@@ -5,15 +5,16 @@ contextual recall among AI agents.
 """
 
 from .recall import (
-    ContextWindow,
     FLR,
+    ContextWindow,
     Memory,
     RecallResult,
 )
 
+
 __all__ = [
-    "ContextWindow",
     "FLR",
+    "ContextWindow",
     "Memory",
     "RecallResult",
 ]

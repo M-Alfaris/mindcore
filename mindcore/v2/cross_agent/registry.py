@@ -376,10 +376,7 @@ class AgentRegistry:
 
     def find_agents_by_specialization(self, specialization: str) -> list[Agent]:
         """Find agents with a specific specialization."""
-        return [
-            a for a in self._agents.values()
-            if specialization in a.specializations
-        ]
+        return [a for a in self._agents.values() if specialization in a.specializations]
 
     # === Team Management ===
 
@@ -504,11 +501,7 @@ class AgentRegistry:
         if not team:
             return []
 
-        return [
-            self._agents[aid]
-            for aid in team.member_agent_ids
-            if aid in self._agents
-        ]
+        return [self._agents[aid] for aid in team.member_agent_ids if aid in self._agents]
 
     def get_agent_teammates(self, agent_id: str) -> list[Agent]:
         """Get all teammates of an agent.

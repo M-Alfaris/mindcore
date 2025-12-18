@@ -6,11 +6,11 @@ import tempfile
 import pytest
 
 from mindcore.v2 import (
-    CrossAgentLayer,
     AgentStatus,
+    CrossAgentLayer,
+    Memory,
     RoutingStrategy,
     SQLiteStorage,
-    Memory,
 )
 from mindcore.v2.cross_agent import SyncDirection
 
@@ -307,14 +307,8 @@ class TestQueryRouting:
 
         assert len(rankings) > 0
         # Billing bot should rank higher for billing queries
-        billing_rank = next(
-            (r for r in rankings if r["agent_id"] == "billing_bot"),
-            None
-        )
-        product_rank = next(
-            (r for r in rankings if r["agent_id"] == "product_bot"),
-            None
-        )
+        billing_rank = next((r for r in rankings if r["agent_id"] == "billing_bot"), None)
+        product_rank = next((r for r in rankings if r["agent_id"] == "product_bot"), None)
 
         assert billing_rank is not None
         assert billing_rank["score"] > product_rank["score"]

@@ -45,6 +45,7 @@ Example:
     )
 """
 
+from .layer import CrossAgentLayer
 from .registry import (
     Agent,
     AgentCapability,
@@ -52,18 +53,22 @@ from .registry import (
     AgentStatus,
     Team,
 )
-from .sharing import (
-    CrossAgentMemory,
-    ShareResult,
-    SyncDirection,
-    SyncResult,
-)
 from .routing import (
     AttentionRouter,
     RouteResult,
     RoutingStrategy,
 )
-from .layer import CrossAgentLayer
+from .sharing import (
+    AgentSyncDirection,
+    AgentSyncResult,
+    ConflictInfo,
+    ConflictResolution,
+    CrossAgentMemory,
+    ShareResult,
+    # Backwards compatibility aliases
+    SyncDirection,
+    SyncResult,
+)
 
 
 __all__ = [
@@ -72,16 +77,21 @@ __all__ = [
     "AgentCapability",
     "AgentRegistry",
     "AgentStatus",
-    "Team",
     # Sharing
-    "CrossAgentMemory",
-    "ShareResult",
-    "SyncDirection",
-    "SyncResult",
+    "AgentSyncDirection",
+    "AgentSyncResult",
     # Routing
     "AttentionRouter",
-    "RouteResult",
-    "RoutingStrategy",
+    "ConflictInfo",
+    "ConflictResolution",
     # Main
     "CrossAgentLayer",
+    "CrossAgentMemory",
+    "RouteResult",
+    "RoutingStrategy",
+    "ShareResult",
+    # Backwards compatibility aliases (deprecated, use AgentSyncDirection/AgentSyncResult)
+    "SyncDirection",
+    "SyncResult",
+    "Team",
 ]

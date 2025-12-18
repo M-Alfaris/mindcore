@@ -19,17 +19,14 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from .domains import (
+    DOMAIN_REGISTRY,
+    DomainVocabulary,
+    get_domain,
+    list_domains,
+)
 from .ontology import (
-    Confidence,
-    DomainLabel,
-    EmotionalClassification,
-    MessageIntent,
-    MessageType,
-    PreferenceType,
     SemanticMetadata,
-    TemporalQualifier,
-    Urgency,
-    UserRole,
     get_confidence_levels,
     get_domain_labels,
     get_emotional_classifications,
@@ -40,39 +37,214 @@ from .ontology import (
     get_urgency_levels,
     get_user_roles,
 )
-from .domains import (
-    DOMAIN_REGISTRY,
-    DomainVocabulary,
-    get_domain,
-    list_domains,
-    merge_domains,
-)
 from .sources import (
-    APISource,
     DataSource,
     FetchResult,
-    FunctionSource,
-    MCPSource,
     SourceRegistry,
-    SourceType,
-    TableSource,
     TriggerCondition,
-    create_source,
 )
 
-# Import core types from vocabulary (single source of truth)
-from ..vocabulary.schema import (
-    MemoryType,
-    Sentiment,
-    AccessLevel,
-    FieldSchema,
-    Migration,
-)
+
+# =============================================================================
+# Core Enums (from VocabularySchema)
+# =============================================================================
+
+
+class MemoryType(str, Enum):
+    """Core memory types."""
+
+    EPISODIC = "episodic"  # Events, conversations, interactions
+    SEMANTIC = "semantic"  # Facts, knowledge, learned information
+    PROCEDURAL = "procedural"  # Workflows, how-to, processes
+    PREFERENCE = "preference"  # User preferences, settings
+    ENTITY = "entity"  # People, places, things
+    RELATIONSHIP = "relationship"  # Connections between entities
+    TEMPORAL = "temporal"  # Time-bound info (auto-expires)
+    WORKING = "working"  # Current session context (cleared)
+
+
+class Sentiment(str, Enum):
+    """Sentiment values."""
+
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+    MIXED = "mixed"
+
+
+class AccessLevel(str, Enum):
+    """Memory access levels for multi-agent."""
+
+    PRIVATE = "private"  # Only this agent
+    TEAM = "team"  # Agents in same team/group
+    SHARED = "shared"  # All agents for this user
+    GLOBAL = "global"  # Cross-user (knowledge base)
+
+
+# =============================================================================
+# Migration Support
+# =============================================================================
+
+
+@dataclass
+class MigrationCheckpoint:
+    """Checkpoint for migration rollback.
+
+    Stores original data to enable rollback after migration.
+
+    Example:
+        # After migration
+        migrated, checkpoint = svl.migrate_memory(data, "1.0.0", create_checkpoint=True)
+
+        # Later, rollback if needed
+        original = svl.rollback_memory(migrated, checkpoint)
+    """
+
+    checkpoint_id: str
+    from_version: str
+    to_version: str
+    memory_id: str
+    original_data: dict[str, Any]
+    migrated_data: dict[str, Any]
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize checkpoint to dictionary."""
+        return {
+            "checkpoint_id": self.checkpoint_id,
+            "from_version": self.from_version,
+            "to_version": self.to_version,
+            "memory_id": self.memory_id,
+            "original_data": self.original_data,
+            "migrated_data": self.migrated_data,
+            "created_at": self.created_at.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MigrationCheckpoint:
+        """Create checkpoint from dictionary."""
+        created_at = data.get("created_at")
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        elif created_at is None:
+            created_at = datetime.now(timezone.utc)
+
+        return cls(
+            checkpoint_id=data["checkpoint_id"],
+            from_version=data["from_version"],
+            to_version=data["to_version"],
+            memory_id=data["memory_id"],
+            original_data=data["original_data"],
+            migrated_data=data["migrated_data"],
+            created_at=created_at,
+        )
+
+
+@dataclass
+class Migration:
+    """Migration rules between vocabulary versions."""
+
+    from_version: str
+    to_version: str
+
+    # Field transformations
+    renames: dict[str, str] = field(default_factory=dict)  # old -> new
+    merges: dict[str, list[str]] = field(default_factory=dict)  # new -> [old1, old2]
+    splits: dict[str, dict[str, str]] = field(default_factory=dict)  # old -> {condition: new}
+    deletes: list[str] = field(default_factory=list)
+
+    # New fields with defaults
+    added_fields: dict[str, Any] = field(default_factory=dict)  # field -> default
+
+    # Rollback configuration
+    reversible: bool = True  # Whether this migration can be rolled back
+
+    def apply_to_topics(self, topics: list[str]) -> list[str]:
+        """Apply migration to a list of topics."""
+        result = []
+        for topic in topics:
+            if topic in self.deletes:
+                continue
+            if topic in self.renames:
+                result.append(self.renames[topic])
+            else:
+                merged = False
+                for new_topic, old_topics in self.merges.items():
+                    if topic in old_topics:
+                        if new_topic not in result:
+                            result.append(new_topic)
+                        merged = True
+                        break
+                if not merged:
+                    result.append(topic)
+        return list(set(result))
+
+    def apply_to_categories(self, categories: list[str]) -> list[str]:
+        """Apply migration to categories."""
+        return self.apply_to_topics(categories)
+
+    def rollback_topics(
+        self,
+        current_topics: list[str],
+        original_topics: list[str] | None = None,
+    ) -> list[str]:
+        """Rollback topic migration.
+
+        If original_topics is provided, returns those directly.
+        Otherwise, attempts to reverse the migration by:
+        - Reversing renames (new -> old)
+        - Un-merging topics (if possible)
+
+        Args:
+            current_topics: Current (migrated) topics
+            original_topics: Original topics from checkpoint (preferred)
+
+        Returns:
+            Rolled-back topics list
+        """
+        if original_topics:
+            return list(original_topics)
+
+        # Build reverse rename mapping
+        reverse_renames = {v: k for k, v in self.renames.items()}
+
+        result = []
+        for topic in current_topics:
+            if topic in reverse_renames:
+                result.append(reverse_renames[topic])
+            else:
+                result.append(topic)
+
+        return list(set(result))
+
+    def can_rollback(self) -> bool:
+        """Check if this migration can be rolled back.
+
+        Migrations with merges may lose information and are
+        harder to rollback without checkpoints.
+
+        Returns:
+            True if migration is marked as reversible
+        """
+        return self.reversible
+
+
+@dataclass
+class FieldSchema:
+    """Schema for a custom field."""
+
+    name: str
+    field_type: str  # "string", "number", "boolean", "array", "enum"
+    required: bool = False
+    enum_values: list[str] | None = None
+    default: Any = None
+    description: str = ""
 
 
 # =============================================================================
 # SVL Schema
 # =============================================================================
+
 
 @dataclass
 class SVLSchema:
@@ -247,6 +419,7 @@ class SVLSchema:
 # Main SharedVocabularyLayer Class
 # =============================================================================
 
+
 class SharedVocabularyLayer:
     """The unified semantic vocabulary layer for MindCore.
 
@@ -350,14 +523,16 @@ class SharedVocabularyLayer:
         description: str = "",
     ) -> None:
         """Add a custom field to the schema."""
-        self.schema.custom_fields.append(FieldSchema(
-            name=name,
-            field_type=field_type,
-            required=required,
-            enum_values=enum_values,
-            default=default,
-            description=description,
-        ))
+        self.schema.custom_fields.append(
+            FieldSchema(
+                name=name,
+                field_type=field_type,
+                required=required,
+                enum_values=enum_values,
+                default=default,
+                description=description,
+            )
+        )
 
     # ==========================================================================
     # Data Source Mapping
@@ -454,7 +629,7 @@ class SharedVocabularyLayer:
         # Validate importance
         if "importance" in memory:
             imp = memory["importance"]
-            if not isinstance(imp, (int, float)) or imp < 0 or imp > 1:
+            if not isinstance(imp, int | float) or imp < 0 or imp > 1:
                 errors.append(f"Invalid importance: {imp} (must be 0-1)")
 
         # Validate access_level
@@ -511,11 +686,13 @@ class SharedVocabularyLayer:
         if "emotional_classification" in metadata:
             valid = self.schema.get_emotional_classifications()
             if valid and metadata["emotional_classification"] not in valid:
-                errors.append(f"Invalid emotional_classification: {metadata['emotional_classification']}")
+                errors.append(
+                    f"Invalid emotional_classification: {metadata['emotional_classification']}"
+                )
 
         if "emotional_intensity" in metadata:
             intensity = metadata["emotional_intensity"]
-            if not isinstance(intensity, (int, float)) or intensity < 0 or intensity > 1:
+            if not isinstance(intensity, int | float) or intensity < 0 or intensity > 1:
                 errors.append(f"Invalid emotional_intensity: {intensity} (must be 0-1)")
 
         if "user_role" in metadata:
@@ -553,23 +730,50 @@ class SharedVocabularyLayer:
         """Add a migration from a previous version."""
         self.schema.migrations[migration.from_version] = migration
 
-    def migrate_memory(self, memory: dict[str, Any], from_version: str) -> dict[str, Any]:
+    def migrate_memory(
+        self,
+        memory: dict[str, Any],
+        from_version: str,
+        create_checkpoint: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], MigrationCheckpoint]:
         """Migrate a memory from an older vocabulary version.
 
         Args:
             memory: Memory dict to migrate
             from_version: Source vocabulary version
+            create_checkpoint: If True, returns (migrated, checkpoint) tuple
 
         Returns:
-            Migrated memory dict
+            Migrated memory dict, or (migrated, checkpoint) tuple if create_checkpoint=True
+
+        Example:
+            # Simple migration
+            migrated = svl.migrate_memory(data, "1.0.0")
+
+            # Migration with checkpoint for rollback
+            migrated, checkpoint = svl.migrate_memory(data, "1.0.0", create_checkpoint=True)
         """
+        import uuid
+
         if from_version == self.schema.version:
+            if create_checkpoint:
+                # No migration needed, but return empty checkpoint
+                checkpoint = MigrationCheckpoint(
+                    checkpoint_id=f"cp_{uuid.uuid4().hex[:12]}",
+                    from_version=from_version,
+                    to_version=self.schema.version,
+                    memory_id=memory.get("memory_id", "unknown"),
+                    original_data=memory.copy(),
+                    migrated_data=memory.copy(),
+                )
+                return memory, checkpoint
             return memory
 
         if from_version not in self.schema.migrations:
             raise ValueError(f"No migration path from {from_version} to {self.schema.version}")
 
         migration = self.schema.migrations[from_version]
+        original = memory.copy()
         result = memory.copy()
 
         if "topics" in result:
@@ -582,7 +786,128 @@ class SharedVocabularyLayer:
             if field_name not in result:
                 result[field_name] = default_value
 
+        # Update vocabulary version
+        result["vocabulary_version"] = self.schema.version
+
+        # Optionally embed migration metadata for rollback without checkpoint
+        if create_checkpoint:
+            result["_migration_metadata"] = {
+                "from_version": from_version,
+                "to_version": self.schema.version,
+                "original_topics": original.get("topics", []),
+                "original_categories": original.get("categories", []),
+            }
+
+            checkpoint = MigrationCheckpoint(
+                checkpoint_id=f"cp_{uuid.uuid4().hex[:12]}",
+                from_version=from_version,
+                to_version=self.schema.version,
+                memory_id=memory.get("memory_id", "unknown"),
+                original_data=original,
+                migrated_data=result.copy(),
+            )
+            return result, checkpoint
+
         return result
+
+    def rollback_memory(
+        self,
+        memory: dict[str, Any],
+        checkpoint: MigrationCheckpoint | None = None,
+    ) -> dict[str, Any]:
+        """Rollback a migrated memory to its original state.
+
+        Uses checkpoint if provided, otherwise attempts rollback using
+        embedded migration metadata.
+
+        Args:
+            memory: Migrated memory to rollback
+            checkpoint: Optional checkpoint from migrate_memory
+
+        Returns:
+            Original memory data
+
+        Raises:
+            ValueError: If no checkpoint and no embedded metadata
+
+        Example:
+            # Rollback with checkpoint
+            original = svl.rollback_memory(migrated, checkpoint)
+
+            # Rollback using embedded metadata
+            original = svl.rollback_memory(migrated)
+        """
+        # Prefer checkpoint if provided
+        if checkpoint is not None:
+            result = checkpoint.original_data.copy()
+            result["vocabulary_version"] = checkpoint.from_version
+            return result
+
+        # Try embedded metadata
+        metadata = memory.get("_migration_metadata")
+        if metadata is None:
+            raise ValueError(
+                "Cannot rollback: no checkpoint provided and no embedded migration metadata. "
+                "Use create_checkpoint=True when migrating to enable rollback."
+            )
+
+        from_version = metadata["from_version"]
+        original_topics = metadata.get("original_topics", [])
+        original_categories = metadata.get("original_categories", [])
+
+        result = memory.copy()
+        result.pop("_migration_metadata", None)  # Remove metadata
+
+        # Restore original values
+        if original_topics:
+            result["topics"] = original_topics
+        if original_categories:
+            result["categories"] = original_categories
+
+        result["vocabulary_version"] = from_version
+
+        # Remove added fields
+        if from_version in self.schema.migrations:
+            migration = self.schema.migrations[from_version]
+            for field_name in migration.added_fields:
+                result.pop(field_name, None)
+
+        return result
+
+    def get_migration_path(self, from_version: str) -> list[str]:
+        """Get the migration path from a version to current.
+
+        Args:
+            from_version: Starting version
+
+        Returns:
+            List of versions in migration order [from, ..., current]
+
+        Raises:
+            ValueError: If no path exists
+
+        Example:
+            path = svl.get_migration_path("1.0.0")
+            # Returns ["1.0.0", "2.0.0"] if current is 2.0.0
+        """
+        if from_version == self.schema.version:
+            return [from_version]
+
+        if from_version not in self.schema.migrations:
+            raise ValueError(f"No migration path from {from_version} to {self.schema.version}")
+
+        # Build path through chain of migrations
+        path = [from_version]
+        current = from_version
+
+        while current != self.schema.version:
+            if current not in self.schema.migrations:
+                raise ValueError(f"Broken migration path: no migration from {current}")
+            migration = self.schema.migrations[current]
+            path.append(migration.to_version)
+            current = migration.to_version
+
+        return path
 
     # ==========================================================================
     # JSON Schema Generation
@@ -711,7 +1036,9 @@ class SharedVocabularyLayer:
                 },
                 "categories": {
                     "type": "array",
-                    "items": {"type": "string", "enum": categories} if categories else {"type": "string"},
+                    "items": {"type": "string", "enum": categories}
+                    if categories
+                    else {"type": "string"},
                     "description": "Categories",
                 },
                 "sentiment": {
@@ -795,7 +1122,9 @@ class SharedVocabularyLayer:
         categories = self.schema.get_all_categories()
 
         topics_literal = f"Literal[{', '.join(repr(t) for t in topics)}]" if topics else "str"
-        categories_literal = f"Literal[{', '.join(repr(c) for c in categories)}]" if categories else "str"
+        categories_literal = (
+            f"Literal[{', '.join(repr(c) for c in categories)}]" if categories else "str"
+        )
 
         return f'''"""Auto-generated Pydantic models from SVL v{self.schema.version}."""
 
@@ -806,27 +1135,27 @@ from pydantic import BaseModel, Field
 class SemanticMetadata(BaseModel):
     """SVL semantic metadata."""
 
-    message_type: Optional[Literal[{', '.join(repr(m) for m in self.schema.get_message_types()[:10])}]] = None
+    message_type: Optional[Literal[{", ".join(repr(m) for m in self.schema.get_message_types()[:10])}]] = None
     message_intent: Optional[str] = None
-    temporal_qualifier: Optional[Literal[{', '.join(repr(t) for t in self.schema.get_temporal_qualifiers()[:8])}]] = None
-    emotional_classification: Optional[Literal[{', '.join(repr(e) for e in self.schema.get_emotional_classifications()[:8])}]] = None
+    temporal_qualifier: Optional[Literal[{", ".join(repr(t) for t in self.schema.get_temporal_qualifiers()[:8])}]] = None
+    emotional_classification: Optional[Literal[{", ".join(repr(e) for e in self.schema.get_emotional_classifications()[:8])}]] = None
     emotional_intensity: float = Field(default=0.5, ge=0, le=1)
     user_role: Optional[str] = None
-    urgency: Optional[Literal[{', '.join(repr(u) for u in self.schema.get_urgency_levels())}]] = None
-    confidence: Optional[Literal[{', '.join(repr(c) for c in self.schema.get_confidence_levels())}]] = None
+    urgency: Optional[Literal[{", ".join(repr(u) for u in self.schema.get_urgency_levels())}]] = None
+    confidence: Optional[Literal[{", ".join(repr(c) for c in self.schema.get_confidence_levels())}]] = None
 
 
 class Memory(BaseModel):
     """Memory model with SVL vocabulary."""
 
     content: str
-    memory_type: Literal[{', '.join(repr(m) for m in self.schema.memory_types)}]
+    memory_type: Literal[{", ".join(repr(m) for m in self.schema.memory_types)}]
     topics: list[{topics_literal}] = Field(default_factory=list)
     categories: list[{categories_literal}] = Field(default_factory=list)
-    sentiment: Literal[{', '.join(repr(s) for s in self.schema.sentiments)}] = "neutral"
+    sentiment: Literal[{", ".join(repr(s) for s in self.schema.sentiments)}] = "neutral"
     importance: float = Field(default=0.5, ge=0, le=1)
     entities: list[str] = Field(default_factory=list)
-    access_level: Literal[{', '.join(repr(a) for a in self.schema.access_levels)}] = "private"
+    access_level: Literal[{", ".join(repr(a) for a in self.schema.access_levels)}] = "private"
     semantic_metadata: Optional[SemanticMetadata] = None
 
 
@@ -848,7 +1177,7 @@ class AgentResponse(BaseModel):
         sentiments_union = " | ".join(f'"{s}"' for s in self.schema.sentiments)
         access_levels_union = " | ".join(f'"{a}"' for a in self.schema.access_levels)
 
-        return f'''// Auto-generated TypeScript types from SVL v{self.schema.version}
+        return f"""// Auto-generated TypeScript types from SVL v{self.schema.version}
 
 export type Topic = {topics_union};
 export type Category = {categories_union};
@@ -883,7 +1212,7 @@ export interface AgentResponse {{
   response: string;
   memories_to_store?: Memory[];
 }}
-'''
+"""
 
     def get_prompt_instructions(self) -> str:
         """Generate prompt instructions for LLM."""
@@ -896,33 +1225,33 @@ export interface AgentResponse {{
 When storing memories, use these standardized values:
 
 ### Topics
-{', '.join(topics[:20])}{'...' if len(topics) > 20 else ''}
+{", ".join(topics[:20])}{"..." if len(topics) > 20 else ""}
 
 ### Categories
-{', '.join(categories[:15])}{'...' if len(categories) > 15 else ''}
+{", ".join(categories[:15])}{"..." if len(categories) > 15 else ""}
 
 ### Memory Types
-{', '.join(self.schema.memory_types)}
+{", ".join(self.schema.memory_types)}
 
 ### Sentiments
-{', '.join(self.schema.sentiments)}
+{", ".join(self.schema.sentiments)}
 
 ### Access Levels
-{', '.join(self.schema.access_levels)}
+{", ".join(self.schema.access_levels)}
 
 ### SVL Semantic Fields
-- message_type: {', '.join(self.schema.get_message_types()[:6])}...
-- message_intent: {', '.join(self.schema.get_message_intents()[:6])}...
-- temporal_qualifier: {', '.join(self.schema.get_temporal_qualifiers()[:6])}...
-- emotional_classification: {', '.join(self.schema.get_emotional_classifications()[:6])}...
-- urgency: {', '.join(self.schema.get_urgency_levels())}
-- confidence: {', '.join(self.schema.get_confidence_levels())}
+- message_type: {", ".join(self.schema.get_message_types()[:6])}...
+- message_intent: {", ".join(self.schema.get_message_intents()[:6])}...
+- temporal_qualifier: {", ".join(self.schema.get_temporal_qualifiers()[:6])}...
+- emotional_classification: {", ".join(self.schema.get_emotional_classifications()[:6])}...
+- urgency: {", ".join(self.schema.get_urgency_levels())}
+- confidence: {", ".join(self.schema.get_confidence_levels())}
 
 ### Active Domains
-{', '.join(domains) if domains else '(none)'}
+{", ".join(domains) if domains else "(none)"}
 
 ### Mapped Data Sources
-{', '.join(self.get_mapped_terms()) if self.get_mapped_terms() else '(none)'}
+{", ".join(self.get_mapped_terms()) if self.get_mapped_terms() else "(none)"}
 """
 
     # ==========================================================================
@@ -971,9 +1300,7 @@ When storing memories, use these standardized values:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SharedVocabularyLayer:
         """Create from serialized state."""
-        custom_fields = [
-            FieldSchema(**f) for f in data.get("custom_fields", [])
-        ]
+        custom_fields = [FieldSchema(**f) for f in data.get("custom_fields", [])]
 
         schema = SVLSchema(
             version=data.get("version", "1.0.0"),
@@ -1049,17 +1376,47 @@ DEFAULT_SVL = SharedVocabularyLayer(
     schema=SVLSchema(
         version="1.0.0",
         topics=[
-            "greeting", "farewell", "thanks", "help", "feedback",
-            "issue", "bug", "error", "problem", "complaint",
-            "billing", "payment", "refund", "subscription",
-            "feature", "product", "service", "pricing",
-            "api", "integration", "setup", "documentation",
-            "account", "login", "password", "settings", "profile",
-            "order", "shipping", "delivery", "tracking",
+            "greeting",
+            "farewell",
+            "thanks",
+            "help",
+            "feedback",
+            "issue",
+            "bug",
+            "error",
+            "problem",
+            "complaint",
+            "billing",
+            "payment",
+            "refund",
+            "subscription",
+            "feature",
+            "product",
+            "service",
+            "pricing",
+            "api",
+            "integration",
+            "setup",
+            "documentation",
+            "account",
+            "login",
+            "password",
+            "settings",
+            "profile",
+            "order",
+            "shipping",
+            "delivery",
+            "tracking",
         ],
         categories=[
-            "support", "billing", "technical", "account",
-            "product", "feedback", "general", "urgent",
+            "support",
+            "billing",
+            "technical",
+            "account",
+            "product",
+            "feedback",
+            "general",
+            "urgent",
         ],
         description="Default Mindcore SVL for general use cases",
     ),

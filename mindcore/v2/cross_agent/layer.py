@@ -6,16 +6,24 @@ into a single cohesive interface.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from .registry import Agent, AgentRegistry, AgentStatus, Team
-from .sharing import CrossAgentMemory, ShareResult, SyncDirection, SyncResult
 from .routing import AttentionRouter, RouteResult, RoutingStrategy
+from .sharing import (
+    ConflictResolution,
+    CrossAgentMemory,
+    ShareResult,
+    SyncDirection,
+    SyncResult,
+)
+
 
 if TYPE_CHECKING:
-    from ..flr import Memory
-    from ..storage.base import BaseStorage
+    from datetime import datetime
+
+    from mindcore.v2.flr import Memory
+    from mindcore.v2.storage.base import BaseStorage
 
 
 class CrossAgentLayer:
@@ -320,29 +328,43 @@ class CrossAgentLayer:
         target_agent: str,
         user_id: str,
         direction: SyncDirection = SyncDirection.ONE_WAY,
+        conflict_resolution: ConflictResolution = ConflictResolution.SOURCE_WINS,
         topics: list[str] | None = None,
         memory_types: list[str] | None = None,
         since: datetime | None = None,
     ) -> SyncResult:
         """Synchronize memories between agents.
 
+        Handles conflicts when the same memory content exists on both agents
+        using the specified conflict resolution strategy.
+
+        Conflict Resolution Strategies:
+            - SOURCE_WINS: Always use source agent's version
+            - TARGET_WINS: Keep target's version (skip sync)
+            - NEWEST_WINS: Keep most recently created/modified
+            - HIGHEST_IMPORTANCE: Keep version with higher importance
+            - MERGE_METADATA: Combine topics/categories from both
+            - SKIP: Don't sync conflicting memories
+
         Args:
             source_agent: Agent to sync from
             target_agent: Agent to sync to
             user_id: User context
-            direction: Sync direction
+            direction: Sync direction (ONE_WAY, BIDIRECTIONAL, MERGE)
+            conflict_resolution: Strategy for handling conflicts
             topics: Filter by topics
             memory_types: Filter by memory types
             since: Only sync memories created after this time
 
         Returns:
-            SyncResult with operation details
+            SyncResult with operation details including conflict information
         """
         return self.sharing.sync_agents(
             source_agent=source_agent,
             target_agent=target_agent,
             user_id=user_id,
             direction=direction,
+            conflict_resolution=conflict_resolution,
             topics=topics,
             memory_types=memory_types,
             since=since,

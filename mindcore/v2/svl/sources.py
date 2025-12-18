@@ -41,30 +41,34 @@ Example:
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
+
+
+# Valid SQL identifier pattern (alphanumeric and underscore only)
+_VALID_SQL_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 class SourceType(str, Enum):
     """Types of data sources."""
 
-    TABLE = "table"      # Database table
-    API = "api"          # REST API endpoint
-    MCP = "mcp"          # MCP server tool
+    TABLE = "table"  # Database table
+    API = "api"  # REST API endpoint
+    MCP = "mcp"  # MCP server tool
     FUNCTION = "function"  # Custom Python function
 
 
 class TriggerCondition(str, Enum):
     """When to trigger data fetching."""
 
-    ALWAYS = "always"              # Always fetch when topic is used
-    ON_QUERY = "on_query"          # Only on memory queries
-    ON_STORE = "on_store"          # Only when storing memories
-    ON_DEMAND = "on_demand"        # Only when explicitly requested
-    CONDITIONAL = "conditional"    # Based on context conditions
+    ALWAYS = "always"  # Always fetch when topic is used
+    ON_QUERY = "on_query"  # Only on memory queries
+    ON_STORE = "on_store"  # Only when storing memories
+    ON_DEMAND = "on_demand"  # Only when explicitly requested
+    CONDITIONAL = "conditional"  # Based on context conditions
 
 
 @dataclass
@@ -113,18 +117,15 @@ class DataSource(ABC):
         Returns:
             FetchResult with data or error
         """
-        pass
 
     @abstractmethod
     def to_dict(self) -> dict[str, Any]:
         """Serialize source configuration."""
-        pass
 
     @classmethod
     @abstractmethod
     def from_dict(cls, data: dict[str, Any]) -> DataSource:
         """Create from serialized config."""
-        pass
 
 
 @dataclass
@@ -141,10 +142,10 @@ class TableSource(DataSource):
 
     # Connection
     connection_string: str = ""  # Database connection string
-    table: str = ""              # Table name
+    table: str = ""  # Table name
 
     # Query configuration
-    query_template: str = ""     # SQL with :param placeholders
+    query_template: str = ""  # SQL with :param placeholders
     param_mapping: dict[str, str] = field(default_factory=dict)  # context_key -> sql_param
 
     # Options
@@ -154,9 +155,32 @@ class TableSource(DataSource):
     cache_ttl_seconds: int = 60
     trigger: TriggerCondition = TriggerCondition.ON_QUERY
 
+    def _validate_identifier(self, identifier: str) -> str:
+        """Validate and return a safe SQL identifier.
+
+        Args:
+            identifier: Table or column name to validate
+
+        Returns:
+            The validated identifier
+
+        Raises:
+            ValueError: If identifier contains invalid characters
+        """
+        if not identifier:
+            raise ValueError("SQL identifier cannot be empty")
+        if not _VALID_SQL_IDENTIFIER.match(identifier):
+            raise ValueError(
+                f"Invalid SQL identifier: '{identifier}'. "
+                "Only alphanumeric characters and underscores are allowed, "
+                "and it must start with a letter or underscore."
+            )
+        return identifier
+
     def fetch(self, context: dict[str, Any]) -> FetchResult:
         """Execute SQL query and return results."""
         import time
+
         start = time.time()
 
         try:
@@ -169,7 +193,12 @@ class TableSource(DataSource):
             # Use default query if template not provided
             query = self.query_template
             if not query and self.table:
-                query = f"SELECT * FROM {self.table} LIMIT {self.limit}"
+                # Validate table name and limit to prevent SQL injection
+                safe_table = self._validate_identifier(self.table)
+                safe_limit = int(self.limit)  # Ensure limit is an integer
+                if safe_limit < 1 or safe_limit > 10000:
+                    safe_limit = 100  # Default to safe limit
+                query = f"SELECT * FROM {safe_table} LIMIT {safe_limit}"
 
             # Execute based on connection type
             if self.connection_string.startswith("postgresql"):
@@ -207,12 +236,11 @@ class TableSource(DataSource):
         except ImportError:
             raise ImportError("psycopg required: pip install 'psycopg[binary]'")
 
-        with psycopg.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                columns = [desc[0] for desc in cur.description] if cur.description else []
-                rows = cur.fetchall()
-                return [dict(zip(columns, row)) for row in rows]
+        with psycopg.connect(self.connection_string) as conn, conn.cursor() as cur:
+            cur.execute(query, params)
+            columns = [desc[0] for desc in cur.description] if cur.description else []
+            rows = cur.fetchall()
+            return [dict(zip(columns, row, strict=False)) for row in rows]
 
     def _fetch_sqlite(self, query: str, params: dict) -> list[dict]:
         """Fetch from SQLite."""
@@ -272,8 +300,8 @@ class APISource(DataSource):
     description: str = ""
 
     # Endpoint
-    url: str = ""                # Base URL with {param} placeholders
-    method: str = "GET"          # HTTP method
+    url: str = ""  # Base URL with {param} placeholders
+    method: str = "GET"  # HTTP method
 
     # Request configuration
     headers: dict[str, str] = field(default_factory=dict)
@@ -281,9 +309,9 @@ class APISource(DataSource):
     body_template: dict[str, Any] | None = None  # For POST/PUT
 
     # Parameter mapping (context -> request)
-    url_params: dict[str, str] = field(default_factory=dict)    # context_key -> url_param
-    header_params: dict[str, str] = field(default_factory=dict) # context_key -> header
-    body_params: dict[str, str] = field(default_factory=dict)   # context_key -> body_field
+    url_params: dict[str, str] = field(default_factory=dict)  # context_key -> url_param
+    header_params: dict[str, str] = field(default_factory=dict)  # context_key -> header
+    body_params: dict[str, str] = field(default_factory=dict)  # context_key -> body_field
 
     # Options
     timeout_seconds: int = 30
@@ -297,11 +325,12 @@ class APISource(DataSource):
     def fetch(self, context: dict[str, Any]) -> FetchResult:
         """Make HTTP request and return response."""
         import time
+
         start = time.time()
 
         try:
-            import urllib.request
             import urllib.parse
+            import urllib.request
 
             # Build URL with params
             url = self.url
@@ -418,8 +447,8 @@ class MCPSource(DataSource):
     description: str = ""
 
     # MCP configuration
-    server_name: str = ""        # MCP server name
-    tool_name: str = ""          # Tool to invoke
+    server_name: str = ""  # MCP server name
+    tool_name: str = ""  # Tool to invoke
 
     # Argument mapping
     argument_mapping: dict[str, str] = field(default_factory=dict)  # context_key -> tool_arg
@@ -441,6 +470,7 @@ class MCPSource(DataSource):
     def fetch(self, context: dict[str, Any]) -> FetchResult:
         """Invoke MCP tool and return result."""
         import time
+
         start = time.time()
 
         try:
@@ -467,7 +497,11 @@ class MCPSource(DataSource):
                 data=result,
                 success=True,
                 latency_ms=latency,
-                metadata={"server": self.server_name, "tool": self.tool_name, "arguments": arguments},
+                metadata={
+                    "server": self.server_name,
+                    "tool": self.tool_name,
+                    "arguments": arguments,
+                },
             )
 
         except Exception as e:
@@ -535,6 +569,7 @@ class FunctionSource(DataSource):
     def fetch(self, context: dict[str, Any]) -> FetchResult:
         """Call function and return result."""
         import time
+
         start = time.time()
 
         try:
@@ -590,15 +625,15 @@ class FunctionSource(DataSource):
 class SourceMapping:
     """Maps a vocabulary term to one or more data sources."""
 
-    term: str                    # Topic, category, or domain being mapped
-    term_type: str               # "topic", "category", "domain", "intent"
+    term: str  # Topic, category, or domain being mapped
+    term_type: str  # "topic", "category", "domain", "intent"
     sources: list[DataSource] = field(default_factory=list)
 
     # Conditions
     conditions: dict[str, Any] = field(default_factory=dict)  # Additional conditions
 
     # Aggregation
-    aggregate: bool = False      # Combine results from multiple sources
+    aggregate: bool = False  # Combine results from multiple sources
     fail_on_error: bool = False  # Fail if any source fails
 
     def add_source(self, source: DataSource) -> None:
@@ -714,9 +749,8 @@ class SourceRegistry:
 
         if source_name:
             return self._mappings[term].remove_source(source_name)
-        else:
-            del self._mappings[term]
-            return True
+        del self._mappings[term]
+        return True
 
     def get_mapping(self, term: str) -> SourceMapping | None:
         """Get mapping for a term."""
@@ -797,10 +831,9 @@ class SourceRegistry:
             for k in keys_to_delete:
                 del self._cache[k]
             return len(keys_to_delete)
-        else:
-            count = len(self._cache)
-            self._cache.clear()
-            return count
+        count = len(self._cache)
+        self._cache.clear()
+        return count
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize all mappings."""
@@ -842,11 +875,10 @@ def create_source(source_type: str | SourceType, **kwargs: Any) -> DataSource:
 
     if source_type == SourceType.TABLE:
         return TableSource(**kwargs)
-    elif source_type == SourceType.API:
+    if source_type == SourceType.API:
         return APISource(**kwargs)
-    elif source_type == SourceType.MCP:
+    if source_type == SourceType.MCP:
         return MCPSource(**kwargs)
-    elif source_type == SourceType.FUNCTION:
+    if source_type == SourceType.FUNCTION:
         return FunctionSource(**kwargs)
-    else:
-        raise ValueError(f"Unknown source type: {source_type}")
+    raise ValueError(f"Unknown source type: {source_type}")

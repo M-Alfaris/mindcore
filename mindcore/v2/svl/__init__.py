@@ -34,144 +34,146 @@ Example:
 """
 
 # Ontology - Core semantic types
-from .ontology import (
-    # Message types
-    MessageType,
-    MessageIntent,
-    # Temporal
-    TemporalQualifier,
-    # Emotional
-    EmotionalClassification,
-    # User context
-    UserRole,
-    PreferenceType,
-    # Domain
-    DomainLabel,
-    # Quality
-    Urgency,
-    Confidence,
-    # Container
-    SemanticMetadata,
-    # Helpers
-    get_message_types,
-    get_message_intents,
-    get_temporal_qualifiers,
-    get_emotional_classifications,
-    get_user_roles,
-    get_preference_types,
-    get_domain_labels,
-    get_urgency_levels,
-    get_confidence_levels,
-)
-
 # Domains - Domain-specific vocabulary
 from .domains import (
-    DomainVocabulary,
     # Pre-built domains
     CUSTOMER_SERVICE_DOMAIN,
-    ECOMMERCE_DOMAIN,
-    HEALTHCARE_DOMAIN,
-    FINANCE_DOMAIN,
-    SAAS_DOMAIN,
-    HR_DOMAIN,
-    EDUCATION_DOMAIN,
     DOMAIN_REGISTRY,
+    ECOMMERCE_DOMAIN,
+    EDUCATION_DOMAIN,
+    FINANCE_DOMAIN,
+    HEALTHCARE_DOMAIN,
+    HR_DOMAIN,
+    SAAS_DOMAIN,
+    DomainVocabulary,
+    create_custom_domain,
     # Functions
     get_domain,
     list_domains,
     merge_domains,
-    create_custom_domain,
-)
-
-# Sources - Data source mapping
-from .sources import (
-    # Source types
-    SourceType,
-    TriggerCondition,
-    DataSource,
-    FetchResult,
-    # Concrete sources
-    TableSource,
-    APISource,
-    MCPSource,
-    FunctionSource,
-    # Mapping
-    SourceMapping,
-    SourceRegistry,
-    # Factory
-    create_source,
 )
 
 # Layer - Main interface (unified vocabulary)
 from .layer import (
+    DEFAULT_SVL,
+    AccessLevel,
+    FieldSchema,
     # Enums (from VocabularySchema)
     MemoryType,
-    Sentiment,
-    AccessLevel,
     # Migration
     Migration,
-    FieldSchema,
-    # Schema
-    SVLSchema,
+    MigrationCheckpoint,
+    Sentiment,
     # Main class
     SharedVocabularyLayer,
-    DEFAULT_SVL,
+    # Schema
+    SVLSchema,
+)
+from .ontology import (
+    Confidence,
+    # Domain
+    DomainLabel,
+    # Emotional
+    EmotionalClassification,
+    MessageIntent,
+    # Message types
+    MessageType,
+    PreferenceType,
+    # Container
+    SemanticMetadata,
+    # Temporal
+    TemporalQualifier,
+    # Quality
+    Urgency,
+    # User context
+    UserRole,
+    get_confidence_levels,
+    get_domain_labels,
+    get_emotional_classifications,
+    get_message_intents,
+    # Helpers
+    get_message_types,
+    get_preference_types,
+    get_temporal_qualifiers,
+    get_urgency_levels,
+    get_user_roles,
 )
 
+# Sources - Data source mapping
+from .sources import (
+    APISource,
+    DataSource,
+    FetchResult,
+    FunctionSource,
+    MCPSource,
+    # Mapping
+    SourceMapping,
+    SourceRegistry,
+    # Source types
+    SourceType,
+    # Concrete sources
+    TableSource,
+    TriggerCondition,
+    # Factory
+    create_source,
+)
+
+
 __all__ = [
-    # Ontology
-    "MessageType",
-    "MessageIntent",
-    "TemporalQualifier",
-    "EmotionalClassification",
-    "UserRole",
-    "PreferenceType",
-    "DomainLabel",
-    "Urgency",
+    "CUSTOMER_SERVICE_DOMAIN",
+    "DEFAULT_SVL",
+    "DOMAIN_REGISTRY",
+    "ECOMMERCE_DOMAIN",
+    "EDUCATION_DOMAIN",
+    "FINANCE_DOMAIN",
+    "HEALTHCARE_DOMAIN",
+    "HR_DOMAIN",
+    "SAAS_DOMAIN",
+    "APISource",
+    "AccessLevel",
     "Confidence",
-    "SemanticMetadata",
-    "get_message_types",
-    "get_message_intents",
-    "get_temporal_qualifiers",
-    "get_emotional_classifications",
-    "get_user_roles",
-    "get_preference_types",
-    "get_domain_labels",
-    "get_urgency_levels",
-    "get_confidence_levels",
+    "DataSource",
+    "DomainLabel",
     # Domains
     "DomainVocabulary",
-    "CUSTOMER_SERVICE_DOMAIN",
-    "ECOMMERCE_DOMAIN",
-    "HEALTHCARE_DOMAIN",
-    "FINANCE_DOMAIN",
-    "SAAS_DOMAIN",
-    "HR_DOMAIN",
-    "EDUCATION_DOMAIN",
-    "DOMAIN_REGISTRY",
-    "get_domain",
-    "list_domains",
-    "merge_domains",
-    "create_custom_domain",
-    # Sources
-    "SourceType",
-    "TriggerCondition",
-    "DataSource",
+    "EmotionalClassification",
     "FetchResult",
-    "TableSource",
-    "APISource",
-    "MCPSource",
+    "FieldSchema",
     "FunctionSource",
-    "SourceMapping",
-    "SourceRegistry",
-    "create_source",
+    "MCPSource",
     # Layer (unified vocabulary)
     "MemoryType",
-    "Sentiment",
-    "AccessLevel",
+    "MessageIntent",
+    # Ontology
+    "MessageType",
     "Migration",
-    "FieldSchema",
+    "MigrationCheckpoint",
+    "PreferenceType",
     "SVLSchema",
+    "SemanticMetadata",
+    "Sentiment",
     "SharedVocabularyLayer",
-    "DEFAULT_SVL",
+    "SourceMapping",
+    "SourceRegistry",
+    # Sources
+    "SourceType",
+    "TableSource",
+    "TemporalQualifier",
+    "TriggerCondition",
+    "Urgency",
+    "UserRole",
+    "create_custom_domain",
+    "create_source",
+    "get_confidence_levels",
+    "get_domain",
+    "get_domain_labels",
+    "get_emotional_classifications",
+    "get_message_intents",
+    "get_message_types",
+    "get_preference_types",
+    "get_temporal_qualifiers",
+    "get_urgency_levels",
+    "get_user_roles",
+    "list_domains",
+    "merge_domains",
 ]

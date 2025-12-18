@@ -56,11 +56,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from .access import AccessController, Permission
+from .access import AccessController
 from .clst import CLST, CompressionStrategy
+from .exceptions import (
+    MultiAgentNotEnabledError,
+)
 from .flr import FLR, Memory, RecallResult
-from .storage import SQLiteStorage, BaseStorage
-from .vocabulary import VocabularySchema, DEFAULT_VOCABULARY
+from .storage import BaseStorage, SQLiteStorage
+from .vocabulary import DEFAULT_VOCABULARY, VocabularySchema
 
 
 class Mindcore:
@@ -165,7 +168,7 @@ class Mindcore:
             importance=importance,
             entities=entities or [],
             access_level=access_level,
-            vocabulary_version=self._vocabulary.version,
+            vocabulary_version=self._vocabulary.schema.version,
         )
 
         return self._clst.store(memory)
@@ -240,9 +243,16 @@ class Mindcore:
         """Get a specific memory by ID."""
         return self._clst.retrieve(memory_id)
 
-    def delete(self, memory_id: str) -> bool:
-        """Delete a memory."""
-        return self._clst.delete(memory_id)
+    def delete(self, memory_id: str) -> None:
+        """Delete a memory.
+
+        Args:
+            memory_id: Memory identifier
+
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+        """
+        self._clst.delete(memory_id)
 
     def reinforce(self, memory_id: str, signal: float) -> None:
         """Reinforce a memory with a learning signal.
@@ -282,7 +292,7 @@ class Mindcore:
         Returns:
             (is_valid, list of errors)
         """
-        return self._vocabulary.validate(memory_data)
+        return self._vocabulary.validate_memory(memory_data)
 
     # === Multi-Agent ===
 
@@ -303,9 +313,12 @@ class Mindcore:
 
         Returns:
             Agent profile dict
+
+        Raises:
+            MultiAgentNotEnabledError: If multi-agent mode is not enabled
         """
         if not self._access_controller:
-            raise RuntimeError("Multi-agent not enabled. Initialize with enable_multi_agent=True")
+            raise MultiAgentNotEnabledError
 
         profile = self._access_controller.register_agent(
             agent_id=agent_id,
@@ -315,16 +328,31 @@ class Mindcore:
         )
         return profile.to_dict()
 
-    def unregister_agent(self, agent_id: str) -> bool:
-        """Unregister an agent."""
+    def unregister_agent(self, agent_id: str) -> None:
+        """Unregister an agent.
+
+        Args:
+            agent_id: Agent identifier
+
+        Raises:
+            MultiAgentNotEnabledError: If multi-agent mode is not enabled
+            AgentNotFoundError: If agent doesn't exist
+        """
         if not self._access_controller:
-            return False
-        return self._access_controller.unregister_agent(agent_id)
+            raise MultiAgentNotEnabledError
+        self._access_controller.unregister_agent(agent_id)
 
     def list_agents(self) -> list[dict[str, Any]]:
-        """List all registered agents."""
+        """List all registered agents.
+
+        Returns:
+            List of agent profile dicts
+
+        Raises:
+            MultiAgentNotEnabledError: If multi-agent mode is not enabled
+        """
         if not self._access_controller:
-            return []
+            raise MultiAgentNotEnabledError
         return [a.to_dict() for a in self._access_controller.list_agents()]
 
     # === CLST Operations ===
@@ -400,20 +428,29 @@ class Mindcore:
         self,
         from_version: str,
         user_id: str | None = None,
+        create_checkpoints: bool = True,
     ) -> dict[str, Any]:
         """Migrate memories to current vocabulary version.
 
         Args:
             from_version: Source vocabulary version
             user_id: Optional user filter
+            create_checkpoints: Whether to create rollback checkpoints
 
         Returns:
-            Migration result dict
+            Migration result dict with checkpoint info for potential rollback
+
+        Raises:
+            ValueError: If no migration path exists
         """
         result = self._clst.migrate(
             from_version=from_version,
             user_id=user_id,
+            create_checkpoints=create_checkpoints,
         )
+
+        # Store result for potential rollback
+        self._last_migration_result = result
 
         return {
             "from_version": result.from_version,
@@ -421,6 +458,35 @@ class Mindcore:
             "memories_migrated": result.memories_migrated,
             "memories_failed": result.memories_failed,
             "errors": result.errors[:10],  # Limit errors shown
+            "can_rollback": result.can_rollback,
+            "checkpoint_count": len(result.checkpoints),
+        }
+
+    def rollback_vocabulary_migration(self) -> dict[str, Any]:
+        """Rollback the last vocabulary migration.
+
+        Uses checkpoints from the most recent migrate_vocabulary() call.
+
+        Returns:
+            Rollback result dict
+
+        Raises:
+            ValueError: If no migration to rollback or checkpoints unavailable
+        """
+        if not hasattr(self, "_last_migration_result") or not self._last_migration_result:
+            raise ValueError("No migration to rollback. Run migrate_vocabulary() first.")
+
+        result = self._clst.rollback_migration(self._last_migration_result)
+
+        # Clear the stored migration result
+        self._last_migration_result = None
+
+        return {
+            "from_version": result.from_version,
+            "to_version": result.to_version,
+            "memories_rolled_back": result.memories_migrated,
+            "memories_failed": result.memories_failed,
+            "errors": result.errors[:10],
         }
 
     # === Server ===
@@ -459,7 +525,7 @@ class Mindcore:
     def get_stats(self) -> dict[str, Any]:
         """Get system statistics."""
         return {
-            "vocabulary_version": self._vocabulary.version,
+            "vocabulary_version": self._vocabulary.schema.version,
             "multi_agent_enabled": self._access_controller is not None,
             "flr": self._flr.get_stats(),
             "clst": self._clst.get_stats(),

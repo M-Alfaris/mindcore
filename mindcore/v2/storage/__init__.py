@@ -5,8 +5,9 @@ SQLite is for development/testing only.
 """
 
 from .base import BaseStorage
-from .sqlite import SQLiteStorage
 from .postgres import PostgresStorage
+from .sqlite import SQLiteStorage
+
 
 __all__ = [
     "BaseStorage",

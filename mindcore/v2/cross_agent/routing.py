@@ -12,9 +12,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+
 if TYPE_CHECKING:
-    from ..flr import Memory, RecallResult
-    from ..storage.base import BaseStorage
+    from mindcore.v2.flr import Memory
+    from mindcore.v2.storage.base import BaseStorage
+
     from .registry import Agent, AgentRegistry
 
 
@@ -338,10 +340,10 @@ class AttentionRouter:
                 score.score = team_score * 3 + capability_score + spec_score
             else:  # BEST_MATCH
                 score.score = (
-                    capability_score * 1.0 +
-                    spec_score * 0.8 +
-                    team_score * 0.5 +
-                    history_score * 0.3
+                    capability_score * 1.0
+                    + spec_score * 0.8
+                    + team_score * 0.5
+                    + history_score * 0.3
                 )
 
             scores.append(score)
@@ -359,7 +361,7 @@ class AttentionRouter:
         if strategy == RoutingStrategy.BROADCAST:
             return [s.agent_id for s in agent_scores[:max_agents]]
 
-        elif strategy == RoutingStrategy.ROUND_ROBIN:
+        if strategy == RoutingStrategy.ROUND_ROBIN:
             # Rotate through agents
             all_ids = [s.agent_id for s in agent_scores]
             selected = []
@@ -369,17 +371,16 @@ class AttentionRouter:
             self._round_robin_index = (self._round_robin_index + max_agents) % max(1, len(all_ids))
             return selected
 
-        else:
-            # Sort by score and select top
-            sorted_scores = sorted(agent_scores, key=lambda s: s.score, reverse=True)
+        # Sort by score and select top
+        sorted_scores = sorted(agent_scores, key=lambda s: s.score, reverse=True)
 
-            # Filter out zero scores
-            non_zero = [s for s in sorted_scores if s.score > 0]
-            if not non_zero:
-                # Fallback to top agents by any criteria
-                non_zero = sorted_scores
+        # Filter out zero scores
+        non_zero = [s for s in sorted_scores if s.score > 0]
+        if not non_zero:
+            # Fallback to top agents by any criteria
+            non_zero = sorted_scores
 
-            return [s.agent_id for s in non_zero[:max_agents]]
+        return [s.agent_id for s in non_zero[:max_agents]]
 
     def _get_agent_memories(
         self,
@@ -407,7 +408,7 @@ class AttentionRouter:
                     # Teammate - team and above
                     access_levels = ["team", "shared", "global"]
 
-        memories = self.storage.search(
+        return self.storage.search(
             query=query,
             user_id=user_id,
             agent_id=agent_id,
@@ -416,8 +417,6 @@ class AttentionRouter:
             access_levels=access_levels,
             limit=limit,
         )
-
-        return memories
 
     def _deduplicate_memories(self, memories: list[Memory]) -> list[Memory]:
         """Deduplicate memories by ID."""
@@ -442,7 +441,8 @@ class AttentionRouter:
         relevant_queries = []
         for result in self._query_history[-100:]:  # Last 100 queries
             hint_overlap = len(
-                set(attention_hints) & set(result.agent_scores[0].reasons if result.agent_scores else [])
+                set(attention_hints)
+                & set(result.agent_scores[0].reasons if result.agent_scores else [])
             )
             if hint_overlap > 0:
                 relevant_queries.append(result)
@@ -452,8 +452,7 @@ class AttentionRouter:
 
         # Calculate success rate for this agent
         successes = sum(
-            1 for r in relevant_queries
-            if agent_id in r.selected_agents and r.total_memories > 0
+            1 for r in relevant_queries if agent_id in r.selected_agents and r.total_memories > 0
         )
 
         return successes / len(relevant_queries) if relevant_queries else 0.0

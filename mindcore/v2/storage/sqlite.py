@@ -10,43 +10,167 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..flr import Memory
+from mindcore.v2.exceptions import MemoryNotFoundError, StorageError
+from mindcore.v2.flr import Memory
+
 from .base import BaseStorage
 
 
 class SQLiteStorage(BaseStorage):
     """SQLite storage backend.
 
-    Thread-safe SQLite storage with full-text search support.
+    Thread-safe SQLite storage with full-text search support and
+    connection pool management.
+
+    Connection Management:
+        - Uses thread-local connections for thread safety
+        - Connections are reused within the same thread
+        - Explicit max_connections limit prevents resource exhaustion
+        - Connections are tracked and can be monitored via get_stats()
 
     Example:
-        storage = SQLiteStorage("mindcore.db")
+        storage = SQLiteStorage("mindcore.db", max_connections=10)
         memory_id = storage.store(memory)
         results = storage.search(query="order", topics=["billing"])
+
+        # Check connection stats
+        stats = storage.get_stats()
+        print(f"Active connections: {stats['active_connections']}")
     """
 
-    def __init__(self, db_path: str = "mindcore.db"):
-        """Initialize SQLite storage.
+    def __init__(
+        self,
+        db_path: str = "mindcore.db",
+        max_connections: int = 10,
+        connection_timeout: float = 30.0,
+    ):
+        """Initialize SQLite storage with connection pool management.
 
         Args:
             db_path: Path to SQLite database file
+            max_connections: Maximum number of concurrent connections
+            connection_timeout: Timeout for acquiring connections (seconds)
+
+        Raises:
+            StorageConnectionError: If database initialization fails
         """
         self.db_path = db_path
+        self.max_connections = max_connections
+        self.connection_timeout = connection_timeout
+
+        # Thread-local storage for connections
         self._local = threading.local()
-        self._initialize_schema()
+
+        # Connection tracking
+        self._connection_lock = threading.Lock()
+        self._active_connections: dict[int, sqlite3.Connection] = {}
+        self._connection_count = 0
+
+        try:
+            self._initialize_schema()
+        except Exception as e:
+            raise StorageError(
+                f"Failed to initialize SQLite database: {e}", details={"db_path": db_path}
+            )
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Get thread-local connection."""
-        if not hasattr(self._local, "connection"):
-            self._local.connection = sqlite3.connect(
-                self.db_path,
-                check_same_thread=False,
-            )
-            self._local.connection.row_factory = sqlite3.Row
-            # Enable foreign keys and WAL mode
-            self._local.connection.execute("PRAGMA foreign_keys = ON")
-            self._local.connection.execute("PRAGMA journal_mode = WAL")
+        """Get thread-local connection with pool management.
+
+        Returns:
+            SQLite connection for the current thread
+
+        Raises:
+            StorageConnectionError: If max connections exceeded or connection fails
+        """
+        thread_id = threading.get_ident()
+
+        if not hasattr(self._local, "connection") or self._local.connection is None:
+            with self._connection_lock:
+                # Check if we've reached max connections
+                if self._connection_count >= self.max_connections:
+                    # Check if any connections are from dead threads
+                    self._cleanup_dead_connections()
+
+                    if self._connection_count >= self.max_connections:
+                        raise StorageError(
+                            f"Maximum connections ({self.max_connections}) exceeded. "
+                            "Increase max_connections or close unused connections.",
+                            details={
+                                "max_connections": self.max_connections,
+                                "active_connections": self._connection_count,
+                            },
+                        )
+
+                try:
+                    conn = sqlite3.connect(
+                        self.db_path,
+                        timeout=self.connection_timeout,
+                        check_same_thread=False,
+                    )
+                    conn.row_factory = sqlite3.Row
+                    # Enable foreign keys and WAL mode for better concurrency
+                    conn.execute("PRAGMA foreign_keys = ON")
+                    conn.execute("PRAGMA journal_mode = WAL")
+                    conn.execute("PRAGMA busy_timeout = 5000")  # 5 second busy timeout
+
+                    self._local.connection = conn
+                    self._active_connections[thread_id] = conn
+                    self._connection_count += 1
+
+                except sqlite3.Error as e:
+                    raise StorageError(
+                        f"Failed to create database connection: {e}",
+                        details={"db_path": self.db_path},
+                    )
+
         return self._local.connection
+
+    def _cleanup_dead_connections(self) -> int:
+        """Clean up connections from dead threads.
+
+        Returns:
+            Number of connections cleaned up
+        """
+        cleaned = 0
+        dead_threads = []
+
+        for thread_id, conn in self._active_connections.items():
+            # Check if thread is still alive
+            thread_alive = False
+            for thread in threading.enumerate():
+                if thread.ident == thread_id:
+                    thread_alive = True
+                    break
+
+            if not thread_alive:
+                dead_threads.append(thread_id)
+
+        for thread_id in dead_threads:
+            conn = self._active_connections.pop(thread_id, None)
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                self._connection_count -= 1
+                cleaned += 1
+
+        return cleaned
+
+    def _release_connection(self) -> None:
+        """Release the current thread's connection back to the pool."""
+        thread_id = threading.get_ident()
+
+        with self._connection_lock:
+            if hasattr(self._local, "connection") and self._local.connection is not None:
+                try:
+                    self._local.connection.close()
+                except Exception:
+                    pass
+
+                self._active_connections.pop(thread_id, None)
+                self._local.connection = None
+                self._connection_count = max(0, self._connection_count - 1)
 
     def _initialize_schema(self) -> None:
         """Initialize database schema."""
@@ -157,33 +281,36 @@ class SQLiteStorage(BaseStorage):
         if not memory.created_at:
             memory.created_at = datetime.now(timezone.utc)
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO memories (
                 memory_id, content, memory_type, user_id, agent_id,
                 topics, categories, sentiment, importance, entities,
                 access_level, created_at, last_accessed, expires_at,
                 reinforcement_score, access_count, vocabulary_version, embedding
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            memory.memory_id,
-            memory.content,
-            memory.memory_type,
-            memory.user_id,
-            memory.agent_id,
-            json.dumps(memory.topics),
-            json.dumps(memory.categories),
-            memory.sentiment,
-            memory.importance,
-            json.dumps(memory.entities),
-            memory.access_level,
-            memory.created_at.isoformat() if memory.created_at else None,
-            memory.last_accessed.isoformat() if memory.last_accessed else None,
-            memory.expires_at.isoformat() if memory.expires_at else None,
-            memory.reinforcement_score,
-            memory.access_count,
-            memory.vocabulary_version,
-            json.dumps(memory.embedding) if memory.embedding else None,
-        ))
+        """,
+            (
+                memory.memory_id,
+                memory.content,
+                memory.memory_type,
+                memory.user_id,
+                memory.agent_id,
+                json.dumps(memory.topics),
+                json.dumps(memory.categories),
+                memory.sentiment,
+                memory.importance,
+                json.dumps(memory.entities),
+                memory.access_level,
+                memory.created_at.isoformat() if memory.created_at else None,
+                memory.last_accessed.isoformat() if memory.last_accessed else None,
+                memory.expires_at.isoformat() if memory.expires_at else None,
+                memory.reinforcement_score,
+                memory.access_count,
+                memory.vocabulary_version,
+                json.dumps(memory.embedding) if memory.embedding else None,
+            ),
+        )
 
         conn.commit()
         return memory.memory_id
@@ -201,12 +328,20 @@ class SQLiteStorage(BaseStorage):
 
         return self._row_to_memory(row)
 
-    def update(self, memory: Memory) -> bool:
-        """Update an existing memory."""
+    def update(self, memory: Memory) -> None:
+        """Update an existing memory.
+
+        Args:
+            memory: Memory with updated fields
+
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE memories SET
                 content = ?,
                 memory_type = ?,
@@ -222,35 +357,47 @@ class SQLiteStorage(BaseStorage):
                 vocabulary_version = ?,
                 embedding = ?
             WHERE memory_id = ?
-        """, (
-            memory.content,
-            memory.memory_type,
-            json.dumps(memory.topics),
-            json.dumps(memory.categories),
-            memory.sentiment,
-            memory.importance,
-            json.dumps(memory.entities),
-            memory.access_level,
-            memory.last_accessed.isoformat() if memory.last_accessed else None,
-            memory.reinforcement_score,
-            memory.access_count,
-            memory.vocabulary_version,
-            json.dumps(memory.embedding) if memory.embedding else None,
-            memory.memory_id,
-        ))
+        """,
+            (
+                memory.content,
+                memory.memory_type,
+                json.dumps(memory.topics),
+                json.dumps(memory.categories),
+                memory.sentiment,
+                memory.importance,
+                json.dumps(memory.entities),
+                memory.access_level,
+                memory.last_accessed.isoformat() if memory.last_accessed else None,
+                memory.reinforcement_score,
+                memory.access_count,
+                memory.vocabulary_version,
+                json.dumps(memory.embedding) if memory.embedding else None,
+                memory.memory_id,
+            ),
+        )
 
         conn.commit()
-        return cursor.rowcount > 0
 
-    def delete(self, memory_id: str) -> bool:
-        """Delete a memory."""
+        if cursor.rowcount == 0:
+            raise MemoryNotFoundError(memory.memory_id)
+
+    def delete(self, memory_id: str) -> None:
+        """Delete a memory.
+
+        Args:
+            memory_id: Memory identifier
+
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM memories WHERE memory_id = ?", (memory_id,))
         conn.commit()
 
-        return cursor.rowcount > 0
+        if cursor.rowcount == 0:
+            raise MemoryNotFoundError(memory_id)
 
     def search(
         self,
@@ -287,12 +434,12 @@ class SQLiteStorage(BaseStorage):
             words = []
             for word in query.split():
                 # Clean word - keep only alphanumeric
-                clean = ''.join(c for c in word if c.isalnum())
+                clean = "".join(c for c in word if c.isalnum())
                 if clean and len(clean) > 2:  # Skip very short words
                     words.append(clean)
             # Use OR matching for flexibility
             if words:
-                fts_query = ' OR '.join(words)
+                fts_query = " OR ".join(words)
             else:
                 # Fallback to original query if no valid words
                 fts_query = query.replace('"', '""')
@@ -374,46 +521,76 @@ class SQLiteStorage(BaseStorage):
         cursor = conn.cursor()
 
         if user_id:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT * FROM memories
                 WHERE vocabulary_version = ? AND user_id = ?
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
-            """, (version, user_id, limit, offset))
+            """,
+                (version, user_id, limit, offset),
+            )
         else:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT * FROM memories
                 WHERE vocabulary_version = ?
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
-            """, (version, limit, offset))
+            """,
+                (version, limit, offset),
+            )
 
         rows = cursor.fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def update_reinforcement(self, memory_id: str, signal: float) -> bool:
-        """Update reinforcement score."""
+    def update_reinforcement(self, memory_id: str, signal: float) -> None:
+        """Update reinforcement score with bounds checking.
+
+        The reinforcement score is bounded to [-1.0, 1.0] to prevent
+        unbounded accumulation.
+
+        Args:
+            memory_id: Memory identifier
+            signal: Reinforcement signal to add (will be clamped)
+
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+            ValueError: If signal is not a valid number
+        """
+        if not isinstance(signal, int | float):
+            raise TypeError(f"Signal must be a number, got {type(signal).__name__}")
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        # Update with bounds clamping using SQL MIN/MAX
+        cursor.execute(
+            """
             UPDATE memories
-            SET reinforcement_score = reinforcement_score + ?
+            SET reinforcement_score = MAX(-1.0, MIN(1.0, reinforcement_score + ?))
             WHERE memory_id = ?
-        """, (signal, memory_id))
+        """,
+            (float(signal), memory_id),
+        )
 
         conn.commit()
-        return cursor.rowcount > 0
+
+        if cursor.rowcount == 0:
+            raise MemoryNotFoundError(memory_id)
 
     def store_transfer(self, transfer_id: str, data: list[dict]) -> None:
         """Store transfer data."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO transfers (transfer_id, data)
             VALUES (?, ?)
-        """, (transfer_id, json.dumps(data)))
+        """,
+            (transfer_id, json.dumps(data)),
+        )
 
         conn.commit()
 
@@ -422,10 +599,7 @@ class SQLiteStorage(BaseStorage):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            "SELECT data FROM transfers WHERE transfer_id = ?",
-            (transfer_id,)
-        )
+        cursor.execute("SELECT data FROM transfers WHERE transfer_id = ?", (transfer_id,))
         row = cursor.fetchone()
 
         if not row:
@@ -434,7 +608,7 @@ class SQLiteStorage(BaseStorage):
         return json.loads(row["data"])
 
     def get_stats(self) -> dict[str, Any]:
-        """Get storage statistics."""
+        """Get storage statistics including connection pool info."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -473,13 +647,35 @@ class SQLiteStorage(BaseStorage):
             "unique_users": unique_users,
             "unique_agents": unique_agents,
             "database_size_bytes": db_size,
+            # Connection pool stats
+            "connection_pool": {
+                "max_connections": self.max_connections,
+                "active_connections": self._connection_count,
+                "available_connections": self.max_connections - self._connection_count,
+                "connection_timeout": self.connection_timeout,
+            },
         }
 
     def close(self) -> None:
-        """Close storage connection."""
-        if hasattr(self._local, "connection"):
-            self._local.connection.close()
-            del self._local.connection
+        """Close all storage connections and clean up resources."""
+        with self._connection_lock:
+            # Close all tracked connections
+            for thread_id, conn in list(self._active_connections.items()):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+            self._active_connections.clear()
+            self._connection_count = 0
+
+            # Clear thread-local connection
+            if hasattr(self._local, "connection"):
+                try:
+                    self._local.connection.close()
+                except Exception:
+                    pass
+                self._local.connection = None
 
     def _row_to_memory(self, row: sqlite3.Row) -> Memory:
         """Convert database row to Memory object."""

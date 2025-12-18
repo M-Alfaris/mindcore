@@ -7,11 +7,11 @@ from datetime import datetime, timezone
 import pytest
 
 from mindcore.v2 import (
-    Mindcore,
-    VocabularySchema,
+    AccessLevel,
     Memory,
     MemoryType,
-    AccessLevel,
+    Mindcore,
+    VocabularySchema,
 )
 
 
@@ -76,9 +76,8 @@ class TestMindcoreBasics:
         # Verify it exists
         assert memory.get(memory_id) is not None
 
-        # Delete
-        result = memory.delete(memory_id)
-        assert result is True
+        # Delete (now raises on failure instead of returning False)
+        memory.delete(memory_id)
 
         # Verify it's gone
         assert memory.get(memory_id) is None
@@ -112,40 +111,49 @@ class TestMindcoreBasics:
 
 
 class TestVocabulary:
-    """Test vocabulary schema functionality."""
+    """Test vocabulary schema functionality using SharedVocabularyLayer."""
 
     def test_vocabulary_creation(self):
-        """Test creating a vocabulary schema."""
-        vocab = VocabularySchema(
+        """Test creating a vocabulary schema using SVLSchema."""
+        from mindcore.v2.svl import SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
             version="1.0.0",
             topics=["billing", "support", "orders"],
             categories=["inquiry", "complaint"],
         )
+        vocab = SharedVocabularyLayer(schema=schema)
 
-        assert vocab.version == "1.0.0"
-        assert len(vocab.topics) == 3
-        assert len(vocab.categories) == 2
+        assert vocab.schema.version == "1.0.0"
+        assert len(vocab.schema.topics) == 3
+        assert len(vocab.schema.categories) == 2
 
     def test_json_schema_export(self):
         """Test JSON schema export."""
-        vocab = VocabularySchema(
+        from mindcore.v2.svl import SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
             version="1.0.0",
             topics=["billing", "support"],
         )
+        vocab = SharedVocabularyLayer(schema=schema)
 
-        schema = vocab.to_json_schema()
+        json_schema = vocab.get_full_memory_schema()
 
-        assert schema["type"] == "object"
-        assert "properties" in schema
-        assert "memories_to_store" in schema["properties"]
+        assert json_schema["type"] == "object"
+        assert "properties" in json_schema
+        assert "memories_to_store" in json_schema["properties"]
 
     def test_validation(self):
         """Test memory validation against vocabulary."""
-        vocab = VocabularySchema(
+        from mindcore.v2.svl import SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
             version="1.0.0",
             topics=["billing", "support"],
             categories=["inquiry"],
         )
+        vocab = SharedVocabularyLayer(schema=schema)
 
         # Valid memory
         valid_memory = {
@@ -153,7 +161,7 @@ class TestVocabulary:
             "memory_type": "semantic",
             "topics": ["billing"],
         }
-        is_valid, errors = vocab.validate(valid_memory)
+        is_valid, errors = vocab.validate_memory(valid_memory)
         assert is_valid is True
         assert len(errors) == 0
 
@@ -163,16 +171,19 @@ class TestVocabulary:
             "memory_type": "semantic",
             "topics": ["invalid_topic"],
         }
-        is_valid, errors = vocab.validate(invalid_memory)
+        is_valid, errors = vocab.validate_memory(invalid_memory)
         assert is_valid is False
         assert len(errors) > 0
 
     def test_pydantic_export(self):
         """Test Pydantic model generation."""
-        vocab = VocabularySchema(
+        from mindcore.v2.svl import SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
             version="1.0.0",
             topics=["billing", "support"],
         )
+        vocab = SharedVocabularyLayer(schema=schema)
 
         code = vocab.to_pydantic()
         assert "class Memory(BaseModel)" in code
@@ -180,10 +191,13 @@ class TestVocabulary:
 
     def test_typescript_export(self):
         """Test TypeScript type generation."""
-        vocab = VocabularySchema(
+        from mindcore.v2.svl import SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
             version="1.0.0",
             topics=["billing", "support"],
         )
+        vocab = SharedVocabularyLayer(schema=schema)
 
         ts = vocab.to_typescript()
         assert "interface Memory" in ts
@@ -310,8 +324,8 @@ class TestMultiAgent:
         """Test unregistering an agent."""
         memory.register_agent("temp_agent", "Temporary")
 
-        result = memory.unregister_agent("temp_agent")
-        assert result is True
+        # Unregister (now raises on failure instead of returning False)
+        memory.unregister_agent("temp_agent")
 
         agents = memory.list_agents()
         assert all(a["agent_id"] != "temp_agent" for a in agents)
@@ -438,3 +452,749 @@ class TestContextManager:
                 assert len(result.memories) > 0
         finally:
             os.unlink(db_path)
+
+
+# === NEW TESTS FOR IMPLEMENTED IMPROVEMENTS ===
+
+
+class TestReinforcementBounds:
+    """Test reinforcement score bounds checking (Improvement #1)."""
+
+    @pytest.fixture
+    def memory(self):
+        """Create a Mindcore instance."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        mc = Mindcore(storage=f"sqlite:///{db_path}")
+        yield mc
+        mc.close()
+        os.unlink(db_path)
+
+    def test_reinforcement_score_bounds_positive(self, memory):
+        """Test that reinforcement scores stay within bounds for positive signals."""
+        memory_id = memory.store(
+            content="Test memory",
+            memory_type="semantic",
+            user_id="user123",
+        )
+
+        # Apply many positive reinforcements
+        for _ in range(100):
+            memory.reinforce(memory_id, signal=1.0)
+
+        retrieved = memory.get(memory_id)
+        assert retrieved.reinforcement_score <= 1.0
+        assert retrieved.reinforcement_score >= -1.0
+
+    def test_reinforcement_score_bounds_negative(self, memory):
+        """Test that reinforcement scores stay within bounds for negative signals."""
+        memory_id = memory.store(
+            content="Test memory",
+            memory_type="semantic",
+            user_id="user123",
+        )
+
+        # Apply many negative reinforcements
+        for _ in range(100):
+            memory.reinforce(memory_id, signal=-1.0)
+
+        retrieved = memory.get(memory_id)
+        assert retrieved.reinforcement_score >= -1.0
+        assert retrieved.reinforcement_score <= 1.0
+
+    def test_reinforcement_signal_clamping(self, memory):
+        """Test that out-of-range signals are clamped."""
+        memory_id = memory.store(
+            content="Test memory",
+            memory_type="semantic",
+            user_id="user123",
+        )
+
+        # Apply out-of-range signals
+        memory.reinforce(memory_id, signal=10.0)  # Should be clamped to 1.0
+        memory.reinforce(memory_id, signal=-10.0)  # Should be clamped to -1.0
+
+        retrieved = memory.get(memory_id)
+        assert -1.0 <= retrieved.reinforcement_score <= 1.0
+
+    def test_reinforcement_invalid_signal_raises(self, memory):
+        """Test that invalid signal types raise ValueError."""
+        memory_id = memory.store(
+            content="Test memory",
+            memory_type="semantic",
+            user_id="user123",
+        )
+
+        with pytest.raises(TypeError, match="Signal must be a number"):
+            memory.reinforce(memory_id, signal="not a number")
+
+    def test_memory_apply_reinforcement_diminishing_returns(self):
+        """Test that Memory.apply_reinforcement has diminishing returns near bounds."""
+        mem = Memory(
+            memory_id="test",
+            content="Test",
+            memory_type="semantic",
+            user_id="user123",
+            reinforcement_score=0.9,  # Already high
+        )
+
+        # Apply positive signal - should have diminishing effect
+        old_score = mem.reinforcement_score
+        mem.apply_reinforcement(0.5)
+        change = mem.reinforcement_score - old_score
+
+        # The change should be less than 0.5 due to diminishing returns
+        assert change < 0.5
+        assert mem.reinforcement_score <= 1.0
+
+
+class TestVocabularyMigrationRollback:
+    """Test vocabulary migration with rollback capability using SVL."""
+
+    def test_migration_creates_checkpoints(self):
+        """Test that migration creates rollback checkpoints."""
+        from mindcore.v2.svl import Migration, SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
+            version="2.0.0",
+            topics=["billing", "support"],
+            migrations={
+                "1.0.0": Migration(
+                    from_version="1.0.0",
+                    to_version="2.0.0",
+                    renames={"old_billing": "billing", "old_support": "support"},
+                )
+            },
+        )
+        svl = SharedVocabularyLayer(schema=schema)
+
+        memory_data = {
+            "memory_id": "test_123",
+            "content": "Test",
+            "topics": ["old_billing"],
+            "vocabulary_version": "1.0.0",
+        }
+
+        migrated, checkpoint = svl.migrate_memory(memory_data, "1.0.0", create_checkpoint=True)
+
+        assert checkpoint is not None
+        assert checkpoint.from_version == "1.0.0"
+        assert checkpoint.to_version == "2.0.0"
+        assert checkpoint.original_data["topics"] == ["old_billing"]
+        assert "billing" in migrated["topics"]
+
+    def test_migration_rollback_restores_original(self):
+        """Test that rollback restores original data."""
+        from mindcore.v2.svl import Migration, SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
+            version="2.0.0",
+            topics=["billing", "support"],
+            migrations={
+                "1.0.0": Migration(
+                    from_version="1.0.0",
+                    to_version="2.0.0",
+                    renames={"old_billing": "billing"},
+                )
+            },
+        )
+        svl = SharedVocabularyLayer(schema=schema)
+
+        original_data = {
+            "memory_id": "test_123",
+            "content": "Test",
+            "topics": ["old_billing"],
+            "vocabulary_version": "1.0.0",
+        }
+
+        # Migrate
+        migrated, checkpoint = svl.migrate_memory(original_data, "1.0.0", create_checkpoint=True)
+        assert "billing" in migrated["topics"]
+
+        # Rollback
+        restored = svl.rollback_memory(migrated, checkpoint)
+        assert restored["topics"] == ["old_billing"]
+        assert restored["vocabulary_version"] == "1.0.0"
+
+    def test_migration_without_checkpoint_uses_metadata(self):
+        """Test rollback using embedded metadata when no checkpoint provided."""
+        from mindcore.v2.svl import Migration, SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
+            version="2.0.0",
+            topics=["billing"],
+            migrations={
+                "1.0.0": Migration(
+                    from_version="1.0.0",
+                    to_version="2.0.0",
+                    renames={"old_billing": "billing"},
+                )
+            },
+        )
+        svl = SharedVocabularyLayer(schema=schema)
+
+        original_data = {
+            "memory_id": "test_123",
+            "content": "Test",
+            "topics": ["old_billing"],
+            "vocabulary_version": "1.0.0",
+        }
+
+        # Migrate with checkpoint creation (embeds metadata)
+        migrated, _ = svl.migrate_memory(original_data, "1.0.0", create_checkpoint=True)
+
+        # Should have migration metadata embedded
+        assert "_migration_metadata" in migrated
+
+        # Rollback without explicit checkpoint
+        restored = svl.rollback_memory(migrated, checkpoint=None)
+        assert restored["topics"] == ["old_billing"]
+
+    def test_migration_no_checkpoint_raises_on_rollback(self):
+        """Test that rollback fails without checkpoint or metadata."""
+        from mindcore.v2.svl import Migration, SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
+            version="2.0.0",
+            topics=["billing"],
+            migrations={
+                "1.0.0": Migration(
+                    from_version="1.0.0",
+                    to_version="2.0.0",
+                    renames={"old_billing": "billing"},
+                )
+            },
+        )
+        svl = SharedVocabularyLayer(schema=schema)
+
+        # Memory without migration metadata
+        migrated_data = {
+            "memory_id": "test_123",
+            "content": "Test",
+            "topics": ["billing"],
+            "vocabulary_version": "2.0.0",
+        }
+
+        with pytest.raises(ValueError, match="Cannot rollback"):
+            svl.rollback_memory(migrated_data, checkpoint=None)
+
+    def test_get_migration_path(self):
+        """Test getting migration path between versions."""
+        from mindcore.v2.svl import Migration, SharedVocabularyLayer, SVLSchema
+
+        schema = SVLSchema(
+            version="2.0.0",
+            topics=["billing"],
+            migrations={
+                "1.0.0": Migration(
+                    from_version="1.0.0",
+                    to_version="2.0.0",
+                )
+            },
+        )
+        svl = SharedVocabularyLayer(schema=schema)
+
+        path = svl.get_migration_path("1.0.0")
+        assert path == ["1.0.0", "2.0.0"]
+
+        # Same version returns single element
+        path = svl.get_migration_path("2.0.0")
+        assert path == ["2.0.0"]
+
+        # Unknown version raises
+        with pytest.raises(ValueError, match="No migration path"):
+            svl.get_migration_path("0.5.0")
+
+
+class TestExceptionHandling:
+    """Test standardized exception handling (Improvement #3)."""
+
+    @pytest.fixture
+    def memory(self):
+        """Create a Mindcore instance."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        mc = Mindcore(storage=f"sqlite:///{db_path}")
+        yield mc
+        mc.close()
+        os.unlink(db_path)
+
+    def test_delete_nonexistent_raises_exception(self, memory):
+        """Test that deleting nonexistent memory raises MemoryNotFoundError."""
+        from mindcore.v2.exceptions import MemoryNotFoundError
+
+        with pytest.raises(MemoryNotFoundError) as exc_info:
+            memory.delete("nonexistent_id")
+
+        assert "nonexistent_id" in str(exc_info.value)
+        assert exc_info.value.memory_id == "nonexistent_id"
+
+    def test_memory_not_found_has_details(self):
+        """Test that MemoryNotFoundError includes details."""
+        from mindcore.v2.exceptions import MemoryNotFoundError
+
+        error = MemoryNotFoundError("test_id")
+        assert error.memory_id == "test_id"
+        assert "test_id" in error.details["memory_id"]
+        assert "test_id" in str(error)
+
+    def test_multi_agent_not_enabled_raises(self):
+        """Test that multi-agent operations raise when not enabled."""
+        from mindcore.v2.exceptions import MultiAgentNotEnabledError
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            mc = Mindcore(storage=f"sqlite:///{db_path}", enable_multi_agent=False)
+
+            with pytest.raises(MultiAgentNotEnabledError):
+                mc.list_agents()
+
+            with pytest.raises(MultiAgentNotEnabledError):
+                mc.register_agent("test", "Test")
+
+            mc.close()
+        finally:
+            os.unlink(db_path)
+
+    def test_storage_error_includes_backend(self):
+        """Test that StorageError includes backend info."""
+        from mindcore.v2.exceptions import StorageConnectionError
+
+        error = StorageConnectionError("Connection failed", backend="postgresql")
+        assert error.backend == "postgresql"
+        assert "postgresql" in error.details["backend"]
+
+    def test_validation_error_includes_errors(self):
+        """Test that VocabularyValidationError includes error list."""
+        from mindcore.v2.exceptions import VocabularyValidationError
+
+        errors = ["Invalid topic: foo", "Invalid category: bar"]
+        error = VocabularyValidationError(errors)
+
+        assert error.errors == errors
+        assert "validation_errors" in error.details
+        assert len(error.details["validation_errors"]) == 2
+
+    def test_exception_hierarchy(self):
+        """Test that exception hierarchy is correct."""
+        from mindcore.v2.exceptions import (
+            AccessError,
+            ConfigurationError,
+            MemoryNotFoundError,
+            MindcoreError,
+            StorageError,
+            ValidationError,
+        )
+
+        # All should inherit from MindcoreError
+        assert issubclass(StorageError, MindcoreError)
+        assert issubclass(MemoryNotFoundError, StorageError)
+        assert issubclass(ValidationError, MindcoreError)
+        assert issubclass(AccessError, MindcoreError)
+        assert issubclass(ConfigurationError, MindcoreError)
+
+
+class TestCrossAgentConflictResolution:
+    """Test cross-agent sync conflict resolution (Improvement #4)."""
+
+    @pytest.fixture
+    def memory(self):
+        """Create a multi-agent Mindcore instance."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        mc = Mindcore(
+            storage=f"sqlite:///{db_path}",
+            enable_multi_agent=True,
+        )
+        yield mc
+        mc.close()
+        os.unlink(db_path)
+
+    def test_conflict_resolution_enum_values(self):
+        """Test that ConflictResolution enum has all strategies."""
+        from mindcore.v2.cross_agent.sharing import ConflictResolution
+
+        assert hasattr(ConflictResolution, "SOURCE_WINS")
+        assert hasattr(ConflictResolution, "TARGET_WINS")
+        assert hasattr(ConflictResolution, "NEWEST_WINS")
+        assert hasattr(ConflictResolution, "HIGHEST_IMPORTANCE")
+        assert hasattr(ConflictResolution, "MERGE_METADATA")
+        assert hasattr(ConflictResolution, "SKIP")
+
+    def test_conflict_info_to_dict(self):
+        """Test ConflictInfo serialization."""
+        from mindcore.v2.cross_agent.sharing import ConflictInfo, ConflictResolution
+
+        info = ConflictInfo(
+            memory_id="test_123",
+            source_memory=Memory(
+                memory_id="src",
+                content="Source content",
+                memory_type="semantic",
+                user_id="user1",
+            ),
+            target_memory=Memory(
+                memory_id="tgt",
+                content="Target content",
+                memory_type="semantic",
+                user_id="user1",
+            ),
+            resolution=ConflictResolution.SOURCE_WINS,
+            resolved_memory=None,
+            reason="Test reason",
+        )
+
+        data = info.to_dict()
+        assert data["memory_id"] == "test_123"
+        assert data["resolution"] == "source_wins"
+        assert data["reason"] == "Test reason"
+
+    def test_sync_result_includes_conflict_details(self):
+        """Test that SyncResult includes conflict information."""
+        from mindcore.v2.cross_agent.sharing import ConflictResolution, SyncDirection, SyncResult
+
+        result = SyncResult(
+            success=True,
+            source_agent="agent1",
+            target_agent="agent2",
+            direction=SyncDirection.ONE_WAY,
+            memories_synced=5,
+            memories_skipped=2,
+            conflicts=2,
+            conflict_resolution=ConflictResolution.NEWEST_WINS,
+        )
+
+        data = result.to_dict()
+        assert data["conflicts"] == 2
+        assert data["conflict_resolution"] == "newest_wins"
+        assert "conflict_details" in data
+
+    def test_cross_agent_layer_sync_with_conflict_resolution(self, memory):
+        """Test CrossAgentLayer sync with conflict resolution parameters."""
+        from mindcore.v2.cross_agent import (
+            ConflictResolution,
+            CrossAgentLayer,
+            SyncDirection,
+        )
+
+        # Create a CrossAgentLayer for testing sync
+        layer = CrossAgentLayer(storage=memory._storage)
+        layer.register_agent("agent1", "Agent 1", teams=["team1"])
+        layer.register_agent("agent2", "Agent 2", teams=["team1"])
+
+        # Store some shared memories via the layer
+        from mindcore.v2 import Memory
+
+        mem = Memory(
+            memory_id="test_sync_mem",
+            content="Shared knowledge",
+            memory_type="semantic",
+            user_id="user123",
+            agent_id="agent1",
+            access_level="team",
+        )
+        memory._storage.store(mem)
+
+        # Sync with conflict resolution
+        result = layer.sync(
+            source_agent="agent1",
+            target_agent="agent2",
+            user_id="user123",
+            direction=SyncDirection.ONE_WAY,
+            conflict_resolution=ConflictResolution.SOURCE_WINS,
+        )
+
+        assert result is not None
+        assert result.conflict_resolution == ConflictResolution.SOURCE_WINS
+        assert hasattr(result, "conflict_details")
+
+
+class TestConnectionPoolManagement:
+    """Test connection pool management (Improvement #5)."""
+
+    def test_sqlite_storage_has_pool_config(self):
+        """Test SQLiteStorage accepts pool configuration."""
+        from mindcore.v2.storage import SQLiteStorage
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            storage = SQLiteStorage(
+                db_path=db_path,
+                max_connections=5,
+                connection_timeout=10.0,
+            )
+
+            assert storage.max_connections == 5
+            assert storage.connection_timeout == 10.0
+
+            storage.close()
+        finally:
+            os.unlink(db_path)
+
+    def test_sqlite_storage_stats_include_pool_info(self):
+        """Test that SQLite stats include connection pool info."""
+        from mindcore.v2.storage import SQLiteStorage
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            storage = SQLiteStorage(db_path=db_path, max_connections=10)
+
+            stats = storage.get_stats()
+
+            assert "connection_pool" in stats
+            assert stats["connection_pool"]["max_connections"] == 10
+            assert "active_connections" in stats["connection_pool"]
+            assert "available_connections" in stats["connection_pool"]
+
+            storage.close()
+        finally:
+            os.unlink(db_path)
+
+    def test_sqlite_update_nonexistent_raises(self):
+        """Test that SQLite update raises MemoryNotFoundError."""
+        from mindcore.v2.exceptions import MemoryNotFoundError
+        from mindcore.v2.storage import SQLiteStorage
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            storage = SQLiteStorage(db_path=db_path)
+
+            mem = Memory(
+                memory_id="nonexistent",
+                content="Test",
+                memory_type="semantic",
+                user_id="user123",
+            )
+
+            with pytest.raises(MemoryNotFoundError):
+                storage.update(mem)
+
+            storage.close()
+        finally:
+            os.unlink(db_path)
+
+    def test_sqlite_update_reinforcement_nonexistent_raises(self):
+        """Test that update_reinforcement raises MemoryNotFoundError."""
+        from mindcore.v2.exceptions import MemoryNotFoundError
+        from mindcore.v2.storage import SQLiteStorage
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            storage = SQLiteStorage(db_path=db_path)
+
+            with pytest.raises(MemoryNotFoundError):
+                storage.update_reinforcement("nonexistent", 0.5)
+
+            storage.close()
+        finally:
+            os.unlink(db_path)
+
+    def test_sqlite_reinforcement_bounds_in_storage(self):
+        """Test that SQLite storage enforces reinforcement bounds."""
+        from mindcore.v2.storage import SQLiteStorage
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            storage = SQLiteStorage(db_path=db_path)
+
+            mem = Memory(
+                memory_id="test_123",
+                content="Test",
+                memory_type="semantic",
+                user_id="user123",
+                reinforcement_score=0.0,
+            )
+            storage.store(mem)
+
+            # Apply large positive signal
+            storage.update_reinforcement("test_123", 100.0)
+            retrieved = storage.get("test_123")
+            assert retrieved.reinforcement_score <= 1.0
+
+            # Apply large negative signal
+            storage.update_reinforcement("test_123", -200.0)
+            retrieved = storage.get("test_123")
+            assert retrieved.reinforcement_score >= -1.0
+
+            storage.close()
+        finally:
+            os.unlink(db_path)
+
+
+class TestCLSTMigrationWithRollback:
+    """Test CLST migration with rollback capability."""
+
+    @pytest.fixture
+    def memory_with_migration(self):
+        """Create a Mindcore instance with custom vocabulary for migration."""
+        from mindcore.v2.svl import Migration, SharedVocabularyLayer, SVLSchema
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        schema = SVLSchema(
+            version="2.0.0",
+            topics=["billing", "support", "orders"],
+            migrations={
+                "1.0.0": Migration(
+                    from_version="1.0.0",
+                    to_version="2.0.0",
+                    renames={"old_billing": "billing"},
+                    added_fields={"new_field": "default"},
+                )
+            },
+        )
+        svl = SharedVocabularyLayer(schema=schema)
+
+        mc = Mindcore(
+            storage=f"sqlite:///{db_path}",
+            vocabulary=svl,
+        )
+        yield mc, db_path
+        mc.close()
+        os.unlink(db_path)
+
+    def test_clst_migrate_returns_checkpoint_info(self, memory_with_migration):
+        """Test that CLST migrate returns checkpoint information."""
+        mc, _ = memory_with_migration
+
+        # Store a memory with old version
+        memory_id = mc.store(
+            content="Old billing memory",
+            memory_type="semantic",
+            user_id="user123",
+            topics=["billing"],
+        )
+
+        # Manually set vocabulary version to old
+        mem = mc.get(memory_id)
+        mem.vocabulary_version = "1.0.0"
+        mc._storage.update(mem)
+
+        # Migrate
+        result = mc.migrate_vocabulary(from_version="1.0.0", create_checkpoints=True)
+
+        assert "can_rollback" in result
+        assert "checkpoint_count" in result
+
+    def test_mindcore_rollback_vocabulary_migration(self, memory_with_migration):
+        """Test Mindcore.rollback_vocabulary_migration."""
+        mc, _ = memory_with_migration
+
+        # Store memory with old version
+        memory_id = mc.store(
+            content="Test memory",
+            memory_type="semantic",
+            user_id="user123",
+            topics=["billing"],
+        )
+
+        # Set to old version
+        mem = mc.get(memory_id)
+        mem.vocabulary_version = "1.0.0"
+        mc._storage.update(mem)
+
+        # Migrate
+        mc.migrate_vocabulary(from_version="1.0.0", create_checkpoints=True)
+
+        # Rollback
+        result = mc.rollback_vocabulary_migration()
+
+        assert "memories_rolled_back" in result
+        assert "from_version" in result
+        assert "to_version" in result
+
+    def test_rollback_without_migration_raises(self, memory_with_migration):
+        """Test that rollback without prior migration raises error."""
+        mc, _ = memory_with_migration
+
+        with pytest.raises(ValueError, match="No migration to rollback"):
+            mc.rollback_vocabulary_migration()
+
+
+class TestMigrationCheckpoint:
+    """Test MigrationCheckpoint dataclass."""
+
+    def test_checkpoint_serialization(self):
+        """Test checkpoint to_dict and from_dict."""
+        from mindcore.v2.svl import MigrationCheckpoint
+
+        checkpoint = MigrationCheckpoint(
+            checkpoint_id="cp_123",
+            from_version="1.0.0",
+            to_version="2.0.0",
+            memory_id="mem_456",
+            original_data={"topics": ["old"]},
+            migrated_data={"topics": ["new"]},
+        )
+
+        data = checkpoint.to_dict()
+        assert data["checkpoint_id"] == "cp_123"
+        assert data["from_version"] == "1.0.0"
+
+        restored = MigrationCheckpoint.from_dict(data)
+        assert restored.checkpoint_id == "cp_123"
+        assert restored.memory_id == "mem_456"
+        assert restored.original_data == {"topics": ["old"]}
+
+
+class TestMigrationRollbackTopics:
+    """Test Migration.rollback_topics functionality."""
+
+    def test_rollback_topics_with_original(self):
+        """Test rollback uses original topics when available."""
+        from mindcore.v2.svl import Migration
+
+        migration = Migration(
+            from_version="1.0.0",
+            to_version="2.0.0",
+            renames={"old": "new"},
+        )
+
+        current = ["new", "other"]
+        original = ["old", "other"]
+
+        result = migration.rollback_topics(current, original)
+        assert result == original
+
+    def test_rollback_topics_reverses_renames(self):
+        """Test rollback reverses renames when no original."""
+        from mindcore.v2.svl import Migration
+
+        migration = Migration(
+            from_version="1.0.0",
+            to_version="2.0.0",
+            renames={"old_topic": "new_topic"},
+        )
+
+        current = ["new_topic", "unchanged"]
+        result = migration.rollback_topics(current, original_topics=[])
+
+        assert "old_topic" in result
+        assert "unchanged" in result
+
+    def test_migration_can_rollback(self):
+        """Test Migration.can_rollback method."""
+        from mindcore.v2.svl import Migration
+
+        migration = Migration(
+            from_version="1.0.0",
+            to_version="2.0.0",
+        )
+
+        assert migration.can_rollback() is True

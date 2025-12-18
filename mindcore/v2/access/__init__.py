@@ -7,6 +7,7 @@ from .permissions import (
     Permission,
 )
 
+
 __all__ = [
     "AccessController",
     "AccessDecision",

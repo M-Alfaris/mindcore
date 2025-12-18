@@ -6,13 +6,14 @@ Can be used standalone or alongside MCP.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
 
 if TYPE_CHECKING:
-    from ..flr import FLR
-    from ..clst import CLST
-    from ..vocabulary import VocabularySchema
-    from ..access import AccessController
+    from mindcore.v2.access import AccessController
+    from mindcore.v2.clst import CLST
+    from mindcore.v2.flr import FLR
+    from mindcore.v2.vocabulary import VocabularySchema
 
 
 def create_app(
@@ -33,7 +34,7 @@ def create_app(
         FastAPI application
     """
     try:
-        from fastapi import FastAPI, HTTPException, Header, Query, Body
+        from fastapi import FastAPI, Header, HTTPException, Query
         from fastapi.middleware.cors import CORSMiddleware
         from pydantic import BaseModel, Field
     except ImportError:
@@ -132,7 +133,7 @@ def create_app(
         request: StoreMemoryRequest,
         x_agent_id: str | None = Header(None),
     ):
-        from ..flr import Memory
+        from mindcore.v2.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -163,7 +164,8 @@ def create_app(
 
         # Access control check
         if access_controller and x_agent_id:
-            from ..access import Permission
+            from mindcore.v2.access import Permission
+
             decision = access_controller.can_access(
                 agent_id=x_agent_id,
                 memory_access_level=memory.access_level,
@@ -187,7 +189,8 @@ def create_app(
 
         # Access control check
         if access_controller and x_agent_id:
-            from ..access import Permission
+            from mindcore.v2.access import Permission
+
             decision = access_controller.can_access(
                 agent_id=x_agent_id,
                 memory_access_level=memory.access_level,
@@ -218,7 +221,8 @@ def create_app(
 
         # Filter by access control
         if access_controller and x_agent_id:
-            from ..access import Permission
+            from mindcore.v2.access import Permission
+
             memories = access_controller.filter_accessible_memories(
                 x_agent_id, memories, Permission.READ
             )
@@ -260,10 +264,7 @@ def create_app(
     @app.post("/agents")
     async def register_agent(request: RegisterAgentRequest):
         if not access_controller:
-            raise HTTPException(
-                status_code=400,
-                detail="Access control not configured"
-            )
+            raise HTTPException(status_code=400, detail="Access control not configured")
 
         try:
             profile = access_controller.register_agent(
@@ -287,10 +288,7 @@ def create_app(
     @app.get("/agents/{agent_id}")
     async def get_agent(agent_id: str):
         if not access_controller:
-            raise HTTPException(
-                status_code=400,
-                detail="Access control not configured"
-            )
+            raise HTTPException(status_code=400, detail="Access control not configured")
 
         profile = access_controller.get_agent(agent_id)
         if not profile:
@@ -301,10 +299,7 @@ def create_app(
     @app.delete("/agents/{agent_id}")
     async def unregister_agent(agent_id: str):
         if not access_controller:
-            raise HTTPException(
-                status_code=400,
-                detail="Access control not configured"
-            )
+            raise HTTPException(status_code=400, detail="Access control not configured")
 
         success = access_controller.unregister_agent(agent_id)
         if not success:
@@ -320,7 +315,8 @@ def create_app(
         strategy: str = Query("summarize"),
     ):
         from datetime import timedelta
-        from ..clst import CompressionStrategy
+
+        from mindcore.v2.clst import CompressionStrategy
 
         try:
             strategy_enum = CompressionStrategy(strategy)
@@ -383,9 +379,7 @@ def run_server(
     try:
         import uvicorn
     except ImportError:
-        raise ImportError(
-            "uvicorn required to run server. Install with: pip install uvicorn"
-        )
+        raise ImportError("uvicorn required to run server. Install with: pip install uvicorn")
 
     app = create_app(flr, clst, vocabulary, access_controller)
     uvicorn.run(app, host=host, port=port)

@@ -21,22 +21,22 @@ class MessageType(str, Enum):
     """Types of messages in conversations."""
 
     # User-initiated
-    QUERY = "query"                    # User asking a question
-    COMMAND = "command"                # User giving an instruction
-    STATEMENT = "statement"            # User providing information
-    FEEDBACK = "feedback"              # User giving feedback/opinion
+    QUERY = "query"  # User asking a question
+    COMMAND = "command"  # User giving an instruction
+    STATEMENT = "statement"  # User providing information
+    FEEDBACK = "feedback"  # User giving feedback/opinion
 
     # Agent-initiated
-    RESPONSE = "response"              # Agent answering a query
-    CLARIFICATION = "clarification"    # Agent asking for more info
-    SUGGESTION = "suggestion"          # Agent suggesting an action
-    CONFIRMATION = "confirmation"      # Agent confirming understanding
-    NOTIFICATION = "notification"      # Agent proactive notification
+    RESPONSE = "response"  # Agent answering a query
+    CLARIFICATION = "clarification"  # Agent asking for more info
+    SUGGESTION = "suggestion"  # Agent suggesting an action
+    CONFIRMATION = "confirmation"  # Agent confirming understanding
+    NOTIFICATION = "notification"  # Agent proactive notification
 
     # System
-    SYSTEM = "system"                  # System messages
-    ERROR = "error"                    # Error messages
-    STATUS = "status"                  # Status updates
+    SYSTEM = "system"  # System messages
+    ERROR = "error"  # Error messages
+    STATUS = "status"  # Status updates
 
 
 class MessageIntent(str, Enum):
@@ -94,10 +94,10 @@ class TemporalQualifier(str, Enum):
     DEADLINE = "deadline"
 
     # Duration
-    SHORT_TERM = "short_term"        # Hours to days
-    MEDIUM_TERM = "medium_term"      # Days to weeks
-    LONG_TERM = "long_term"          # Weeks to months
-    PERMANENT = "permanent"          # Indefinite
+    SHORT_TERM = "short_term"  # Hours to days
+    MEDIUM_TERM = "medium_term"  # Days to weeks
+    LONG_TERM = "long_term"  # Weeks to months
+    PERMANENT = "permanent"  # Indefinite
 
     # Session context
     THIS_SESSION = "this_session"
@@ -219,20 +219,20 @@ class DomainLabel(str, Enum):
 class Urgency(str, Enum):
     """Urgency levels for memories."""
 
-    CRITICAL = "critical"          # Immediate action required
-    HIGH = "high"                  # Action required soon
-    MEDIUM = "medium"              # Normal priority
-    LOW = "low"                    # No rush
+    CRITICAL = "critical"  # Immediate action required
+    HIGH = "high"  # Action required soon
+    MEDIUM = "medium"  # Normal priority
+    LOW = "low"  # No rush
     INFORMATIONAL = "informational"  # No action needed
 
 
 class Confidence(str, Enum):
     """Confidence levels for extracted information."""
 
-    HIGH = "high"                  # Very confident
-    MEDIUM = "medium"              # Reasonably confident
-    LOW = "low"                    # Uncertain
-    INFERRED = "inferred"          # Derived, not explicit
+    HIGH = "high"  # Very confident
+    MEDIUM = "medium"  # Reasonably confident
+    LOW = "low"  # Uncertain
+    INFERRED = "inferred"  # Derived, not explicit
 
 
 @dataclass
@@ -275,29 +275,59 @@ class SemanticMetadata:
         result = {}
 
         if self.message_type:
-            result["message_type"] = self.message_type.value if isinstance(self.message_type, Enum) else self.message_type
+            result["message_type"] = (
+                self.message_type.value
+                if isinstance(self.message_type, Enum)
+                else self.message_type
+            )
         if self.message_intent:
-            result["message_intent"] = self.message_intent.value if isinstance(self.message_intent, Enum) else self.message_intent
+            result["message_intent"] = (
+                self.message_intent.value
+                if isinstance(self.message_intent, Enum)
+                else self.message_intent
+            )
         if self.temporal_qualifier:
-            result["temporal_qualifier"] = self.temporal_qualifier.value if isinstance(self.temporal_qualifier, Enum) else self.temporal_qualifier
+            result["temporal_qualifier"] = (
+                self.temporal_qualifier.value
+                if isinstance(self.temporal_qualifier, Enum)
+                else self.temporal_qualifier
+            )
         if self.expires_at:
             result["expires_at"] = self.expires_at
         if self.emotional_classification:
-            result["emotional_classification"] = self.emotional_classification.value if isinstance(self.emotional_classification, Enum) else self.emotional_classification
+            result["emotional_classification"] = (
+                self.emotional_classification.value
+                if isinstance(self.emotional_classification, Enum)
+                else self.emotional_classification
+            )
         if self.emotional_intensity != 0.5:
             result["emotional_intensity"] = self.emotional_intensity
         if self.user_role:
-            result["user_role"] = self.user_role.value if isinstance(self.user_role, Enum) else self.user_role
+            result["user_role"] = (
+                self.user_role.value if isinstance(self.user_role, Enum) else self.user_role
+            )
         if self.preference_type:
-            result["preference_type"] = self.preference_type.value if isinstance(self.preference_type, Enum) else self.preference_type
+            result["preference_type"] = (
+                self.preference_type.value
+                if isinstance(self.preference_type, Enum)
+                else self.preference_type
+            )
         if self.domain_label:
-            result["domain_label"] = self.domain_label.value if isinstance(self.domain_label, Enum) else self.domain_label
+            result["domain_label"] = (
+                self.domain_label.value
+                if isinstance(self.domain_label, Enum)
+                else self.domain_label
+            )
         if self.subdomain:
             result["subdomain"] = self.subdomain
         if self.urgency:
-            result["urgency"] = self.urgency.value if isinstance(self.urgency, Enum) else self.urgency
+            result["urgency"] = (
+                self.urgency.value if isinstance(self.urgency, Enum) else self.urgency
+            )
         if self.confidence:
-            result["confidence"] = self.confidence.value if isinstance(self.confidence, Enum) else self.confidence
+            result["confidence"] = (
+                self.confidence.value if isinstance(self.confidence, Enum) else self.confidence
+            )
         if self.custom_tags:
             result["custom_tags"] = self.custom_tags
         if self.custom_metadata:

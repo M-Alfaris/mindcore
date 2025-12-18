@@ -51,90 +51,124 @@ __author__ = "Mindcore Contributors"
 __license__ = "MIT"
 
 # Main v2 exports
-from .v2 import (
-    # Main class
-    Mindcore,
-    # FLR Protocol
-    FLR,
-    Memory,
-    RecallResult,
-    ContextWindow,
-    # CLST Protocol
-    CLST,
-    CompressionResult,
-    CompressionStrategy,
-    SyncResult,
-    TransferManifest,
-    # Vocabulary
-    VocabularySchema,
-    DEFAULT_VOCABULARY,
-    MemoryType,
-    Sentiment,
-    AccessLevel,
-    FieldSchema,
-    Migration,
-    # Access Control
-    AccessController,
-    AccessDecision,
-    AgentProfile,
-    Permission,
-    # Storage
-    BaseStorage,
-    PostgresStorage,
-    SQLiteStorage,
-    # Server
-    MCPServer,
-    create_app,
-    run_server,
-)
-
 # Utils
 from .utils import (
     LogCategory,
     configure_logging,
     get_logger,
 )
+from .v2 import (
+    # CLST Protocol
+    CLST,
+    DEFAULT_SVL,
+    DEFAULT_VOCABULARY,
+    # FLR Protocol
+    FLR,
+    # Access Control
+    AccessController,
+    AccessDecision,
+    AccessError,
+    AccessLevel,
+    AgentNotFoundError,
+    AgentProfile,
+    # Cross-Agent Sync (different from CLST sync)
+    AgentSyncDirection,  # Agent-to-agent sync direction
+    AgentSyncResult,  # Agent-to-agent sync result
+    # Storage
+    BaseStorage,
+    CompressionResult,
+    CompressionStrategy,
+    ConfigurationError,
+    ContextWindow,
+    FieldSchema,
+    # Server
+    MCPServer,
+    Memory,
+    MemoryNotFoundError,
+    MemoryType,
+    MemoryValidationError,
+    Migration,
+    MigrationCheckpoint,
+    MigrationError,
+    MigrationPathError,
+    # Main class
+    Mindcore,
+    # Exceptions
+    MindcoreError,
+    MultiAgentNotEnabledError,
+    Permission,
+    PermissionDeniedError,
+    PostgresStorage,
+    RecallResult,
+    RollbackError,
+    Sentiment,
+    SharedVocabularyLayer,
+    SQLiteStorage,
+    StorageConnectionError,
+    StorageError,
+    SyncDirection,  # CLST sync direction (PUSH, PULL, BIDIRECTIONAL)
+    SyncResult,  # CLST sync result
+    TransferManifest,
+    ValidationError,
+    # Vocabulary (VocabularySchema is now an alias for SharedVocabularyLayer)
+    VocabularySchema,
+    VocabularyValidationError,
+    create_app,
+    run_server,
+)
 
 
 __all__ = [
-    # Version
-    "__version__",
-    # Main
-    "Mindcore",
-    # FLR
-    "FLR",
-    "Memory",
-    "RecallResult",
-    "ContextWindow",
-    # CLST
     "CLST",
-    "CompressionResult",
-    "CompressionStrategy",
-    "SyncResult",
-    "TransferManifest",
-    # Vocabulary
-    "VocabularySchema",
+    "DEFAULT_SVL",
     "DEFAULT_VOCABULARY",
-    "MemoryType",
-    "Sentiment",
-    "AccessLevel",
-    "FieldSchema",
-    "Migration",
-    # Access Control
+    "FLR",
     "AccessController",
     "AccessDecision",
+    "AccessError",
+    "AccessLevel",
+    "AgentNotFoundError",
     "AgentProfile",
-    "Permission",
-    # Storage
+    "AgentSyncDirection",
+    "AgentSyncResult",
     "BaseStorage",
-    "PostgresStorage",
-    "SQLiteStorage",
-    # Server
-    "MCPServer",
-    "create_app",
-    "run_server",
-    # Utils
+    "CompressionResult",
+    "CompressionStrategy",
+    "ConfigurationError",
+    "ContextWindow",
+    "FieldSchema",
     "LogCategory",
+    "MCPServer",
+    "Memory",
+    "MemoryNotFoundError",
+    "MemoryType",
+    "MemoryValidationError",
+    "Migration",
+    "MigrationCheckpoint",
+    "MigrationError",
+    "MigrationPathError",
+    "Mindcore",
+    "MindcoreError",
+    "MultiAgentNotEnabledError",
+    "Permission",
+    "PermissionDeniedError",
+    "PostgresStorage",
+    "RecallResult",
+    "RollbackError",
+    "SQLiteStorage",
+    "Sentiment",
+    "SharedVocabularyLayer",
+    "StorageConnectionError",
+    "StorageError",
+    "SyncDirection",
+    "SyncResult",
+    "TransferManifest",
+    "ValidationError",
+    "VocabularySchema",
+    "VocabularyValidationError",
+    "__version__",
     "configure_logging",
+    "create_app",
     "get_logger",
+    "run_server",
 ]
