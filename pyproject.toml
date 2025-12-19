@@ -58,6 +58,7 @@ dependencies = [
     # Caching & Rate Limiting (battle-tested)
     "cachetools>=5.0.0",
     "limits>=3.0.0",
+    "slowapi>=0.1.9",
     # Persistent Queue (survives crashes/restarts)
     "persist-queue>=1.1.0",
     # Disk-backed cache (SQLite, survives restarts)
