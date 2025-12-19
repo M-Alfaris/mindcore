@@ -425,11 +425,16 @@ class FLR:
         # Search cache
         for memory_id, (memory, _) in self._cache.items():
             # Access control
+            # Note: For full team-based access control, use CrossAgentLayer which
+            # has proper team registration and membership checking. FLR only does
+            # basic agent-level filtering.
             if memory.user_id != user_id:
                 if memory.access_level == "private":
                     continue
                 if memory.access_level == "team" and memory.agent_id != agent_id:
-                    continue  # TODO: Check team membership
+                    # Basic check: different agent, team-level access
+                    # For proper team membership validation, use CrossAgentLayer.query()
+                    continue
 
             # Type filter
             if memory_types and memory.memory_type not in memory_types:

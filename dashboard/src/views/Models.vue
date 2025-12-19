@@ -41,60 +41,6 @@
       </a-col>
     </a-row>
 
-    <!-- Local Models -->
-    <div class="section-header">
-      <DesktopOutlined class="section-icon" />
-      <h2>Local Models (llama.cpp)</h2>
-    </div>
-    <a-row :gutter="[24, 24]">
-      <a-col v-for="model in models.local" :key="model.id" :xs="24" :sm="12" :lg="6">
-        <div
-          :class="['model-card', { selected: selectedModel === model.id, unavailable: !model.available }]"
-          @click="model.available ? selectModel(model.id) : downloadModel(model.id)"
-        >
-          <div class="model-card-icon local">
-            <RobotOutlined />
-          </div>
-          <div class="model-card-name">{{ model.name }}</div>
-          <div class="model-card-desc">{{ model.description }}</div>
-          <div class="model-card-meta">
-            <HddOutlined /> {{ model.size }}
-          </div>
-          <div class="model-card-footer">
-            <a-tag :color="model.available ? 'green' : 'default'">
-              {{ model.available ? 'Available' : 'Not Downloaded' }}
-            </a-tag>
-            <template v-if="model.available">
-              <CheckCircleFilled v-if="selectedModel === model.id" class="check-icon" />
-            </template>
-            <a-button v-else type="link" size="small" @click.stop="downloadModel(model.id)">
-              <DownloadOutlined /> Download
-            </a-button>
-          </div>
-        </div>
-      </a-col>
-    </a-row>
-
-    <!-- Download Section -->
-    <a-card class="dashboard-card download-card">
-      <a-row align="middle" :gutter="24">
-        <a-col :flex="'auto'">
-          <h3>Download Models via CLI</h3>
-          <p>Use the Mindcore CLI to download local models:</p>
-          <div class="cli-commands">
-            <code>mindcore download-model</code>
-            <code>mindcore download-model -m qwen2.5-3b</code>
-            <code>mindcore list-models -v</code>
-          </div>
-        </a-col>
-        <a-col>
-          <a-button type="primary" size="large" @click="openDocs">
-            <BookOutlined /> View Documentation
-          </a-button>
-        </a-col>
-      </a-row>
-    </a-card>
-
     <!-- Apply Button -->
     <div class="actions-bar" v-if="selectedModel !== activeModel?.model">
       <a-space>
@@ -114,20 +60,14 @@ import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   CloudOutlined,
-  DesktopOutlined,
   ThunderboltOutlined,
-  RobotOutlined,
-  HddOutlined,
-  DownloadOutlined,
   CheckCircleFilled,
-  BookOutlined,
   CheckOutlined
 } from '@ant-design/icons-vue'
 import { dashboardApi } from '../api'
 
 const models = reactive({
-  cloud: [],
-  local: []
+  cloud: []
 })
 const activeModel = ref(null)
 const selectedModel = ref(null)
@@ -135,9 +75,8 @@ const applying = ref(false)
 
 const getProviderColor = (provider) => {
   if (!provider) return 'default'
-  if (provider.includes('Llama') || provider.includes('llama')) return 'green'
   if (provider.includes('OpenAI') || provider.includes('openai')) return 'blue'
-  if (provider.includes('Fallback')) return 'purple'
+  if (provider.includes('Anthropic') || provider.includes('anthropic')) return 'purple'
   return 'default'
 }
 
@@ -145,7 +84,6 @@ const fetchModels = async () => {
   try {
     const data = await dashboardApi.getModels()
     models.cloud = data.cloud || []
-    models.local = data.local || []
 
     // Also get active model
     const active = await dashboardApi.getActiveModel()
@@ -160,15 +98,6 @@ const selectModel = (modelId) => {
   selectedModel.value = modelId
 }
 
-const downloadModel = async (modelId) => {
-  try {
-    await dashboardApi.downloadModel(modelId)
-    message.info(`To download ${modelId}, run: mindcore download-model -m ${modelId}`)
-  } catch (err) {
-    console.error('Failed to trigger download:', err)
-  }
-}
-
 const applyModel = async () => {
   applying.value = true
   try {
@@ -181,10 +110,6 @@ const applyModel = async () => {
   } finally {
     applying.value = false
   }
-}
-
-const openDocs = () => {
-  window.open('https://github.com/M-Alfaris/mindcore#-local-llm-setup', '_blank')
 }
 
 onMounted(() => {

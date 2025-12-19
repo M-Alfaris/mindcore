@@ -101,9 +101,6 @@ services:
       MINDCORE_DB_MAX_CONNECTIONS: 5
       # LLM Provider (required)
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      # Optional: Use local llama.cpp instead of OpenAI
-      # MINDCORE_LLM_PROVIDER: llama
-      # MINDCORE_LLAMA_MODEL_PATH: /models/your-model.gguf
       # Timezone configuration
       MINDCORE_TIMEZONE: ${MINDCORE_TIMEZONE:-UTC}
       # CORS (comma-separated origins)
@@ -124,9 +121,6 @@ services:
     restart: unless-stopped
     networks:
       - mindcore-network
-    # Optional: Mount local models for llama.cpp
-    # volumes:
-    #   - ./models:/models:ro
 
 volumes:
   mindcore_postgres_data:

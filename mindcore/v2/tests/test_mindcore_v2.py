@@ -317,8 +317,8 @@ class TestMultiAgent:
         assert all(a["agent_id"] != "temp_agent" for a in agents)
 
 
-class TestExtraction:
-    """Test memory extraction functionality."""
+class TestDirectStructuredOutput:
+    """Test direct memory storage from structured LLM output."""
 
     @pytest.fixture
     def memory(self):
@@ -331,8 +331,9 @@ class TestExtraction:
         mc.close()
         os.unlink(db_path)
 
-    def test_extract_from_structured_output(self, memory):
-        """Test extracting from LLM structured output."""
+    def test_store_from_structured_output(self, memory):
+        """Test storing directly from LLM structured output."""
+        # Simulated LLM response with structured output
         llm_response = {
             "response": "I'll help you with that.",
             "memories_to_store": [
@@ -345,40 +346,58 @@ class TestExtraction:
             ],
         }
 
-        memories = memory.extract_from_response(
-            llm_response=llm_response,
-            user_id="user123",
-            auto_store=True,
-        )
+        # Store directly - no extraction layer needed
+        stored_ids = []
+        for mem in llm_response["memories_to_store"]:
+            memory_id = memory.store(
+                content=mem["content"],
+                memory_type=mem["memory_type"],
+                user_id="user123",
+                topics=mem.get("topics", []),
+                importance=mem.get("importance", 0.5),
+            )
+            stored_ids.append(memory_id)
 
-        assert len(memories) == 1
-        assert memories[0].memory_type == "preference"
+        assert len(stored_ids) == 1
 
-    def test_extract_fails_on_invalid_output(self, memory):
-        """Test that extraction fails hard on invalid output."""
-        invalid_response = {
-            "response": "Hello",
+        # Verify it was stored correctly
+        retrieved = memory.get(stored_ids[0])
+        assert retrieved is not None
+        assert retrieved.memory_type == "preference"
+        assert retrieved.importance == 0.8
+
+    def test_store_multiple_memories(self, memory):
+        """Test storing multiple memories from structured output."""
+        llm_response = {
+            "response": "Here's what I learned about you.",
             "memories_to_store": [
-                {
-                    "content": "Missing memory_type field",
-                    # memory_type is missing - should fail
-                }
+                {"content": "Prefers dark mode", "memory_type": "preference", "topics": ["settings"]},
+                {"content": "Uses Python daily", "memory_type": "semantic", "topics": ["programming"]},
+                {"content": "Works at tech company", "memory_type": "entity", "topics": ["work"]},
             ],
         }
 
-        with pytest.raises(KeyError):
-            memory.extract_from_response(
-                llm_response=invalid_response,
+        for mem in llm_response["memories_to_store"]:
+            memory.store(
+                content=mem["content"],
+                memory_type=mem["memory_type"],
                 user_id="user123",
+                topics=mem.get("topics", []),
             )
 
-    def test_extract_fails_on_invalid_type(self, memory):
-        """Test that extraction fails on wrong output type."""
-        with pytest.raises(TypeError):
-            memory.extract_from_response(
-                llm_response="not a dict",
-                user_id="user123",
-            )
+        # Recall should find all stored memories
+        result = memory.recall(query="user preferences settings", user_id="user123")
+        assert len(result.memories) >= 1
+
+    def test_get_json_schema_for_llm(self, memory):
+        """Test getting JSON schema to configure LLM structured output."""
+        schema = memory.get_json_schema()
+
+        # Schema should define the expected output format
+        assert schema["type"] == "object"
+        assert "properties" in schema
+        assert "memories_to_store" in schema["properties"]
+        assert "response" in schema["properties"]
 
 
 class TestStats:

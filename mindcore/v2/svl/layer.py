@@ -60,97 +60,14 @@ from .sources import (
     create_source,
 )
 
-
-# =============================================================================
-# Core Enums (from VocabularySchema)
-# =============================================================================
-
-class MemoryType(str, Enum):
-    """Core memory types."""
-
-    EPISODIC = "episodic"        # Events, conversations, interactions
-    SEMANTIC = "semantic"         # Facts, knowledge, learned information
-    PROCEDURAL = "procedural"     # Workflows, how-to, processes
-    PREFERENCE = "preference"     # User preferences, settings
-    ENTITY = "entity"             # People, places, things
-    RELATIONSHIP = "relationship" # Connections between entities
-    TEMPORAL = "temporal"         # Time-bound info (auto-expires)
-    WORKING = "working"           # Current session context (cleared)
-
-
-class Sentiment(str, Enum):
-    """Sentiment values."""
-
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    NEUTRAL = "neutral"
-    MIXED = "mixed"
-
-
-class AccessLevel(str, Enum):
-    """Memory access levels for multi-agent."""
-
-    PRIVATE = "private"    # Only this agent
-    TEAM = "team"          # Agents in same team/group
-    SHARED = "shared"      # All agents for this user
-    GLOBAL = "global"      # Cross-user (knowledge base)
-
-
-# =============================================================================
-# Migration Support
-# =============================================================================
-
-@dataclass
-class Migration:
-    """Migration rules between vocabulary versions."""
-
-    from_version: str
-    to_version: str
-
-    # Field transformations
-    renames: dict[str, str] = field(default_factory=dict)  # old -> new
-    merges: dict[str, list[str]] = field(default_factory=dict)  # new -> [old1, old2]
-    splits: dict[str, dict[str, str]] = field(default_factory=dict)  # old -> {condition: new}
-    deletes: list[str] = field(default_factory=list)
-
-    # New fields with defaults
-    added_fields: dict[str, Any] = field(default_factory=dict)  # field -> default
-
-    def apply_to_topics(self, topics: list[str]) -> list[str]:
-        """Apply migration to a list of topics."""
-        result = []
-        for topic in topics:
-            if topic in self.deletes:
-                continue
-            if topic in self.renames:
-                result.append(self.renames[topic])
-            else:
-                merged = False
-                for new_topic, old_topics in self.merges.items():
-                    if topic in old_topics:
-                        if new_topic not in result:
-                            result.append(new_topic)
-                        merged = True
-                        break
-                if not merged:
-                    result.append(topic)
-        return list(set(result))
-
-    def apply_to_categories(self, categories: list[str]) -> list[str]:
-        """Apply migration to categories."""
-        return self.apply_to_topics(categories)
-
-
-@dataclass
-class FieldSchema:
-    """Schema for a custom field."""
-
-    name: str
-    field_type: str  # "string", "number", "boolean", "array", "enum"
-    required: bool = False
-    enum_values: list[str] | None = None
-    default: Any = None
-    description: str = ""
+# Import core types from vocabulary (single source of truth)
+from ..vocabulary.schema import (
+    MemoryType,
+    Sentiment,
+    AccessLevel,
+    FieldSchema,
+    Migration,
+)
 
 
 # =============================================================================

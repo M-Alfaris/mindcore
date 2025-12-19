@@ -277,7 +277,7 @@ store = KnowledgeStore(
 
     # Enrichment
     enable_enrichment=True,  # Auto-extract topics, sentiment, etc.
-    llm_provider="auto"      # Uses llama.cpp if available, else OpenAI
+    llm_provider="openai"
 )
 
 # Register agents
@@ -438,9 +438,6 @@ Install only what you need:
 ```bash
 # Core (messages, cache, database)
 pip install mindcore
-
-# With local LLM support
-pip install mindcore[llama]
 
 # With vector stores
 pip install mindcore[vectors]      # Chroma + SentenceTransformers

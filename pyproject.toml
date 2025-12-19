@@ -19,13 +19,9 @@ keywords = [
     "context",
     "llm",
     "openai",
-    "llama-cpp",
-    "llama",
-    "gguf",
     "langchain",
     "chatbot",
     "conversation",
-    "local-llm",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -67,9 +63,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llama = [
-    "llama-cpp-python>=0.2.0",
-]
 async = [
     "aiosqlite>=0.19.0",
     "asyncpg>=0.29.0",
@@ -128,7 +121,6 @@ dev = [
     "pre-commit>=3.0.0",
 ]
 all = [
-    "mindcore[llama]",
     "mindcore[async]",
     "mindcore[vectors]",
     "mindcore[rbac]",
