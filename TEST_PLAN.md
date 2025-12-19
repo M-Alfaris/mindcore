@@ -1,6 +1,9 @@
 # Test Coverage Results
 
-## Final State (381 tests passing, 22 skipped)
+## Final State (374 tests passing, 22 skipped)
+
+> **Note:** Removed 7 useless enum value tests that only compared hardcoded values
+> (tests that just verify `EnumClass.VALUE.value == "value"` provide no real benefit).
 
 | Module | Coverage | Status |
 |--------|----------|--------|
@@ -128,7 +131,7 @@ pytest mindcore/v2/tests/test_postgres_storage.py -v
 
 ## Notes
 
-- Total: 381 tests passing, 22 skipped (PostgreSQL)
+- Total: 374 tests passing, 22 skipped (PostgreSQL)
 - Core v2 functionality is well-tested with 85%+ coverage
 - Server modules (REST, MCP) need HTTP-level integration tests
 - PostgreSQL tests require `MINDCORE_TEST_POSTGRES_URL` environment variable

@@ -12,18 +12,6 @@ from mindcore.v2.access import (
 from mindcore.v2.flr import Memory
 
 
-class TestPermission:
-    """Test Permission enum."""
-
-    def test_permission_values(self):
-        """Test permission enum values."""
-        assert Permission.READ.value == "read"
-        assert Permission.WRITE.value == "write"
-        assert Permission.DELETE.value == "delete"
-        assert Permission.SHARE.value == "share"
-        assert Permission.ADMIN.value == "admin"
-
-
 class TestAgentProfile:
     """Test AgentProfile dataclass."""
 

@@ -10,35 +10,11 @@ from mindcore.v2.clst import (
     CLST,
     CompressionStrategy,
     CompressionResult,
-    SyncDirection,
-    SyncResult,
     TransferManifest,
-    MigrationResult,
 )
 from mindcore.v2.flr import Memory
 from mindcore.v2.storage import SQLiteStorage
 from mindcore.v2.vocabulary import VocabularySchema
-
-
-class TestCompressionStrategy:
-    """Test CompressionStrategy enum."""
-
-    def test_strategy_values(self):
-        """Test compression strategy values."""
-        assert CompressionStrategy.SUMMARIZE.value == "summarize"
-        assert CompressionStrategy.MERGE.value == "merge"
-        assert CompressionStrategy.DEDUPLICATE.value == "deduplicate"
-        assert CompressionStrategy.EXTRACT.value == "extract"
-
-
-class TestSyncDirection:
-    """Test SyncDirection enum."""
-
-    def test_direction_values(self):
-        """Test sync direction values."""
-        assert SyncDirection.PUSH.value == "push"
-        assert SyncDirection.PULL.value == "pull"
-        assert SyncDirection.BIDIRECTIONAL.value == "bidirectional"
 
 
 class TestTransferManifest:
@@ -415,4 +391,9 @@ class TestCLSTStats:
         stats = clst.get_stats()
 
         assert isinstance(stats, dict)
-        assert "total_memories" in stats or "memory_count" in stats or len(stats) >= 0
+        # Stats should have storage_stats with memory count
+        assert "storage_stats" in stats, f"Stats should contain storage_stats, got keys: {list(stats.keys())}"
+        storage_stats = stats["storage_stats"]
+        assert "total_memories" in storage_stats, \
+            f"storage_stats should contain total_memories, got keys: {list(storage_stats.keys())}"
+        assert storage_stats["total_memories"] == 3

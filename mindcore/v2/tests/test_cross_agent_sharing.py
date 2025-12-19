@@ -16,16 +16,6 @@ from mindcore.v2.storage import SQLiteStorage
 from mindcore.v2.flr import Memory
 
 
-class TestSyncDirection:
-    """Test SyncDirection enum."""
-
-    def test_sync_direction_values(self):
-        """Test sync direction enum values."""
-        assert SyncDirection.ONE_WAY.value == "one_way"
-        assert SyncDirection.BIDIRECTIONAL.value == "bidirectional"
-        assert SyncDirection.MERGE.value == "merge"
-
-
 class TestShareResult:
     """Test ShareResult dataclass."""
 

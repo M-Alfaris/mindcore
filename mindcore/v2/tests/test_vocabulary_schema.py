@@ -7,40 +7,8 @@ import pytest
 from mindcore.v2.vocabulary import (
     VocabularySchema,
     DEFAULT_VOCABULARY,
-    MemoryType,
-    Sentiment,
-    AccessLevel,
 )
 from mindcore.v2.vocabulary.schema import FieldSchema, Migration
-
-
-class TestEnums:
-    """Test vocabulary enums."""
-
-    def test_memory_type_values(self):
-        """Test MemoryType enum values."""
-        assert MemoryType.EPISODIC.value == "episodic"
-        assert MemoryType.SEMANTIC.value == "semantic"
-        assert MemoryType.PROCEDURAL.value == "procedural"
-        assert MemoryType.PREFERENCE.value == "preference"
-        assert MemoryType.ENTITY.value == "entity"
-        assert MemoryType.RELATIONSHIP.value == "relationship"
-        assert MemoryType.TEMPORAL.value == "temporal"
-        assert MemoryType.WORKING.value == "working"
-
-    def test_sentiment_values(self):
-        """Test Sentiment enum values."""
-        assert Sentiment.POSITIVE.value == "positive"
-        assert Sentiment.NEGATIVE.value == "negative"
-        assert Sentiment.NEUTRAL.value == "neutral"
-        assert Sentiment.MIXED.value == "mixed"
-
-    def test_access_level_values(self):
-        """Test AccessLevel enum values."""
-        assert AccessLevel.PRIVATE.value == "private"
-        assert AccessLevel.TEAM.value == "team"
-        assert AccessLevel.SHARED.value == "shared"
-        assert AccessLevel.GLOBAL.value == "global"
 
 
 class TestFieldSchema:
