@@ -73,6 +73,11 @@ class Mindcore:
         storage: str | BaseStorage = "sqlite:///mindcore.db",
         vocabulary: VocabularySchema | None = None,
         enable_multi_agent: bool = False,
+        # Configurable limits for security/performance
+        max_content_length: int = 50000,
+        max_batch_size: int = 100,
+        cache_ttl_seconds: int = 300,
+        max_results_limit: int = 1000,
     ):
         """Initialize Mindcore.
 
@@ -83,7 +88,18 @@ class Mindcore:
                 - BaseStorage instance for custom backends
             vocabulary: Vocabulary schema for metadata control
             enable_multi_agent: Enable multi-agent access control
+            max_content_length: Maximum memory content length (default 50KB)
+            max_batch_size: Maximum memories per batch operation (default 100)
+            cache_ttl_seconds: Cache time-to-live in seconds (default 5min)
+            max_results_limit: Maximum results per query (default 1000)
         """
+        # Store limits
+        self._limits = {
+            "max_content_length": max_content_length,
+            "max_batch_size": max_batch_size,
+            "cache_ttl_seconds": cache_ttl_seconds,
+            "max_results_limit": max_results_limit,
+        }
         # Initialize storage
         if isinstance(storage, str):
             if storage.startswith("sqlite:///"):
@@ -102,7 +118,10 @@ class Mindcore:
         self._access_controller = AccessController() if enable_multi_agent else None
 
         # Initialize FLR and CLST
-        self._flr = FLR(storage=self._storage)
+        self._flr = FLR(
+            storage=self._storage,
+            access_controller=self._access_controller,
+        )
         self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
 
         # Initialize extractor
@@ -137,7 +156,17 @@ class Mindcore:
 
         Returns:
             Memory ID
+
+        Raises:
+            ValueError: If content exceeds max_content_length
         """
+        # Enforce content length limit
+        max_len = self._limits["max_content_length"]
+        if len(content) > max_len:
+            raise ValueError(
+                f"Content length {len(content)} exceeds maximum {max_len} characters"
+            )
+
         memory = Memory(
             memory_id="",
             content=content,
@@ -485,10 +514,19 @@ class Mindcore:
         return {
             "vocabulary_version": self._vocabulary.version,
             "multi_agent_enabled": self._access_controller is not None,
+            "limits": self._limits,
             "flr": self._flr.get_stats(),
             "clst": self._clst.get_stats(),
             "access": self._access_controller.get_stats() if self._access_controller else None,
         }
+
+    def get_limits(self) -> dict[str, int]:
+        """Get configured limits.
+
+        Returns:
+            Dict with max_content_length, max_batch_size, cache_ttl_seconds, max_results_limit
+        """
+        return self._limits.copy()
 
     def close(self) -> None:
         """Close all connections."""

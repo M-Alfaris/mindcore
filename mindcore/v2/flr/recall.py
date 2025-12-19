@@ -22,6 +22,7 @@ import hashlib
 
 if TYPE_CHECKING:
     from ..storage.base import BaseStorage
+    from ..access import AccessController
 
 
 @dataclass
@@ -175,6 +176,7 @@ class FLR:
         cache_size: int = 1000,
         cache_ttl_seconds: int = 300,
         embedding_fn: callable | None = None,
+        access_controller: AccessController | None = None,
     ):
         """Initialize FLR.
 
@@ -183,11 +185,13 @@ class FLR:
             cache_size: Max memories in hot cache
             cache_ttl_seconds: Cache TTL
             embedding_fn: Optional function to generate embeddings
+            access_controller: Optional access controller for team-based access
         """
         self.storage = storage
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl_seconds
         self.embedding_fn = embedding_fn
+        self.access_controller = access_controller
 
         # Hot cache (LRU)
         self._cache: OrderedDict[str, tuple[Memory, float]] = OrderedDict()
@@ -429,7 +433,9 @@ class FLR:
                 if memory.access_level == "private":
                     continue
                 if memory.access_level == "team" and memory.agent_id != agent_id:
-                    continue  # TODO: Check team membership
+                    # Check team membership using access controller
+                    if not self._check_team_access(agent_id, memory.agent_id):
+                        continue
 
             # Type filter
             if memory_types and memory.memory_type not in memory_types:
@@ -440,6 +446,40 @@ class FLR:
                 results.append(memory)
 
         return results
+
+    def _check_team_access(
+        self,
+        requesting_agent_id: str | None,
+        memory_owner_agent_id: str | None,
+    ) -> bool:
+        """Check if requesting agent shares a team with memory owner.
+
+        Args:
+            requesting_agent_id: Agent requesting access
+            memory_owner_agent_id: Agent that owns the memory
+
+        Returns:
+            True if agents share a team, False otherwise
+        """
+        if not self.access_controller:
+            # No access controller, deny by default for team memories
+            return False
+
+        if not requesting_agent_id or not memory_owner_agent_id:
+            return False
+
+        # Get profiles for both agents
+        requesting_profile = self.access_controller.get_agent(requesting_agent_id)
+        owner_profile = self.access_controller.get_agent(memory_owner_agent_id)
+
+        if not requesting_profile or not owner_profile:
+            return False
+
+        # Check for common teams
+        requesting_teams = set(requesting_profile.teams)
+        owner_teams = set(owner_profile.teams)
+
+        return bool(requesting_teams & owner_teams)
 
     def _query_storage(
         self,
