@@ -18,11 +18,15 @@ Usage:
         )
     )
 
-    # Attach to client
-    observer.attach(client)
-
-    # Or use standalone
-    observer.record_enrichment(confidence=0.85, latency_ms=150)
+    # Record metrics
+    observer.record_enrichment(
+        message_id="msg123",
+        confidence_score=0.85,
+        latency_ms=150,
+        enrichment_source="llm",
+        vocabulary_match_rate=0.9,
+        success=True,
+    )
     observer.check_alerts()
 """
 

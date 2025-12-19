@@ -5,7 +5,7 @@ Provides a unified interface for metrics, alerts, and quality monitoring.
 
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from mindcore.utils.logger import get_logger
 
@@ -13,9 +13,6 @@ from .alerts import AlertConfig, AlertHandler, AlertManager, LoggingAlertHandler
 from .metrics import MetricsCollector, ObservabilityBackend
 from .quality import EnrichmentQualityMonitor
 
-
-if TYPE_CHECKING:
-    from mindcore import MindcoreClient
 
 logger = get_logger(__name__)
 
@@ -41,10 +38,7 @@ class MindcoreObserver:
         ...     )
         ... )
         >>>
-        >>> # Attach to client for automatic instrumentation
-        >>> observer.attach(client)
-        >>>
-        >>> # Or use standalone
+        >>> # Record metrics
         >>> observer.record_enrichment(
         ...     message_id="msg123",
         ...     confidence_score=0.85,
@@ -111,40 +105,6 @@ class MindcoreObserver:
             f"MindcoreObserver initialized: backend={backend.value}, "
             f"alerts_configured={len(self._alert_manager.rules)}"
         )
-
-    def attach(self, client: "MindcoreClient") -> None:
-        """Attach observer to a MindcoreClient for automatic instrumentation.
-
-        This wraps key methods to automatically record metrics.
-
-        Args:
-            client: MindcoreClient to instrument
-        """
-        # Store reference for queue monitoring
-        self._client = client
-
-        # Wrap the enrichment worker notification
-        original_notify = getattr(
-            client._cache_invalidation, "notify_enrichment_complete", None
-        )
-
-        if original_notify:
-            def instrumented_notify(message):
-                # Record metrics
-                if hasattr(message, "metadata"):
-                    self.record_enrichment(
-                        message_id=message.message_id,
-                        confidence_score=message.metadata.confidence_score,
-                        latency_ms=message.metadata.enrichment_latency_ms or 0,
-                        enrichment_source=message.metadata.enrichment_source,
-                        vocabulary_match_rate=message.metadata.vocabulary_match_rate,
-                        success=not message.metadata.enrichment_failed,
-                    )
-                return original_notify(message)
-
-            client._cache_invalidation.notify_enrichment_complete = instrumented_notify
-
-        logger.info("Observer attached to MindcoreClient")
 
     def record_enrichment(
         self,
@@ -228,15 +188,6 @@ class MindcoreObserver:
             List of triggered alerts
         """
         metrics = self._metrics.get_alert_metrics()
-
-        # Add queue depth if client is attached
-        if hasattr(self, "_client") and self._client:
-            try:
-                queue_size = self._client._enrichment_queue.qsize()
-                metrics["enrichment_queue_depth"] = queue_size
-            except Exception:
-                pass
-
         triggered = self._alert_manager.check(metrics)
         return [alert.to_dict() for alert in triggered]
 

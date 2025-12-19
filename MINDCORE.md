@@ -10,7 +10,6 @@
 | `mindcore/v2/` | Primary | Modern memory layer with FLR/CLST protocols |
 | `mindcore/v2/cross_agent/` | Primary | Multi-agent memory sharing and routing |
 | `mindcore/v2/svl/` | Primary | Shared Vocabulary Layer - semantic metadata |
-| `mindcore/context_lake/` | Plugin | Unified context aggregation |
 | `mindcore/observability/` | Optional | Metrics, alerts, quality scoring |
 | `mindcore/utils/` | Utilities | Logging |
 
@@ -638,29 +637,6 @@ GET    /health                - Health check
 
 ## 7. Plugins
 
-### Context Lake
-
-**Location:** `mindcore/context_lake/`
-
-Unified context aggregation from multiple sources.
-
-```python
-from mindcore.context_lake import ContextLake
-
-lake = ContextLake(mindcore=memory)
-
-# Register sources
-lake.register_knowledge_base("docs", path="/path/to/docs")
-lake.register_api_listener("orders", url="https://api.example.com/orders")
-
-# Get aggregated context
-context = lake.get_context(
-    query="order status",
-    user_id="user123",
-    sources=["memory", "docs", "orders"],
-)
-```
-
 ### Observability
 
 **Location:** `mindcore/observability/`
@@ -698,8 +674,6 @@ pytest mindcore/tests/ -v
 | `v2/tests/test_mindcore_v2.py` | Core v2 functionality |
 | `v2/tests/test_cross_agent.py` | Cross-agent memory layer |
 | `v2/tests/test_svl.py` | Shared Vocabulary Layer |
-| `tests/test_context_lake.py` | Context lake plugin |
-| `tests/test_observability.py` | Observability tests |
 
 ---
 
@@ -784,12 +758,6 @@ mindcore/
 │   │   └── test_svl.py          # SVL tests
 │   └── __init__.py
 │
-├── context_lake/                # Context aggregation plugin
-│   ├── lake.py                  # ContextLake
-│   ├── knowledge_base.py        # Static knowledge
-│   ├── api_listener.py          # External API ingestion
-│   └── __init__.py
-│
 ├── observability/               # Optional observability
 │   ├── observer.py              # Metrics collection
 │   ├── metrics.py               # Metric definitions
@@ -797,14 +765,9 @@ mindcore/
 │   ├── quality.py               # Quality scoring
 │   └── __init__.py
 │
-├── utils/                       # Utilities
-│   ├── logger.py                # Logging
-│   └── __init__.py
-│
-└── tests/                       # Integration tests
-    ├── conftest.py              # Pytest fixtures
-    ├── test_context_lake.py     # Context lake tests
-    └── test_observability.py    # Observability tests
+└── utils/                       # Utilities
+    ├── logger.py                # Logging
+    └── __init__.py
 ```
 
 ---
