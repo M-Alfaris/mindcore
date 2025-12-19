@@ -1,16 +1,16 @@
 # Test Coverage Results
 
-## Final State (346 tests passing)
+## Final State (381 tests passing, 22 skipped)
 
 | Module | Coverage | Status |
 |--------|----------|--------|
+| svl/domains.py | 100% | ✅ Excellent |
 | storage/sqlite.py | 96% | ✅ Excellent |
 | svl/ontology.py | 93% | ✅ Excellent |
 | extraction/extractor.py | 92% | ✅ Excellent |
 | vocabulary/schema.py | 91% | ✅ Excellent |
 | access/permissions.py | 91% | ✅ Excellent |
 | flr/recall.py | 90% | ✅ Excellent |
-| svl/domains.py | 84% | ✅ Good |
 | cross_agent/sharing.py | 84% | ✅ Good |
 | mindcore.py | 83% | ✅ Good |
 | cross_agent/layer.py | 80% | ✅ Good |
@@ -76,18 +76,59 @@
    - Access control
    - History tracking
 
+9. **test_postgres_storage.py** - 22 tests for PostgreSQL (skipped without DB)
+   - CRUD operations
+   - Full-text search
+   - JSONB operations
+   - Expiration handling
+   - Version filtering
+
+10. **test_domains.py** - 35+ tests for SVL domains
+    - Domain vocabulary creation
+    - Built-in domain validation
+    - Domain merging
+    - Custom domain creation
+    - Real-world use case scenarios
+
+11. **conftest.py** - Shared test fixtures
+    - Sample memories for different use cases
+    - Sample vocabulary schemas (e-commerce, healthcare)
+    - Sample agent configurations
+    - Reusable pytest fixtures
+    - LLM response test data
+
+## Deprecated Modules Removed
+
+- `mindcore/context_lake/` - Removed (not used)
+- `mindcore/observability/` - Removed (not used)
+- `mindcore/tests/test_context_lake.py` - Removed
+- `mindcore/tests/test_observability.py` - Removed
+
 ## Coverage Summary
 
-- Core v2 modules (FLR, CLST, Storage, Vocabulary, Extraction, Access): **>85% average**
-- Integration (Mindcore): **83%**
-- Cross-agent: **70% average**
-- Server modules: Require HTTP integration tests (out of scope)
-- Legacy modules (context_lake, observability): Not tested (deprecated)
+- **Overall**: 64.63% (excluding deprecated modules)
+- **Core v2 modules** (FLR, Storage, Vocabulary, Extraction, Access): **>90% average**
+- **Integration** (Mindcore): **83%**
+- **Cross-agent**: **75% average**
+- **SVL/Domains**: **100%** for domains, 57-93% for other SVL
+
+## Running Tests
+
+```bash
+# Run all tests
+pytest mindcore/v2/tests/ -v
+
+# Run with coverage
+pytest mindcore/v2/tests/ --cov=mindcore/v2 --cov-report=html
+
+# Run PostgreSQL tests (requires database)
+export MINDCORE_TEST_POSTGRES_URL="postgresql://user:pass@localhost/mindcore_test"
+pytest mindcore/v2/tests/test_postgres_storage.py -v
+```
 
 ## Notes
 
-- Total: 346 tests
-- The 47% overall coverage includes deprecated/legacy modules
+- Total: 381 tests passing, 22 skipped (PostgreSQL)
 - Core v2 functionality is well-tested with 85%+ coverage
 - Server modules (REST, MCP) need HTTP-level integration tests
-- PostgreSQL storage needs a running database for tests
+- PostgreSQL tests require `MINDCORE_TEST_POSTGRES_URL` environment variable
