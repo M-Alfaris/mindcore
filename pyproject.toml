@@ -144,15 +144,12 @@ Repository = "https://github.com/M-Alfaris/mindcore"
 Issues = "https://github.com/M-Alfaris/mindcore/issues"
 Changelog = "https://github.com/M-Alfaris/mindcore/blob/main/CHANGELOG.md"
 
-[project.scripts]
-mindcore = "mindcore.cli:main"
-mindcore-server = "mindcore.api.server:run_server"
-
-[tool.setuptools]
-packages = ["mindcore", "mindcore.core", "mindcore.agents", "mindcore.api", "mindcore.api.routes", "mindcore.utils", "mindcore.llm", "mindcore.cli", "mindcore.integrations", "mindcore.vectorstores", "mindcore.connectors"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mindcore*"]
 
 [tool.setuptools.package-data]
-mindcore = ["config.yaml", "py.typed"]
+mindcore = ["py.typed"]
 
 # ============================================================================
 # Ruff - Fast Python linter and formatter (replaces black, flake8, isort)

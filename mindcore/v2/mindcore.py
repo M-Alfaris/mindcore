@@ -102,7 +102,10 @@ class Mindcore:
         self._access_controller = AccessController() if enable_multi_agent else None
 
         # Initialize FLR and CLST
-        self._flr = FLR(storage=self._storage)
+        self._flr = FLR(
+            storage=self._storage,
+            access_controller=self._access_controller,
+        )
         self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
 
         # Initialize extractor

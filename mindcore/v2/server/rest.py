@@ -389,3 +389,35 @@ def run_server(
 
     app = create_app(flr, clst, vocabulary, access_controller)
     uvicorn.run(app, host=host, port=port)
+
+
+# Standalone app factory for uvicorn
+def create_standalone_app():
+    """Create a standalone FastAPI app using environment configuration.
+
+    This is used when running the server via uvicorn directly:
+        uvicorn mindcore.v2.server.rest:app --host 0.0.0.0 --port 8000
+
+    Environment variables:
+        MINDCORE_DB_URL: Database connection string (default: sqlite:///mindcore.db)
+        MINDCORE_MULTI_AGENT: Enable multi-agent mode (default: false)
+    """
+    import os
+
+    from ..mindcore import Mindcore
+
+    db_url = os.environ.get("MINDCORE_DB_URL", "sqlite:///mindcore.db")
+    multi_agent = os.environ.get("MINDCORE_MULTI_AGENT", "false").lower() == "true"
+
+    mindcore = Mindcore(storage=db_url, enable_multi_agent=multi_agent)
+
+    return create_app(
+        flr=mindcore._flr,
+        clst=mindcore._clst,
+        vocabulary=mindcore._vocabulary,
+        access_controller=mindcore._access_controller if multi_agent else None,
+    )
+
+
+# Create app instance for uvicorn
+app = create_standalone_app()
