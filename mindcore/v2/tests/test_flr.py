@@ -544,3 +544,372 @@ class TestFLRStats:
         assert "cache_max" in stats
         assert "active_contexts" in stats
         assert stats["cache_size"] == 3
+
+
+class TestFLRContextManagement:
+    """Test FLR context window management."""
+
+    @pytest.fixture
+    def storage(self):
+        """Create temporary storage."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        storage = SQLiteStorage(db_path)
+        yield storage
+        storage.close()
+        os.unlink(db_path)
+
+    @pytest.fixture
+    def flr(self, storage):
+        """Create FLR instance."""
+        return FLR(storage=storage)
+
+    def test_update_context_creates_new(self, flr):
+        """Test that update_context creates new context."""
+        ctx = flr.update_context(
+            session_id="session_123",
+            attention_hints=["topic1"],
+        )
+
+        assert ctx is not None
+        assert ctx.session_id == "session_123"
+        assert ctx.attention_hints == ["topic1"]
+
+    def test_update_context_adds_messages(self, flr):
+        """Test adding messages to context."""
+        flr.update_context(
+            session_id="session_123",
+            messages=[
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there!"},
+            ],
+        )
+
+        ctx = flr.get_context("session_123")
+        assert len(ctx.messages) == 2
+        assert ctx.messages[0]["role"] == "user"
+        assert ctx.messages[1]["content"] == "Hi there!"
+
+    def test_update_context_adds_working_memories(self, flr):
+        """Test adding working memories to context."""
+        memory = Memory(
+            memory_id="mem_work",
+            content="Working memory",
+            memory_type="working",
+            user_id="user_123",
+        )
+
+        flr.update_context(
+            session_id="session_123",
+            working_memories=[memory],
+        )
+
+        ctx = flr.get_context("session_123")
+        assert len(ctx.working_memories) == 1
+        assert ctx.working_memories[0].memory_id == "mem_work"
+
+    def test_get_context(self, flr):
+        """Test getting existing context."""
+        flr.update_context(session_id="session_123")
+
+        ctx = flr.get_context("session_123")
+
+        assert ctx is not None
+        assert ctx.session_id == "session_123"
+
+    def test_get_context_nonexistent(self, flr):
+        """Test getting non-existent context."""
+        ctx = flr.get_context("nonexistent")
+        assert ctx is None
+
+    def test_clear_context(self, flr):
+        """Test clearing context."""
+        flr.update_context(
+            session_id="session_123",
+            messages=[{"role": "user", "content": "Hello"}],
+            attention_hints=["topic1"],
+        )
+
+        flr.clear_context("session_123")
+
+        ctx = flr.get_context("session_123")
+        assert ctx.messages == []
+        assert ctx.attention_hints == []
+
+    def test_clear_context_nonexistent(self, flr):
+        """Test clearing non-existent context (should not error)."""
+        # Should not raise
+        flr.clear_context("nonexistent")
+
+
+class TestFLRPromote:
+    """Test FLR memory promotion."""
+
+    @pytest.fixture
+    def storage(self):
+        """Create temporary storage."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        storage = SQLiteStorage(db_path)
+        yield storage
+        storage.close()
+        os.unlink(db_path)
+
+    @pytest.fixture
+    def flr(self, storage):
+        """Create FLR instance."""
+        return FLR(storage=storage)
+
+    def test_promote_working_memory(self, flr, storage):
+        """Test promoting a working memory to long-term storage."""
+        # Create working memory in context
+        memory = Memory(
+            memory_id="mem_work",
+            content="Promote me",
+            memory_type="working",
+            user_id="user_123",
+        )
+
+        flr.update_context(
+            session_id="session_123",
+            working_memories=[memory],
+        )
+
+        # Promote
+        result = flr.promote("mem_work")
+
+        assert result is True
+
+        # Check it's in storage
+        stored = storage.get("mem_work")
+        assert stored is not None
+        assert stored.memory_type == "episodic"  # Promoted to episodic
+
+        # Check it's removed from working memories
+        ctx = flr.get_context("session_123")
+        assert len(ctx.working_memories) == 0
+
+    def test_promote_nonexistent(self, flr):
+        """Test promoting non-existent memory."""
+        result = flr.promote("nonexistent")
+        assert result is False
+
+
+class TestFLRFlushReinforcements:
+    """Test FLR reinforcement flushing."""
+
+    @pytest.fixture
+    def storage(self):
+        """Create temporary storage."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        storage = SQLiteStorage(db_path)
+        yield storage
+        storage.close()
+        os.unlink(db_path)
+
+    @pytest.fixture
+    def flr(self, storage):
+        """Create FLR instance."""
+        return FLR(storage=storage)
+
+    def test_flush_reinforcements(self, flr, storage):
+        """Test flushing reinforcements to storage."""
+        # Store memory first
+        memory = Memory(
+            memory_id="mem_123",
+            content="Test",
+            memory_type="episodic",
+            user_id="user_123",
+        )
+        storage.store(memory)
+
+        # Add reinforcement signals
+        flr.reinforce("mem_123", signal=0.5)
+        flr.reinforce("mem_123", signal=0.3)
+
+        # Flush
+        count = flr.flush_reinforcements()
+
+        assert count == 1
+
+        # Verify in storage
+        stored = storage.get("mem_123")
+        assert abs(stored.reinforcement_score - 0.8) < 0.01
+
+        # Buffer should be cleared
+        assert len(flr._reinforcement_buffer) == 0
+
+    def test_flush_empty_buffer(self, flr):
+        """Test flushing empty buffer."""
+        count = flr.flush_reinforcements()
+        assert count == 0
+
+    def test_flush_multiple_memories(self, flr, storage):
+        """Test flushing multiple memory reinforcements."""
+        # Store memories
+        for i in range(3):
+            memory = Memory(
+                memory_id=f"mem_{i}",
+                content=f"Test {i}",
+                memory_type="episodic",
+                user_id="user_123",
+            )
+            storage.store(memory)
+            flr.reinforce(f"mem_{i}", signal=0.1 * (i + 1))
+
+        count = flr.flush_reinforcements()
+
+        assert count == 3
+
+
+class TestFLRCacheAccessControl:
+    """Test FLR cache access control."""
+
+    @pytest.fixture
+    def storage(self):
+        """Create temporary storage."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        storage = SQLiteStorage(db_path)
+        yield storage
+        storage.close()
+        os.unlink(db_path)
+
+    @pytest.fixture
+    def access_controller(self):
+        """Create access controller with agents."""
+        ac = AccessController()
+        ac.register_agent("agent_1", "Agent 1", teams=["team_a"])
+        ac.register_agent("agent_2", "Agent 2", teams=["team_a"])
+        ac.register_agent("agent_3", "Agent 3", teams=["team_b"])
+        return ac
+
+    @pytest.fixture
+    def flr(self, storage, access_controller):
+        """Create FLR with access controller."""
+        return FLR(storage=storage, access_controller=access_controller)
+
+    def test_cache_private_memory_own(self, flr):
+        """Test accessing own private memory from cache."""
+        memory = Memory(
+            memory_id="mem_private",
+            content="Private memory",
+            memory_type="episodic",
+            user_id="user_1",
+            agent_id="agent_1",
+            access_level="private",
+        )
+        flr._cache_memory(memory)
+
+        # Query as the same user
+        result = flr._query_cache(
+            query="private",
+            user_id="user_1",
+            agent_id="agent_1",
+            attention_hints=[],
+            memory_types=[],
+        )
+
+        assert len(result) >= 1
+
+    def test_cache_private_memory_other_user(self, flr):
+        """Test that other users can't access private memory from cache."""
+        memory = Memory(
+            memory_id="mem_private",
+            content="Private memory",
+            memory_type="episodic",
+            user_id="user_1",
+            agent_id="agent_1",
+            access_level="private",
+        )
+        flr._cache_memory(memory)
+
+        # Query as different user
+        result = flr._query_cache(
+            query="private",
+            user_id="user_2",
+            agent_id="agent_2",
+            attention_hints=[],
+            memory_types=[],
+        )
+
+        assert len(result) == 0
+
+    def test_cache_team_memory_same_team(self, flr):
+        """Test accessing team memory from same team."""
+        memory = Memory(
+            memory_id="mem_team",
+            content="Team memory",
+            memory_type="episodic",
+            user_id="user_1",
+            agent_id="agent_1",
+            access_level="team",
+        )
+        flr._cache_memory(memory)
+
+        # Query as different user but same team agent
+        result = flr._query_cache(
+            query="team",
+            user_id="user_1",  # Same user to pass user check
+            agent_id="agent_2",  # Different agent but same team
+            attention_hints=[],
+            memory_types=[],
+        )
+
+        assert len(result) >= 1
+
+    def test_cache_team_memory_different_team(self, flr):
+        """Test that different team can't access team memory."""
+        memory = Memory(
+            memory_id="mem_team",
+            content="Team memory",
+            memory_type="episodic",
+            user_id="user_1",
+            agent_id="agent_1",  # team_a
+            access_level="team",
+        )
+        flr._cache_memory(memory)
+
+        # Query as different team
+        result = flr._query_cache(
+            query="team",
+            user_id="user_2",
+            agent_id="agent_3",  # team_b
+            attention_hints=[],
+            memory_types=[],
+        )
+
+        assert len(result) == 0
+
+    def test_cache_memory_type_filter(self, flr):
+        """Test cache query with memory type filter."""
+        mem1 = Memory(
+            memory_id="mem_1",
+            content="Episodic memory",
+            memory_type="episodic",
+            user_id="user_1",
+        )
+        mem2 = Memory(
+            memory_id="mem_2",
+            content="Preference memory",
+            memory_type="preference",
+            user_id="user_1",
+        )
+        flr._cache_memory(mem1)
+        flr._cache_memory(mem2)
+
+        result = flr._query_cache(
+            query="memory",
+            user_id="user_1",
+            agent_id=None,
+            attention_hints=[],
+            memory_types=["preference"],
+        )
+
+        assert len(result) == 1
+        assert result[0].memory_type == "preference"
