@@ -7,9 +7,8 @@ This script demonstrates how to use Mindcore for:
 2. Enriching them with metadata
 3. Retrieving assembled context
 
-Before running (choose one):
-- Local LLM: Set MINDCORE_LLAMA_MODEL_PATH environment variable
-- OpenAI: Set OPENAI_API_KEY environment variable
+Before running:
+- Set OPENAI_API_KEY environment variable
 """
 import os
 from mindcore import MindcoreClient
@@ -21,17 +20,11 @@ def main():
     print("🧠 Mindcore Examples\n")
 
     # Check for LLM configuration
-    llama_path = os.getenv("MINDCORE_LLAMA_MODEL_PATH")
     openai_key = os.getenv("OPENAI_API_KEY")
 
-    if not llama_path and not openai_key:
+    if not openai_key:
         print("⚠️  Warning: No LLM provider configured!")
-        print("Set one of:")
-        print("  - MINDCORE_LLAMA_MODEL_PATH for local LLM")
-        print("  - OPENAI_API_KEY for OpenAI API\n")
-        print("To get started with local LLM:")
-        print("  mindcore download-model")
-        print("  export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf\n")
+        print("Set OPENAI_API_KEY environment variable\n")
         return
 
     # Initialize Mindcore with SQLite (for easy local testing)

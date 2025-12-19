@@ -266,17 +266,11 @@ def main():
     print("\n" + "🧠 MINDCORE FRAMEWORK INTEGRATION EXAMPLES\n")
 
     # Check for LLM configuration
-    llama_path = os.getenv("MINDCORE_LLAMA_MODEL_PATH")
     openai_key = os.getenv("OPENAI_API_KEY")
 
-    if not llama_path and not openai_key:
+    if not openai_key:
         print("⚠️  Warning: No LLM provider configured!")
-        print("Set one of:")
-        print("  - MINDCORE_LLAMA_MODEL_PATH for local LLM")
-        print("  - OPENAI_API_KEY for OpenAI API\n")
-        print("To get started with local LLM:")
-        print("  mindcore download-model")
-        print("  export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf\n")
+        print("Set OPENAI_API_KEY environment variable\n")
         return
 
     # Run examples

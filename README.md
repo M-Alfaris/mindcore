@@ -160,9 +160,6 @@ print(context.assembled_context)
 # Basic installation
 pip install -e .
 
-# With local LLM support (zero API costs)
-pip install -e ".[llama]"
-
 # With async support
 pip install -e ".[async]"
 
@@ -170,17 +167,7 @@ pip install -e ".[async]"
 pip install -e ".[all]"
 ```
 
-### Option A: Local LLM (Recommended - Zero API Costs)
-
-```bash
-# Download a model (~2GB)
-mindcore download-model
-
-# Set the model path
-export MINDCORE_LLAMA_MODEL_PATH=~/.mindcore/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
-```
-
-### Option B: OpenAI API
+### Setup
 
 ```bash
 export OPENAI_API_KEY="sk-your-api-key"
@@ -331,7 +318,7 @@ print(context.key_points)         # Key insights from history
 | **Smart Context Retrieval** | Single LLM call with tool calling for intelligent context assembly |
 | **Multi-tenant** | User/thread/session isolation out of the box |
 | **Flexible Storage** | SQLite (dev) or PostgreSQL (production) |
-| **LLM Agnostic** | OpenAI, local llama.cpp, or any OpenAI-compatible API |
+| **LLM Agnostic** | OpenAI, Anthropic, or any OpenAI-compatible API |
 | **Async Support** | Full async client for high-performance applications |
 | **Background Enrichment** | Persistent queue for reliable metadata processing |
 | **REST API** | FastAPI server with interactive docs |
@@ -485,14 +472,12 @@ async def chat(user_id: str, thread_id: str, message: str):
 |----------|-------------------|------------------------|------------------------|
 | **Traditional** (full history) | 50,000+ | $130 | $156,000 |
 | **Mindcore** (smart context) | ~1,500 | $4 | $4,800 |
-| **Mindcore + Local LLM** | ~1,500 | $0 | $0 |
 
 ### Why It's Efficient
 
 1. **Metadata extracted once** — Never recomputed
 2. **Deterministic retrieval** — No expensive embedding operations
 3. **Smart summarization** — Only relevant messages processed
-4. **Optional local LLM** — Zero API costs for metadata operations
 
 ---
 
@@ -502,7 +487,6 @@ async def chat(user_id: str, thread_id: str, message: str):
 
 ```bash
 # LLM Provider
-export MINDCORE_LLAMA_MODEL_PATH="~/.mindcore/models/model.gguf"
 export OPENAI_API_KEY="sk-your-api-key"
 
 # Self-hosted LLM (optional)
@@ -521,11 +505,7 @@ export DB_PASSWORD="your-password"
 
 ```yaml
 llm:
-  provider: auto  # auto, llama_cpp, or openai
-
-  llama_cpp:
-    model_path: ${MINDCORE_LLAMA_MODEL_PATH}
-    n_ctx: 4096
+  provider: openai
 
   openai:
     api_key: ${OPENAI_API_KEY}
@@ -555,13 +535,6 @@ connectors:
 ## CLI Commands
 
 ```bash
-# Download a model
-mindcore download-model                    # Default model
-mindcore download-model -m qwen2.5-3b     # Specific model
-
-# List available models
-mindcore list-models -v
-
 # Check status
 mindcore status
 
@@ -645,7 +618,6 @@ mindcore/
 │   └── preferences_manager.py  # (planned)
 │
 ├── llm/                     # LLM providers
-│   ├── llama_cpp_provider.py
 │   ├── openai_provider.py
 │   └── provider_factory.py
 │
@@ -689,7 +661,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- **llama.cpp** — CPU-optimized local LLM inference
 - **OpenAI** — GPT-4o-mini powers cloud agents
 - **FastAPI** — High-performance API framework
 - **PostgreSQL/SQLite** — Robust storage options
@@ -704,7 +675,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 **Stop rebuilding memory infrastructure. Start building features.**
 
 ```bash
-pip install -e ".[llama]" && mindcore download-model && mindcore status
+pip install -e . && mindcore status
 ```
 
 [Quick Start](#quick-start) • [Architecture](#-architecture) • [Roadmap](#-roadmap)

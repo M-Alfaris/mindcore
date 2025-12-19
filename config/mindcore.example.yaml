@@ -74,12 +74,6 @@ llm:
   #   model: claude-3-haiku-20240307
   #   max_tokens: 4096
 
-  # Local LLM (llama.cpp) configuration
-  # local:
-  #   model_path: ./models/llama-2-7b.gguf
-  #   n_ctx: 4096
-  #   n_gpu_layers: 35
-
   # Fallback provider (used if primary fails)
   fallback_provider: null
 

@@ -64,18 +64,7 @@
                       <a-select-option value="claude-3-opus-20240229">Claude 3 Opus (Cloud)</a-select-option>
                       <a-select-option value="claude-3-haiku-20240307">Claude 3 Haiku - Fast (Cloud)</a-select-option>
                     </a-select-opt-group>
-                    <a-select-opt-group label="Local Models (llama.cpp)">
-                      <a-select-option value="llama-3.2-3b-local">Llama 3.2 3B (Local)</a-select-option>
-                      <a-select-option value="llama-3.2-1b-local">Llama 3.2 1B (Local)</a-select-option>
-                      <a-select-option value="qwen2.5-3b-local">Qwen 2.5 3B (Local)</a-select-option>
-                      <a-select-option value="phi-3.5-mini-local">Phi 3.5 Mini (Local)</a-select-option>
-                      <a-select-option value="custom-local">Custom Model Path (Local)</a-select-option>
-                    </a-select-opt-group>
                   </a-select>
-                </a-form-item>
-
-                <a-form-item label="Custom Model Path" v-if="formData.llm.model === 'custom-local'">
-                  <a-input v-model:value="formData.llm.custom_model_path" placeholder="/path/to/model.gguf" />
                 </a-form-item>
 
                 <a-form-item label="Temperature">
@@ -153,15 +142,8 @@
 
                 <a-form-item label="Enrichment Model">
                   <a-select v-model:value="formData.memory.model" style="width: 100%" size="large">
-                    <a-select-opt-group label="Local Models (Free)">
-                      <a-select-option value="llama-3.2-1b-local">Llama 3.2 1B - Fast (Local)</a-select-option>
-                      <a-select-option value="llama-3.2-3b-local">Llama 3.2 3B - Better (Local)</a-select-option>
-                      <a-select-option value="qwen2.5-3b-local">Qwen 2.5 3B (Local)</a-select-option>
-                    </a-select-opt-group>
-                    <a-select-opt-group label="Cloud Models">
-                      <a-select-option value="gpt-4o-mini-cloud">GPT-4o Mini (Cloud)</a-select-option>
-                      <a-select-option value="gpt-3.5-turbo-cloud">GPT-3.5 Turbo (Cloud)</a-select-option>
-                    </a-select-opt-group>
+                    <a-select-option value="gpt-4o-mini">GPT-4o Mini - Recommended</a-select-option>
+                    <a-select-option value="gpt-3.5-turbo">GPT-3.5 Turbo - Fast</a-select-option>
                   </a-select>
                 </a-form-item>
 
@@ -707,9 +689,6 @@
                     <a-descriptions-item label="MINDCORE_DB_PATH">
                       SQLite database path (default: mindcore.db)
                     </a-descriptions-item>
-                    <a-descriptions-item label="MINDCORE_LLAMA_MODEL_PATH">
-                      Path to local GGUF model file
-                    </a-descriptions-item>
                     <a-descriptions-item label="MINDCORE_LOG_LEVEL">
                       Logging level: DEBUG, INFO, WARNING, ERROR
                     </a-descriptions-item>
@@ -954,13 +933,12 @@ const temperatureMarks = {
 const formData = reactive({
   llm: {
     model: 'gpt-4o-mini',
-    custom_model_path: '',
     temperature: 0.3,
     max_tokens: 1500
   },
   memory: {
     enabled: true,
-    model: 'llama-3.2-1b-local'
+    model: 'gpt-4o-mini'
   },
   cache: {
     max_size: 50,
@@ -1033,12 +1011,7 @@ const getModelDisplayName = (model) => {
     'o1-mini': 'O1 Mini',
     'claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet',
     'claude-3-opus-20240229': 'Claude 3 Opus',
-    'claude-3-haiku-20240307': 'Claude 3 Haiku',
-    'llama-3.2-3b-local': 'Llama 3.2 3B',
-    'llama-3.2-1b-local': 'Llama 3.2 1B',
-    'qwen2.5-3b-local': 'Qwen 2.5 3B',
-    'phi-3.5-mini-local': 'Phi 3.5 Mini',
-    'custom-local': 'Custom Model'
+    'claude-3-haiku-20240307': 'Claude 3 Haiku'
   }
   return names[model] || model
 }
@@ -1061,7 +1034,7 @@ const fetchConfig = async () => {
     }
     if (data.memory) {
       formData.memory.enabled = data.memory.enabled !== false
-      formData.memory.model = data.memory.model || 'llama-3.2-1b-local'
+      formData.memory.model = data.memory.model || 'gpt-4o-mini'
     }
     if (data.cache) {
       formData.cache.max_size = data.cache.max_size || 50
@@ -1383,8 +1356,8 @@ const saveAdvancedConfig = async () => {
 
 // Tab-specific reset functions
 const resetLLMForm = () => {
-  formData.llm = { model: 'gpt-4o-mini', custom_model_path: '', temperature: 0.3, max_tokens: 1500 }
-  formData.memory = { enabled: true, model: 'llama-3.2-1b-local' }
+  formData.llm = { model: 'gpt-4o-mini', temperature: 0.3, max_tokens: 1500 }
+  formData.memory = { enabled: true, model: 'gpt-4o-mini' }
   formData.cache = { max_size: 50, ttl: 3600 }
   message.info('LLM settings reset')
 }

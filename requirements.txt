@@ -38,12 +38,6 @@ diskcache>=5.6.3
 structlog>=25.1.0                # Structured logging (cloud-ready)
 
 # =============================================================================
-# Optional: Local LLM Support
-# =============================================================================
-# Install with: pip install mindcore[llama]
-# llama-cpp-python>=0.2.0        # CPU/GPU optimized local inference
-
-# =============================================================================
 # Development Dependencies
 # =============================================================================
 # Install with: pip install mindcore[dev]

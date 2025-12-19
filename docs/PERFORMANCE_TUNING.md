@@ -24,8 +24,7 @@ This guide covers performance optimization strategies for Mindcore deployments h
 export MINDCORE_ENRICHMENT_WORKERS=4
 
 # LLM provider configuration
-export MINDCORE_LLAMA_MODEL_PATH=/path/to/model.gguf  # Local inference
-export OPENAI_API_KEY=sk-...                          # Cloud fallback
+export OPENAI_API_KEY=sk-...
 
 # Database connection pool
 export MINDCORE_DB_POOL_SIZE=10
@@ -233,33 +232,6 @@ print(f"Hit rate: {stats['invalidation']['hit_rate']:.1%}")
 
 ## LLM Provider Tuning
 
-### Local Inference (llama.cpp)
-
-Best for:
-- Cost-sensitive deployments
-- Privacy requirements
-- Consistent latency
-
-```yaml
-# config.yaml
-llm:
-  provider: llama_cpp  # or "auto" for fallback support
-  llama_cpp:
-    model_path: /models/llama-3-8b.gguf
-    n_ctx: 4096        # Context window
-    n_threads: 8       # CPU threads (leave ~2 for system)
-    n_gpu_layers: 0    # GPU layers (if CUDA available)
-    verbose: false
-```
-
-**Model Recommendations:**
-
-| Model Size | RAM Required | Speed | Quality |
-|------------|-------------|-------|---------|
-| 7B-8B Q4   | 6-8 GB      | Fast  | Good    |
-| 13B Q4     | 10-12 GB    | Medium| Better  |
-| 7B-8B Q8   | 10-12 GB    | Medium| Better  |
-
 ### Cloud Inference (OpenAI)
 
 Best for:
@@ -275,18 +247,6 @@ llm:
     model: gpt-4o-mini  # Cost-effective
     timeout: 60
     max_retries: 3
-```
-
-### Fallback Strategy (Recommended)
-
-```yaml
-# config.yaml
-llm:
-  provider: auto  # Try llama.cpp first, fallback to OpenAI
-  llama_cpp:
-    model_path: /models/llama-3-8b.gguf
-  openai:
-    model: gpt-4o-mini
 ```
 
 ### Trivial Message Detection
@@ -443,7 +403,7 @@ client.start_metrics_server(port=9090)
 
 **Causes & Solutions:**
 1. **Insufficient workers**: Increase `enrichment_workers`
-2. **Slow LLM**: Switch to faster model or cloud provider
+2. **Slow LLM**: Switch to faster model
 3. **Database bottleneck**: Check DB connection pool, add indexes
 
 ```python
@@ -460,10 +420,8 @@ client = MindcoreClient(enrichment_workers=8)
 **Symptom:** P95 enrichment > 2s
 
 **Solutions:**
-1. Use faster LLM model (7B instead of 13B)
-2. Increase LLM threads: `n_threads: 12`
-3. Enable GPU acceleration: `n_gpu_layers: 35`
-4. Check trivial detection is working
+1. Use faster LLM model (e.g., gpt-4o-mini instead of gpt-4o)
+2. Check trivial detection is working
 
 ```python
 metrics = client.get_enrichment_metrics()
@@ -491,8 +449,7 @@ print(f"Hit rate: {stats['invalidation']['hit_rate']:.1%}")
 
 **Solutions:**
 1. Reduce cache size
-2. Use smaller LLM model
-3. Run tier migration more frequently
+2. Run tier migration more frequently
 
 ```python
 # Run tier migration to archive old messages
