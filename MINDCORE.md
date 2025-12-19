@@ -42,6 +42,9 @@ Mindcore is a **memory layer** for AI agents. It provides:
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AI Agent / LLM                           │
 │                   (Structured Output JSON)                      │
+│                                                                 │
+│  IMPORTANT: Your agent must output structured metadata directly │
+│  Use get_json_schema() to configure your LLM's output format    │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
@@ -54,18 +57,18 @@ Mindcore is a **memory layer** for AI agents. It provides:
 │                                                │               │
 │  ┌─────────────────────────────────────────────▼─────────────┐ │
 │  │                     Mindcore Class                        │ │
-│  │  store() | recall() | search() | extract_from_response()  │ │
+│  │         store() | recall() | search() | reinforce()       │ │
 │  └─────────────────────────┬─────────────────────────────────┘ │
 │                            │                                   │
-│         ┌──────────────────┼──────────────────┐               │
-│         ▼                  ▼                  ▼               │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐       │
-│  │     FLR     │    │    CLST     │    │  Extractor  │       │
-│  │ (Hot Path)  │    │ (Cold Path) │    │ (Parse LLM) │       │
-│  └──────┬──────┘    └──────┬──────┘    └─────────────┘       │
-│         │                  │                                  │
-│         └────────┬─────────┘                                  │
-│                  ▼                                            │
+│              ┌─────────────┴─────────────┐                    │
+│              ▼                           ▼                    │
+│       ┌─────────────┐             ┌─────────────┐             │
+│       │     FLR     │             │    CLST     │             │
+│       │ (Hot Path)  │             │ (Cold Path) │             │
+│       └──────┬──────┘             └──────┬──────┘             │
+│              │                           │                    │
+│              └─────────┬─────────────────┘                    │
+│                        ▼                                      │
 │  ┌───────────────────────────────────────────────────────────┐│
 │  │                    Storage Backend                        ││
 │  │         PostgreSQL (prod) | SQLite (dev)                  ││
@@ -131,16 +134,22 @@ memories = memory.search(
     memory_types=["preference"],
 )
 
-# Extract from LLM response
+# Store directly from LLM structured output (no extraction layer needed)
 llm_response = {
     "response": "I'll remember that.",
     "memories_to_store": [
         {"content": "User likes email", "memory_type": "preference", "topics": ["settings"]}
     ]
 }
-memories = memory.extract_from_response(llm_response, user_id="user123")
+for mem in llm_response["memories_to_store"]:
+    memory.store(
+        content=mem["content"],
+        memory_type=mem["memory_type"],
+        user_id="user123",
+        topics=mem.get("topics", []),
+    )
 
-# Get JSON schema for LLM
+# Get JSON schema for LLM structured output configuration
 schema = memory.get_json_schema()
 ```
 
@@ -260,35 +269,7 @@ temporal     - Time-bound info (auto-expires)
 working      - Current session context (cleared)
 ```
 
-### 4.5 Memory Extraction
-
-**Location:** `mindcore/v2/extraction/extractor.py`
-
-Parses memories from LLM structured output. **Fails hard on errors.**
-
-```python
-from mindcore import MemoryExtractor
-
-extractor = MemoryExtractor(vocabulary=vocab)
-
-# Extract from LLM response
-result = extractor.extract(
-    output={
-        "response": "...",
-        "memories_to_store": [
-            {"content": "...", "memory_type": "...", "topics": [...]}
-        ]
-    },
-    user_id="user123",
-)
-
-# Raises on errors:
-# - TypeError: Wrong output format
-# - KeyError: Missing required fields
-# - ValueError: Validation failure
-```
-
-### 4.6 Access Control
+### 4.5 Access Control
 
 **Location:** `mindcore/v2/access/permissions.py`
 
@@ -320,7 +301,7 @@ if decision.allowed:
     pass
 ```
 
-### 4.7 Cross-Agent Layer
+### 4.6 Cross-Agent Layer
 
 **Location:** `mindcore/v2/cross_agent/`
 
@@ -412,7 +393,7 @@ BEST_MATCH           - Use scoring to find best agent (default)
 ROUND_ROBIN          - Distribute queries evenly
 ```
 
-### 4.8 Shared Vocabulary Layer (SVL)
+### 4.7 Shared Vocabulary Layer (SVL)
 
 **Location:** `mindcore/v2/svl/`
 
@@ -643,13 +624,12 @@ memory.serve_rest(host="0.0.0.0", port=8000)
 
 **Endpoints:**
 ```
-POST   /memories              - Store memory
+POST   /memories              - Store memory directly
 GET    /memories/{id}         - Get memory by ID
 DELETE /memories/{id}         - Delete memory
 POST   /memories/search       - Search memories
 POST   /recall                - FLR recall
-POST   /extract               - Extract from LLM response
-GET    /schema                - Get JSON schema
+GET    /schema                - Get JSON schema for LLM configuration
 GET    /stats                 - Get statistics
 GET    /health                - Health check
 ```
@@ -774,9 +754,6 @@ mindcore/
 │   ├── vocabulary/              # Versioned vocabulary
 │   │   ├── schema.py            # VocabularySchema
 │   │   └── __init__.py
-│   ├── extraction/              # Memory extraction
-│   │   ├── extractor.py         # MemoryExtractor
-│   │   └── __init__.py
 │   ├── access/                  # Multi-agent access control
 │   │   ├── permissions.py       # AccessController
 │   │   └── __init__.py
@@ -842,7 +819,7 @@ import json
 
 memory = Mindcore(storage="postgresql://...")
 
-# Get schema for LLM
+# Get schema for LLM structured output configuration
 schema = memory.get_json_schema()
 
 # Include in system prompt
@@ -855,9 +832,16 @@ using this JSON structure:
 {json.dumps(schema, indent=2)}
 """
 
-# After LLM response
+# After LLM response - store memories directly (no extraction overhead)
 llm_response = call_llm(messages, response_format=schema)
-memories = memory.extract_from_response(llm_response, user_id)
+for mem in llm_response.get("memories_to_store", []):
+    memory.store(
+        content=mem["content"],
+        memory_type=mem["memory_type"],
+        user_id=user_id,
+        topics=mem.get("topics", []),
+        importance=mem.get("importance", 0.5),
+    )
 
 # Before next turn - recall relevant memories
 context = memory.recall(user_query, user_id)

@@ -1,17 +1,30 @@
 """Mindcore v2 - Universal Memory Layer for AI Agents.
 
-A modern memory layer built on two protocols:
+A modern memory layer built on three protocols:
 - FLR (Fast Learning Recall): Inference-time memory access
 - CLST (Cognitive Long-term Storage Transfer): Durable storage
 - SVL (Shared Vocabulary Layer): Unified semantic system
 
 Features:
 - Structured output integration (JSON Schema for LLMs)
-- Auto-extraction of memories from conversations
+- Direct memory storage from structured LLM output (no extraction overhead)
 - Multi-agent support with access control
 - Vocabulary versioning and migrations
 - Data source mapping for context enrichment
 - MCP and REST API interfaces
+
+IMPORTANT: Direct Structured Output Required
+-------------------------------------------
+Your AI agent must output structured metadata directly. Configure your LLM
+to return memories in a structured format, then store them directly:
+
+    for mem in llm_response["memories_to_store"]:
+        memory.store(
+            content=mem["content"],
+            memory_type=mem["memory_type"],
+            user_id="user123",
+            topics=mem.get("topics", []),
+        )
 
 Quick Start:
     from mindcore.v2 import Mindcore, SharedVocabularyLayer
@@ -19,7 +32,7 @@ Quick Start:
     # Initialize
     memory = Mindcore()
 
-    # Store
+    # Store directly from structured LLM output
     memory.store(
         content="User prefers dark mode",
         memory_type="preference",
@@ -32,6 +45,9 @@ Quick Start:
         query="What are the user's preferences?",
         user_id="user123",
     )
+
+    # Get JSON schema for your LLM
+    schema = memory.get_json_schema()
 
     # SVL with data source mapping
     svl = SharedVocabularyLayer(domains=["customer_service"])
@@ -105,10 +121,6 @@ from .clst import (
     SyncDirection,
     SyncResult,
     TransferManifest,
-)
-from .extraction import (
-    ExtractionResult,
-    MemoryExtractor,
 )
 from .access import (
     AccessController,
@@ -199,9 +211,6 @@ __all__ = [
     "SyncDirection",
     "SyncResult",
     "TransferManifest",
-    # Extraction
-    "ExtractionResult",
-    "MemoryExtractor",
     # Access Control
     "AccessController",
     "AccessDecision",

@@ -12,13 +12,14 @@ Quick Start:
     # or
     memory = Mindcore(storage="sqlite:///dev.db")
 
-    # Store a memory
-    memory_id = memory.store(
-        content="User prefers dark mode",
-        memory_type="preference",
-        user_id="user123",
-        topics=["settings"],
-    )
+    # Store a memory directly from structured LLM output
+    for mem in llm_response["memories_to_store"]:
+        memory.store(
+            content=mem["content"],
+            memory_type=mem["memory_type"],
+            user_id="user123",
+            topics=mem.get("topics", []),
+        )
 
     # Recall relevant memories
     result = memory.recall(
@@ -26,10 +27,7 @@ Quick Start:
         user_id="user123",
     )
 
-    # Extract from LLM structured output
-    memories = memory.extract_from_response(llm_response, user_id="user123")
-
-    # Get JSON schema for LLM
+    # Get JSON schema for LLM structured output configuration
     schema = memory.get_json_schema()
 
 Features:
@@ -37,10 +35,13 @@ Features:
 - FLR (Fast Learning Recall): Hot path for inference-time memory access
 - CLST (Cognitive Long-term Storage Transfer): Cold path for persistence
 - Vocabulary-controlled metadata with versioning
-- Structured output extraction from LLMs (JSON Schema)
+- Direct memory storage from structured LLM output (no extraction overhead)
 - Multi-agent support with access control
 - PostgreSQL (production) and SQLite (development) backends
 - MCP and REST API servers
+
+IMPORTANT: Your AI agent must output structured metadata directly.
+Use get_json_schema() to configure your LLM's structured output format.
 
 See MINDCORE.md for complete documentation.
 """
@@ -72,9 +73,6 @@ from .v2 import (
     AccessLevel,
     FieldSchema,
     Migration,
-    # Extraction
-    MemoryExtractor,
-    ExtractionResult,
     # Access Control
     AccessController,
     AccessDecision,
@@ -122,9 +120,6 @@ __all__ = [
     "AccessLevel",
     "FieldSchema",
     "Migration",
-    # Extraction
-    "MemoryExtractor",
-    "ExtractionResult",
     # Access Control
     "AccessController",
     "AccessDecision",

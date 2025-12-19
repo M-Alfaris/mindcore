@@ -4,9 +4,27 @@ A modern memory layer that provides:
 - FLR (Fast Learning Recall) for inference-time memory access
 - CLST (Cognitive Long-term Storage Transfer) for durable storage
 - Structured output integration with LLM JSON schemas
-- Auto-extraction of memories from conversations
 - Multi-agent support with access control
 - MCP and REST API interfaces
+
+IMPORTANT: Direct Structured Output Required
+-------------------------------------------
+Your AI agent must output structured metadata directly. Mindcore does NOT
+extract memories from unstructured responses. Configure your LLM to return:
+
+{
+    "response": "Your response to the user...",
+    "memories_to_store": [
+        {
+            "content": "Memory content",
+            "memory_type": "preference|episodic|semantic|...",
+            "topics": ["topic1", "topic2"],
+            "importance": 0.8
+        }
+    ]
+}
+
+Then store directly using mindcore.store() - no extraction layer needed.
 
 Example:
     from mindcore.v2 import Mindcore
@@ -14,13 +32,15 @@ Example:
     # Initialize
     memory = Mindcore(storage="sqlite:///memory.db")
 
-    # Store memory
-    memory.store(
-        content="User prefers email communication",
-        memory_type="preference",
-        user_id="user123",
-        topics=["communication"],
-    )
+    # Store memory directly from LLM structured output
+    for mem in llm_response["memories_to_store"]:
+        memory.store(
+            content=mem["content"],
+            memory_type=mem["memory_type"],
+            user_id="user123",
+            topics=mem.get("topics", []),
+            importance=mem.get("importance", 0.5),
+        )
 
     # Recall relevant memories
     result = memory.recall(
@@ -38,7 +58,6 @@ from typing import Any
 
 from .access import AccessController, Permission
 from .clst import CLST, CompressionStrategy
-from .extraction import MemoryExtractor
 from .flr import FLR, Memory, RecallResult
 from .storage import SQLiteStorage, BaseStorage
 from .vocabulary import VocabularySchema, DEFAULT_VOCABULARY
@@ -104,9 +123,6 @@ class Mindcore:
         # Initialize FLR and CLST
         self._flr = FLR(storage=self._storage)
         self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
-
-        # Initialize extractor
-        self._extractor = MemoryExtractor(vocabulary=self._vocabulary)
 
     # === Core Memory Operations ===
 
@@ -239,46 +255,6 @@ class Mindcore:
             signal: Signal from -1.0 to +1.0
         """
         self._flr.reinforce(memory_id, signal)
-
-    # === Extraction ===
-
-    def extract_from_response(
-        self,
-        llm_response: dict[str, Any],
-        user_id: str,
-        agent_id: str | None = None,
-        auto_store: bool = True,
-    ) -> list[Memory]:
-        """Extract memories from LLM structured output.
-
-        Parses the memories_to_store field from LLM response.
-        Fails hard on validation errors - no fallbacks.
-
-        Args:
-            llm_response: LLM structured output with memories_to_store
-            user_id: User identifier
-            agent_id: Agent identifier
-            auto_store: Automatically store extracted memories
-
-        Returns:
-            List of extracted memories
-
-        Raises:
-            TypeError: If response format is wrong
-            KeyError: If required fields are missing
-            ValueError: If validation fails
-        """
-        result = self._extractor.extract(
-            output=llm_response,
-            user_id=user_id,
-            agent_id=agent_id,
-        )
-
-        if auto_store:
-            for memory in result.memories:
-                self._clst.store(memory, validate=False)
-
-        return result.memories
 
     # === Vocabulary ===
 
