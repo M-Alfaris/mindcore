@@ -1,0 +1,180 @@
+# SVL Sources Configuration
+#
+# This file defines simple data sources that don't require custom logic.
+# For complex sources with custom fetching logic, use Python modules with
+# the @source decorator instead.
+#
+# Supported source types:
+#   - table: SQL database queries
+#   - api: REST API endpoints
+#   - mcp: MCP server tool calls
+#
+# Common options:
+#   - term: Vocabulary term to bind to (required)
+#   - term_type: "topic", "category", "domain", "intent" (default: "topic")
+#   - trigger: "always", "on_query", "on_store", "on_demand", "conditional"
+#   - cache_ttl: Cache TTL in seconds (0 = no caching)
+#   - enabled: Whether source is active (default: true)
+#   - priority: Higher values are fetched first (default: 0)
+#   - tags: List of tags for filtering
+
+sources:
+  # ============================================================================
+  # Database Sources (type: table)
+  # ============================================================================
+
+  # Example: User preferences from PostgreSQL
+  - term: "user_preferences"
+    term_type: "topic"
+    type: "table"
+    name: "user_prefs_db"
+    description: "Fetch user preferences from database"
+    connection_string: "${DATABASE_URL}"  # Use environment variable
+    query_template: |
+      SELECT preference_key, preference_value, updated_at
+      FROM user_preferences
+      WHERE user_id = :user_id
+      ORDER BY updated_at DESC
+    param_mapping:
+      user_id: "user_id"
+    cache_ttl: 300
+    trigger: "on_query"
+    priority: 5
+    tags:
+      - "database"
+      - "user-data"
+
+  # Example: Recent notifications
+  - term: "notifications"
+    term_type: "topic"
+    type: "table"
+    name: "notifications_db"
+    connection_string: "${DATABASE_URL}"
+    query_template: |
+      SELECT id, title, message, read, created_at
+      FROM notifications
+      WHERE user_id = :user_id AND read = false
+      ORDER BY created_at DESC
+      LIMIT 10
+    param_mapping:
+      user_id: "user_id"
+    cache_ttl: 30
+    trigger: "on_query"
+
+  # ============================================================================
+  # API Sources (type: api)
+  # ============================================================================
+
+  # Example: Weather API
+  - term: "weather"
+    term_type: "topic"
+    type: "api"
+    name: "weather_api"
+    description: "Current weather conditions"
+    url: "https://api.weatherapi.com/v1/current.json"
+    method: "GET"
+    headers:
+      Authorization: "Bearer ${WEATHER_API_KEY}"
+    url_params:
+      location: "location"
+    query_params:
+      aqi: "no"
+    response_path: "current"
+    cache_ttl: 600
+    trigger: "on_demand"
+    timeout: 10
+    tags:
+      - "external-api"
+      - "weather"
+
+  # Example: Exchange rates API
+  - term: "exchange_rates"
+    term_type: "topic"
+    type: "api"
+    name: "exchange_rates_api"
+    description: "Current currency exchange rates"
+    url: "https://api.exchangerate-api.com/v4/latest/{base_currency}"
+    method: "GET"
+    url_params:
+      base_currency: "base_currency"
+    response_path: "rates"
+    cache_ttl: 3600
+    trigger: "on_demand"
+
+  # Example: Internal user service
+  - term: "user_profile"
+    term_type: "topic"
+    type: "api"
+    name: "user_service"
+    description: "User profile from internal service"
+    url: "${USER_SERVICE_URL}/api/v1/users/{user_id}"
+    method: "GET"
+    headers:
+      Authorization: "Bearer ${INTERNAL_API_KEY}"
+      X-Request-ID: "{request_id}"
+    url_params:
+      user_id: "user_id"
+    header_params:
+      request_id: "request_id"
+    cache_ttl: 120
+    trigger: "on_query"
+    priority: 10
+
+  # ============================================================================
+  # MCP Sources (type: mcp)
+  # ============================================================================
+
+  # Example: Brave Search via MCP
+  - term: "web_search"
+    term_type: "topic"
+    type: "mcp"
+    name: "brave_search"
+    description: "Web search using Brave Search MCP server"
+    server_name: "brave-search"
+    tool_name: "brave_web_search"
+    argument_mapping:
+      query: "search_query"
+      count: "result_count"
+    static_arguments:
+      count: 5
+    trigger: "on_demand"
+    cache_ttl: 300
+    tags:
+      - "mcp"
+      - "search"
+
+  # Example: File system access via MCP
+  - term: "file_context"
+    term_type: "topic"
+    type: "mcp"
+    name: "filesystem"
+    description: "Read file contents via MCP filesystem server"
+    server_name: "filesystem"
+    tool_name: "read_file"
+    argument_mapping:
+      path: "file_path"
+    trigger: "on_demand"
+    cache_ttl: 60
+
+  # ============================================================================
+  # Category Sources
+  # ============================================================================
+
+  # Example: Billing category aggregation via API
+  - term: "billing"
+    term_type: "category"
+    type: "api"
+    name: "billing_service"
+    description: "Billing information aggregation"
+    url: "${BILLING_SERVICE_URL}/api/v1/customers/{user_id}/summary"
+    method: "GET"
+    headers:
+      Authorization: "Bearer ${INTERNAL_API_KEY}"
+    url_params:
+      user_id: "user_id"
+    cache_ttl: 180
+    trigger: "on_query"
+    priority: 15
+    tags:
+      - "billing"
+      - "financial"

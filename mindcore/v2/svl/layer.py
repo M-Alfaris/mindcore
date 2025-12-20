@@ -591,6 +591,131 @@ class SharedVocabularyLayer:
         """Set MCP client for MCP sources."""
         self._sources.set_mcp_client(client)
 
+    def discover_sources(
+        self,
+        sources_path: str | None = None,
+    ) -> tuple[int, list[tuple[str, Exception]]]:
+        """Discover and register sources from a directory.
+
+        Scans a directory for:
+        - Python modules with @source decorated functions/classes
+        - YAML/JSON configuration files
+
+        The sources folder structure:
+            sources/
+            ├── __init__.py
+            ├── config.yaml          # Simple sources config
+            ├── topics/              # Organized by term type
+            │   ├── orders.py
+            │   └── products.py
+            └── categories/
+                └── support.py
+
+        Args:
+            sources_path: Path to sources directory. If None, uses the default
+                         location at mindcore/v2/svl/user_sources/
+
+        Returns:
+            Tuple of (number of sources registered, list of errors)
+
+        Example:
+            svl = SharedVocabularyLayer()
+
+            # Use default sources location
+            count, errors = svl.discover_sources()
+
+            # Or specify custom path
+            count, errors = svl.discover_sources("/path/to/my/sources")
+
+            if errors:
+                for path, error in errors:
+                    print(f"Error loading {path}: {error}")
+
+            print(f"Registered {count} sources")
+        """
+        from pathlib import Path
+
+        from .registry import SourceDiscovery
+
+        if sources_path is None:
+            # Default to the user_sources folder in this package
+            sources_path = str(Path(__file__).parent / "user_sources")
+
+        discovery = SourceDiscovery(sources_path)
+        discovered = discovery.discover()
+        errors = discovery.get_errors()
+
+        # Register all discovered sources
+        count = 0
+        for definition in discovered:
+            self._sources.map(
+                term=definition.term,
+                source=definition.source,
+                term_type=definition.term_type,
+            )
+            count += 1
+
+        return count, errors
+
+    async def fetch_for_topics_async(
+        self,
+        topics: list[str],
+        context: dict[str, Any],
+        trigger: TriggerCondition = TriggerCondition.ON_QUERY,
+        max_concurrency: int = 10,
+        timeout: float = 30.0,
+    ) -> dict[str, list[FetchResult]]:
+        """Fetch data from sources asynchronously with parallel execution.
+
+        This is the async version of fetch_for_topics, providing better
+        performance when fetching from multiple sources.
+
+        Args:
+            topics: List of topics to fetch data for
+            context: Context dict with user_id, query, etc.
+            trigger: Current trigger condition
+            max_concurrency: Maximum concurrent fetches
+            timeout: Timeout for each fetch operation
+
+        Returns:
+            Dict mapping topic -> list of FetchResults
+
+        Example:
+            async def get_context(user_id: str):
+                results = await svl.fetch_for_topics_async(
+                    topics=["orders", "preferences", "notifications"],
+                    context={"user_id": user_id},
+                    max_concurrency=5,
+                )
+                return results
+        """
+        from .registry import AsyncSourceExecutor
+
+        # Collect all sources to fetch
+        sources_to_fetch: list[tuple[str, DataSource]] = []
+
+        for topic in topics:
+            mapping = self._sources.get_mapping(topic)
+            if not mapping:
+                continue
+
+            for source in mapping.sources:
+                if not source.enabled:
+                    continue
+                if source.trigger not in (TriggerCondition.ALWAYS, trigger):
+                    continue
+                sources_to_fetch.append((topic, source))
+
+        if not sources_to_fetch:
+            return {}
+
+        # Execute in parallel
+        executor = AsyncSourceExecutor(
+            max_concurrency=max_concurrency,
+            default_timeout=timeout,
+        )
+        return await executor.fetch_all(sources_to_fetch, context, timeout)
+
     # ==========================================================================
     # Validation
     # ==========================================================================

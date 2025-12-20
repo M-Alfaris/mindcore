@@ -99,6 +99,21 @@ from .ontology import (
     get_user_roles,
 )
 
+# Registry - Unified source configuration
+from .registry import (
+    AsyncFunctionSource,
+    AsyncSourceExecutor,
+    SourceDefinition,
+    SourceDiscovery,
+    clear_registered_sources,
+    discover_and_register,
+    get_registered_sources,
+    load_sources_from_json,
+    load_sources_from_yaml,
+    # Decorator
+    source,
+)
+
 # Sources - Data source mapping
 from .sources import (
     APISource,
@@ -131,20 +146,19 @@ __all__ = [
     "SAAS_DOMAIN",
     "APISource",
     "AccessLevel",
+    "AsyncFunctionSource",
+    "AsyncSourceExecutor",
     "Confidence",
     "DataSource",
     "DomainLabel",
-    # Domains
     "DomainVocabulary",
     "EmotionalClassification",
     "FetchResult",
     "FieldSchema",
     "FunctionSource",
     "MCPSource",
-    # Layer (unified vocabulary)
     "MemoryType",
     "MessageIntent",
-    # Ontology
     "MessageType",
     "Migration",
     "MigrationCheckpoint",
@@ -153,17 +167,20 @@ __all__ = [
     "SemanticMetadata",
     "Sentiment",
     "SharedVocabularyLayer",
+    "SourceDefinition",
+    "SourceDiscovery",
     "SourceMapping",
     "SourceRegistry",
-    # Sources
     "SourceType",
     "TableSource",
     "TemporalQualifier",
     "TriggerCondition",
     "Urgency",
     "UserRole",
+    "clear_registered_sources",
     "create_custom_domain",
     "create_source",
+    "discover_and_register",
     "get_confidence_levels",
     "get_domain",
     "get_domain_labels",
@@ -171,9 +188,13 @@ __all__ = [
     "get_message_intents",
     "get_message_types",
     "get_preference_types",
+    "get_registered_sources",
     "get_temporal_qualifiers",
     "get_urgency_levels",
     "get_user_roles",
     "list_domains",
+    "load_sources_from_json",
+    "load_sources_from_yaml",
     "merge_domains",
+    "source",
 ]
