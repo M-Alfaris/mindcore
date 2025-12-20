@@ -111,6 +111,10 @@ class Mindcore:
             if storage.startswith("sqlite:///"):
                 db_path = storage[10:]  # Remove "sqlite:///"
                 self._storage = SQLiteStorage(db_path)
+            elif storage.startswith(("postgresql://", "postgres://")):
+                from mindcore.v2.storage.postgres import PostgresStorage
+
+                self._storage = PostgresStorage(storage)
             else:
                 # Default to SQLite
                 self._storage = SQLiteStorage(storage)
@@ -124,7 +128,8 @@ class Mindcore:
         self._access_controller = AccessController() if enable_multi_agent else None
 
         # Initialize FLR and CLST
-        self._flr = FLR(storage=self._storage)
+        # Pass access_controller as agent_registry for team-based access control
+        self._flr = FLR(storage=self._storage, agent_registry=self._access_controller)
         self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
 
     # === Core Memory Operations ===

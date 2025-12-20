@@ -75,6 +75,19 @@ class AgentProfile:
         """Check if agent can delete memories at access level."""
         return self.has_permission(access_level, Permission.DELETE)
 
+    def shares_team_with(self, other: AgentProfile) -> bool:
+        """Check if this agent shares at least one team with another agent.
+
+        Args:
+            other: Another AgentProfile to check against
+
+        Returns:
+            True if they share at least one team, False otherwise
+        """
+        if not self.teams or not other.teams:
+            return False
+        return bool(set(self.teams) & set(other.teams))
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -388,9 +401,12 @@ class AccessController:
 
     def get_stats(self) -> dict[str, Any]:
         """Get access control statistics."""
+        agent_count = len(self._agents)
         return {
-            "total_agents": len(self._agents),
+            "total_agents": agent_count,
+            "agent_count": agent_count,  # Alias for backwards compatibility
             "active_agents": sum(1 for a in self._agents.values() if a.is_active),
             "total_teams": len(self._teams),
+            "team_count": len(self._teams),  # Alias for backwards compatibility
             "agents_by_team": {team: len(members) for team, members in self._teams.items()},
         }

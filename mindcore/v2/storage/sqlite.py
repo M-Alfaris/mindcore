@@ -41,7 +41,7 @@ class SQLiteStorage(BaseStorage):
     def __init__(
         self,
         db_path: str = "mindcore.db",
-        max_connections: int = 10,
+        max_connections: int = 100,
         connection_timeout: float = 30.0,
     ):
         """Initialize SQLite storage with connection pool management.
@@ -676,6 +676,68 @@ class SQLiteStorage(BaseStorage):
                 except Exception:
                     pass
                 self._local.connection = None
+
+    def store_batch(self, memories: list[Memory]) -> list[str]:
+        """Store multiple memories in a single transaction.
+
+        Args:
+            memories: List of Memory objects to store
+
+        Returns:
+            List of memory IDs for stored memories
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        memory_ids = []
+        try:
+            for memory in memories:
+                # Generate ID if not set
+                if not memory.memory_id:
+                    memory.memory_id = f"mem_{uuid.uuid4().hex[:12]}"
+
+                # Set created_at if not set
+                if not memory.created_at:
+                    memory.created_at = datetime.now(timezone.utc)
+
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO memories (
+                        memory_id, content, memory_type, user_id, agent_id,
+                        topics, categories, sentiment, importance, entities,
+                        access_level, created_at, last_accessed, expires_at,
+                        reinforcement_score, access_count, vocabulary_version, embedding
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        memory.memory_id,
+                        memory.content,
+                        memory.memory_type,
+                        memory.user_id,
+                        memory.agent_id,
+                        json.dumps(memory.topics),
+                        json.dumps(memory.categories),
+                        memory.sentiment,
+                        memory.importance,
+                        json.dumps(memory.entities),
+                        memory.access_level,
+                        memory.created_at.isoformat() if memory.created_at else None,
+                        memory.last_accessed.isoformat() if memory.last_accessed else None,
+                        memory.expires_at.isoformat() if memory.expires_at else None,
+                        memory.reinforcement_score,
+                        memory.access_count,
+                        memory.vocabulary_version,
+                        json.dumps(memory.embedding) if memory.embedding else None,
+                    ),
+                )
+                memory_ids.append(memory.memory_id)
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+        return memory_ids
 
     def _row_to_memory(self, row: sqlite3.Row) -> Memory:
         """Convert database row to Memory object."""

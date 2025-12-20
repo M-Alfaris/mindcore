@@ -1,0 +1,119 @@
+{
+  "description": "Multi-agent configurations for testing cross-agent features",
+  "agents": [
+    {
+      "id": "support_bot",
+      "name": "Support Agent",
+      "description": "Handles customer support inquiries",
+      "teams": ["support", "general"],
+      "capabilities": ["ticket_handling", "faq", "escalation"],
+      "default_access_level": "team"
+    },
+    {
+      "id": "sales_bot",
+      "name": "Sales Agent",
+      "description": "Handles sales and pricing inquiries",
+      "teams": ["sales"],
+      "capabilities": ["pricing", "quotes", "demos"],
+      "default_access_level": "private"
+    },
+    {
+      "id": "tech_bot",
+      "name": "Technical Agent",
+      "description": "Handles technical support and engineering questions",
+      "teams": ["support", "engineering"],
+      "capabilities": ["debugging", "api_support", "integration_help"],
+      "default_access_level": "team"
+    },
+    {
+      "id": "admin_bot",
+      "name": "Admin Agent",
+      "description": "Administrative tasks with elevated permissions",
+      "teams": ["admin"],
+      "capabilities": ["user_management", "audit", "configuration"],
+      "permissions": {
+        "private": ["read", "write", "delete", "admin"],
+        "team": ["read", "write", "delete"],
+        "shared": ["read", "write"],
+        "global": ["read", "write"]
+      },
+      "default_access_level": "shared"
+    }
+  ],
+  "teams": [
+    {
+      "id": "support",
+      "name": "Customer Support",
+      "description": "Customer-facing support team",
+      "shared_topics": ["help", "issue", "bug", "complaint"]
+    },
+    {
+      "id": "sales",
+      "name": "Sales Team",
+      "description": "Sales and business development",
+      "shared_topics": ["pricing", "subscription", "feature"]
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering Team",
+      "description": "Technical development team",
+      "shared_topics": ["api", "integration", "bug", "feature"]
+    },
+    {
+      "id": "general",
+      "name": "General",
+      "description": "General cross-functional team",
+      "shared_topics": ["greeting", "farewell", "thanks", "help"]
+    },
+    {
+      "id": "admin",
+      "name": "Administrators",
+      "description": "System administrators",
+      "shared_topics": ["account", "settings", "login", "password"]
+    }
+  ],
+  "sharing_rules": [
+    {
+      "description": "Support shares with tech for escalations",
+      "from_agent": "support_bot",
+      "to_agent": "tech_bot",
+      "access_level": "team",
+      "topics": ["bug", "issue", "api"]
+    },
+    {
+      "description": "Sales can see support context for upsells",
+      "from_agent": "support_bot",
+      "to_agent": "sales_bot",
+      "access_level": "shared",
+      "topics": ["subscription", "pricing", "feature"]
+    },
+    {
+      "description": "Admin has read access to all team memories",
+      "from_agent": "*",
+      "to_agent": "admin_bot",
+      "access_level": "team",
+      "topics": ["*"]
+    }
+  ],
+  "test_scenarios": [
+    {
+      "name": "team_sharing",
+      "description": "Test that support_bot and tech_bot share team memories",
+      "agents": ["support_bot", "tech_bot"],
+      "expected_sharing": true
+    },
+    {
+      "name": "isolation",
+      "description": "Test that sales_bot cannot see private support memories",
+      "agents": ["support_bot", "sales_bot"],
+      "expected_sharing": false,
+      "access_level": "private"
+    },
+    {
+      "name": "admin_override",
+      "description": "Test that admin can access all team-level memories",
+      "agents": ["admin_bot"],
+      "expected_access": ["support_bot", "sales_bot", "tech_bot"]
+    }
+  ]
+}

@@ -72,7 +72,7 @@ class MCPServer:
     def __init__(
         self,
         flr: FLR,
-        clst: CLST,
+        clst: CLST | None = None,
         vocabulary: VocabularySchema | None = None,
         access_controller: AccessController | None = None,
     ):
@@ -80,11 +80,19 @@ class MCPServer:
 
         Args:
             flr: FLR instance for fast recall
-            clst: CLST instance for long-term storage
+            clst: Optional CLST instance for long-term storage.
+                  If not provided, a default CLST will be created using FLR's storage.
             vocabulary: Optional vocabulary schema
             access_controller: Optional access controller
         """
         self.flr = flr
+
+        # Create CLST from FLR storage if not provided
+        if clst is None:
+            from mindcore.v2 import clst as clst_module
+
+            clst = clst_module.CLST(storage=flr.storage, vocabulary=vocabulary)
+
         self.clst = clst
         self.vocabulary = vocabulary
         self.access_controller = access_controller
@@ -115,6 +123,10 @@ class MCPServer:
             }
             for tool in self._tools.values()
         ]
+
+    def list_tools(self) -> list[dict[str, Any]]:
+        """Alias for get_tools() for backwards compatibility."""
+        return self.get_tools()
 
     def get_resources(self) -> list[dict[str, Any]]:
         """Get MCP resource definitions."""

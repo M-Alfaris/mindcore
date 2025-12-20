@@ -4,8 +4,6 @@ Provides HTTP endpoints for memory operations.
 Can be used standalone or alongside MCP.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 
@@ -17,22 +15,29 @@ if TYPE_CHECKING:
 
 
 def create_app(
-    flr: FLR,
-    clst: CLST,
-    vocabulary: VocabularySchema | None = None,
-    access_controller: AccessController | None = None,
+    flr: "FLR",
+    clst: "CLST | None" = None,
+    vocabulary: "VocabularySchema | None" = None,
+    access_controller: "AccessController | None" = None,
 ):
     """Create FastAPI application for Mindcore REST API.
 
     Args:
         flr: FLR instance for fast recall
-        clst: CLST instance for long-term storage
+        clst: Optional CLST instance for long-term storage.
+              If not provided, a default CLST will be created using FLR's storage.
         vocabulary: Optional vocabulary schema
         access_controller: Optional access controller
 
     Returns:
         FastAPI application
     """
+    # Create CLST from FLR storage if not provided
+    if clst is None:
+        from mindcore.v2 import clst as clst_module
+
+        clst = clst_module.CLST(storage=flr.storage, vocabulary=vocabulary)
+
     try:
         from fastapi import FastAPI, Header, HTTPException, Query
         from fastapi.middleware.cors import CORSMiddleware
@@ -130,28 +135,31 @@ def create_app(
     # Memory operations
     @app.post("/memories")
     async def store_memory(
-        request: StoreMemoryRequest,
+        data: StoreMemoryRequest,
         x_agent_id: str | None = Header(None),
     ):
         from mindcore.v2.flr import Memory
 
         memory = Memory(
             memory_id="",
-            content=request.content,
-            memory_type=request.memory_type,
-            user_id=request.user_id,
+            content=data.content,
+            memory_type=data.memory_type,
+            user_id=data.user_id,
             agent_id=x_agent_id,
-            topics=request.topics,
-            categories=request.categories,
-            sentiment=request.sentiment,
-            importance=request.importance,
-            entities=request.entities,
-            access_level=request.access_level,
+            topics=data.topics,
+            categories=data.categories,
+            sentiment=data.sentiment,
+            importance=data.importance,
+            entities=data.entities,
+            access_level=data.access_level,
             vocabulary_version=vocabulary.version if vocabulary else "1.0.0",
         )
 
-        memory_id = clst.store(memory)
-        return {"memory_id": memory_id, "success": True}
+        try:
+            memory_id = clst.store(memory)
+            return {"memory_id": memory_id, "success": True}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
     @app.get("/memories/{memory_id}")
     async def get_memory(
@@ -206,17 +214,17 @@ def create_app(
 
     @app.post("/memories/search")
     async def search_memories(
-        request: SearchRequest,
+        data: SearchRequest,
         x_agent_id: str | None = Header(None),
     ):
         memories = clst.search(
-            query=request.query,
-            user_id=request.user_id,
+            query=data.query,
+            user_id=data.user_id,
             agent_id=x_agent_id,
-            topics=request.topics,
-            categories=request.categories,
-            memory_types=request.memory_types,
-            limit=request.limit,
+            topics=data.topics,
+            categories=data.categories,
+            memory_types=data.memory_types,
+            limit=data.limit,
         )
 
         # Filter by access control
@@ -235,16 +243,16 @@ def create_app(
     # FLR operations
     @app.post("/recall")
     async def recall(
-        request: RecallRequest,
+        data: RecallRequest,
         x_agent_id: str | None = Header(None),
     ):
         result = flr.query(
-            query=request.query,
-            user_id=request.user_id,
+            query=data.query,
+            user_id=data.user_id,
             agent_id=x_agent_id,
-            attention_hints=request.attention_hints,
-            memory_types=request.memory_types,
-            limit=request.limit,
+            attention_hints=data.attention_hints,
+            memory_types=data.memory_types,
+            limit=data.limit,
         )
 
         return {
@@ -256,22 +264,22 @@ def create_app(
         }
 
     @app.post("/reinforce")
-    async def reinforce(request: ReinforceRequest):
-        flr.reinforce(request.memory_id, request.signal)
+    async def reinforce(data: ReinforceRequest):
+        flr.reinforce(data.memory_id, data.signal)
         return {"success": True}
 
     # Agent management (if access controller is configured)
     @app.post("/agents")
-    async def register_agent(request: RegisterAgentRequest):
+    async def register_agent(data: RegisterAgentRequest):
         if not access_controller:
             raise HTTPException(status_code=400, detail="Access control not configured")
 
         try:
             profile = access_controller.register_agent(
-                agent_id=request.agent_id,
-                name=request.name,
-                description=request.description,
-                teams=request.teams,
+                agent_id=data.agent_id,
+                name=data.name,
+                description=data.description,
+                teams=data.teams,
             )
             return profile.to_dict()
         except ValueError as e:
@@ -359,10 +367,10 @@ def create_app(
 
 
 def run_server(
-    flr: FLR,
-    clst: CLST,
-    vocabulary: VocabularySchema | None = None,
-    access_controller: AccessController | None = None,
+    flr: "FLR",
+    clst: "CLST",
+    vocabulary: "VocabularySchema | None" = None,
+    access_controller: "AccessController | None" = None,
     host: str = "0.0.0.0",
     port: int = 8000,
 ):

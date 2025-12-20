@@ -1,0 +1,50 @@
+# Mindcore Testing Services
+# Usage: docker-compose up -d
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: mindcore_test_postgres
+    environment:
+      POSTGRES_USER: mindcore
+      POSTGRES_PASSWORD: mindcore_test
+      POSTGRES_DB: mindcore_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mindcore -d mindcore_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Mock API server for SVL source testing
+  mock_api:
+    image: python:3.11-slim
+    container_name: mindcore_mock_api
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./demo_data:/app/data:ro
+      - ./scripts/mock_api_server.py:/app/server.py:ro
+    command: python /app/server.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: mindcore_test_network

@@ -279,6 +279,10 @@ class FLR:
         memory_types = memory_types or []
         sources = []
 
+        # When agent_registry is configured, search cross-agent for team/shared access
+        # We'll filter by access control after retrieval
+        search_cross_agent = include_cross_agent or (self.agent_registry is not None)
+
         # 1. Check hot cache first
         cached_memories = self._query_cache(query, user_id, agent_id, attention_hints, memory_types)
         if cached_memories:
@@ -292,13 +296,17 @@ class FLR:
             attention_hints,
             memory_types,
             limit=limit * 2,  # Get more for scoring
-            include_cross_agent=include_cross_agent,
+            include_cross_agent=search_cross_agent,
         )
         if storage_memories:
             sources.append("storage")
 
         # 3. Combine and deduplicate
         all_memories = self._deduplicate(cached_memories + storage_memories)
+
+        # 4. Filter by access control when agent_registry is configured
+        if self.agent_registry and agent_id:
+            all_memories = self._filter_by_access(all_memories, agent_id)
 
         # 4. Score memories
         scored = self._score_memories(all_memories, query, attention_hints)
@@ -343,7 +351,7 @@ class FLR:
             signal: Reinforcement signal (-1.0 to +1.0)
 
         Returns:
-            The new reinforcement score (or 0.0 if memory not found in cache)
+            The new reinforcement score
 
         Raises:
             ValueError: If signal is not a valid number
@@ -373,6 +381,20 @@ class FLR:
             new_score = memory.apply_reinforcement(clamped_signal)
             self._cache[memory_id] = (memory, timestamp)
 
+        # Persist to storage immediately for consistency
+        try:
+            self.storage.update_reinforcement(memory_id, clamped_signal)
+            # Clear from buffer since we persisted
+            self._reinforcement_buffer.pop(memory_id, None)
+            # If we got the score from storage, fetch it
+            if new_score == 0.0:
+                memory = self.storage.get(memory_id)
+                if memory:
+                    new_score = memory.reinforcement_score
+        except Exception:
+            # Keep in buffer for later flush if storage fails
+            pass
+
         return new_score
 
     def promote(self, memory_id: str) -> bool:
@@ -395,6 +417,18 @@ class FLR:
                     self.storage.store(memory)
                     context.working_memories.remove(memory)
                     return True
+
+        # Also check storage for working memories not in a context
+        try:
+            memory = self.storage.get(memory_id)
+            if memory and memory.memory_type == "working":
+                # Promote by updating the memory type
+                memory.memory_type = "episodic"
+                self.storage.update(memory)
+                return True
+        except Exception:
+            pass
+
         return False
 
     def update_context(
@@ -441,9 +475,10 @@ class FLR:
         return self._contexts.get(session_id)
 
     def clear_context(self, session_id: str) -> None:
-        """Clear context window for a session."""
+        """Clear and remove context window for a session."""
         if session_id in self._contexts:
             self._contexts[session_id].clear()
+            del self._contexts[session_id]
 
     def flush_reinforcements(self) -> int:
         """Flush buffered reinforcement signals to storage.
@@ -555,7 +590,12 @@ class FLR:
 
             # 3. Recency (decay over time)
             if memory.created_at:
-                age_hours = (datetime.now(timezone.utc) - memory.created_at).total_seconds() / 3600
+                # Ensure created_at is timezone-aware for comparison
+                created_at = memory.created_at
+                if created_at.tzinfo is None:
+                    # Assume UTC if no timezone info
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                age_hours = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
                 recency_score = max(0, 1 - (age_hours / 168))  # Decay over 1 week
                 score += recency_score * 0.15
 
@@ -626,6 +666,45 @@ class FLR:
 
         # Use the Agent.shares_team_with method from registry
         return requester.shares_team_with(owner)
+
+    def _filter_by_access(
+        self,
+        memories: list[Memory],
+        requesting_agent_id: str,
+    ) -> list[Memory]:
+        """Filter memories by access control.
+
+        Access levels:
+        - private: Only the owning agent can access
+        - team: Agents in the same team can access
+        - shared: All agents can access
+        - global: Public access (no filtering)
+
+        Args:
+            memories: List of memories to filter
+            requesting_agent_id: Agent requesting access
+
+        Returns:
+            Filtered list of accessible memories
+        """
+        accessible = []
+        for memory in memories:
+            access_level = getattr(memory, "access_level", "private")
+
+            if access_level in ("global", "shared"):
+                # Global/shared access - everyone can see
+                accessible.append(memory)
+            elif access_level == "team":
+                # Team access - check if agents share a team
+                if memory.agent_id == requesting_agent_id or self._check_team_access(
+                    requesting_agent_id, memory.agent_id
+                ):
+                    accessible.append(memory)
+            # Private access - only owning agent
+            elif memory.agent_id == requesting_agent_id or memory.agent_id is None:
+                accessible.append(memory)
+
+        return accessible
 
     def _deduplicate(self, memories: list[Memory]) -> list[Memory]:
         """Remove duplicate memories."""

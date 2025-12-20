@@ -1,0 +1,134 @@
+{
+  "description": "Domain vocabularies for SVL testing",
+  "domains": [
+    {
+      "name": "e_commerce",
+      "version": "1.0.0",
+      "topics": [
+        "orders", "products", "shipping", "returns", "payments",
+        "cart", "checkout", "inventory", "promotions", "reviews"
+      ],
+      "categories": [
+        "customer_service", "logistics", "billing", "catalog", "fulfillment"
+      ],
+      "subcategories": {
+        "customer_service": ["inquiries", "complaints", "feedback", "escalations"],
+        "logistics": ["shipping", "tracking", "returns", "exchanges"],
+        "billing": ["payments", "refunds", "invoices", "subscriptions"]
+      },
+      "entities": [
+        "order_id", "product_sku", "tracking_number", "customer_id",
+        "promo_code", "invoice_number", "warehouse_id"
+      ],
+      "memory_type_mappings": {
+        "order_placed": "episodic",
+        "product_preference": "preference",
+        "shipping_address": "entity",
+        "return_policy": "semantic",
+        "checkout_process": "procedural"
+      }
+    },
+    {
+      "name": "healthcare",
+      "version": "1.0.0",
+      "topics": [
+        "symptoms", "medications", "appointments", "insurance",
+        "diagnosis", "treatment", "prescriptions", "lab_results"
+      ],
+      "categories": [
+        "clinical", "administrative", "billing", "records"
+      ],
+      "subcategories": {
+        "clinical": ["consultation", "examination", "procedure", "follow_up"],
+        "administrative": ["scheduling", "registration", "referrals"],
+        "billing": ["claims", "payments", "coverage", "prior_auth"]
+      },
+      "entities": [
+        "patient_id", "provider_id", "medication_name", "icd_code",
+        "appointment_id", "claim_number", "policy_number"
+      ],
+      "memory_type_mappings": {
+        "symptom_report": "episodic",
+        "medication_allergy": "entity",
+        "treatment_plan": "procedural",
+        "diagnosis_info": "semantic"
+      },
+      "sensitivity": "high",
+      "requires_consent": true
+    },
+    {
+      "name": "fintech",
+      "version": "1.0.0",
+      "topics": [
+        "transactions", "accounts", "transfers", "investments",
+        "loans", "cards", "fraud", "compliance"
+      ],
+      "categories": [
+        "banking", "payments", "lending", "securities", "risk"
+      ],
+      "subcategories": {
+        "banking": ["deposits", "withdrawals", "statements", "alerts"],
+        "payments": ["transfers", "bill_pay", "recurring", "international"],
+        "lending": ["applications", "approvals", "repayment", "collections"]
+      },
+      "entities": [
+        "account_number", "transaction_id", "routing_number",
+        "card_number", "loan_id", "merchant_id"
+      ],
+      "sensitivity": "high",
+      "pii_fields": ["account_number", "card_number", "routing_number"]
+    }
+  ],
+  "migrations": [
+    {
+      "from_version": "0.9.0",
+      "to_version": "1.0.0",
+      "domain": "e_commerce",
+      "changes": {
+        "renames": {
+          "order_status": "orders",
+          "product_info": "products"
+        },
+        "merges": {
+          "logistics": ["shipping", "delivery", "warehousing"]
+        },
+        "splits": {
+          "customer_interaction": {
+            "inquiry": "customer_service",
+            "complaint": "customer_service",
+            "purchase": "orders"
+          }
+        },
+        "added": ["promotions", "reviews"],
+        "removed": ["legacy_checkout"]
+      }
+    }
+  ],
+  "validation_rules": [
+    {
+      "name": "topic_required",
+      "description": "All memories must have at least one topic",
+      "rule": "len(topics) >= 1",
+      "severity": "error"
+    },
+    {
+      "name": "category_required",
+      "description": "All memories should have a category",
+      "rule": "len(categories) >= 1",
+      "severity": "warning"
+    },
+    {
+      "name": "importance_range",
+      "description": "Importance must be between 0 and 1",
+      "rule": "0.0 <= importance <= 1.0",
+      "severity": "error"
+    },
+    {
+      "name": "healthcare_consent",
+      "description": "Healthcare memories require consent flag",
+      "domain": "healthcare",
+      "rule": "consent_obtained == true",
+      "severity": "error"
+    }
+  ]
+}

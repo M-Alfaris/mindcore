@@ -127,15 +127,19 @@ class PermissionDeniedError(AccessError):
         message: str,
         agent_id: str | None = None,
         required_permission: str | None = None,
+        permission: str | None = None,  # Alias for required_permission
     ):
+        # Support both 'permission' and 'required_permission' for backwards compatibility
+        effective_permission = required_permission or permission
         details = {}
         if agent_id:
             details["agent_id"] = agent_id
-        if required_permission:
-            details["required_permission"] = required_permission
+        if effective_permission:
+            details["required_permission"] = effective_permission
         super().__init__(message, details=details)
         self.agent_id = agent_id
-        self.required_permission = required_permission
+        self.required_permission = effective_permission
+        self.permission = effective_permission  # Alias
 
 
 class AgentNotFoundError(AccessError):

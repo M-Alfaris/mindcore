@@ -1,0 +1,169 @@
+{
+  "description": "External data sources for SVL integration testing",
+  "sources": [
+    {
+      "name": "product_catalog",
+      "type": "api",
+      "endpoint": "http://localhost:8001/products",
+      "refresh_interval": "1h",
+      "auth": {
+        "type": "api_key",
+        "header": "X-API-Key",
+        "key_env": "PRODUCT_API_KEY"
+      },
+      "mapping": {
+        "product_name": {
+          "term_type": "entity",
+          "field": "name"
+        },
+        "category": {
+          "term_type": "topic",
+          "field": "category"
+        },
+        "sku": {
+          "term_type": "entity",
+          "field": "sku"
+        }
+      },
+      "sample_response": [
+        {"id": "1", "name": "Widget Pro", "category": "electronics", "sku": "WP-001", "price": 99.99},
+        {"id": "2", "name": "Gadget Plus", "category": "accessories", "sku": "GP-002", "price": 49.99},
+        {"id": "3", "name": "Super Tool", "category": "tools", "sku": "ST-003", "price": 149.99}
+      ]
+    },
+    {
+      "name": "crm_contacts",
+      "type": "database",
+      "connection": {
+        "type": "postgresql",
+        "host": "localhost",
+        "port": 5432,
+        "database": "mindcore_test",
+        "user": "mindcore",
+        "password_env": "POSTGRES_PASSWORD"
+      },
+      "query": "SELECT id, name, email, segment, tier FROM contacts WHERE active = true",
+      "refresh_interval": "4h",
+      "mapping": {
+        "contact_name": {
+          "term_type": "entity",
+          "field": "name"
+        },
+        "segment": {
+          "term_type": "category",
+          "field": "segment"
+        },
+        "tier": {
+          "term_type": "topic",
+          "field": "tier"
+        }
+      },
+      "sample_data": [
+        {"id": 1, "name": "Acme Corp", "email": "contact@acme.com", "segment": "enterprise", "tier": "gold"},
+        {"id": 2, "name": "StartupXYZ", "email": "hello@startupxyz.io", "segment": "startup", "tier": "silver"},
+        {"id": 3, "name": "BigCo Inc", "email": "sales@bigco.com", "segment": "enterprise", "tier": "platinum"}
+      ]
+    },
+    {
+      "name": "knowledge_base",
+      "type": "api",
+      "endpoint": "http://localhost:8001/kb/articles",
+      "refresh_interval": "30m",
+      "mapping": {
+        "article_title": {
+          "term_type": "entity",
+          "field": "title"
+        },
+        "topic": {
+          "term_type": "topic",
+          "field": "topic"
+        },
+        "keywords": {
+          "term_type": "topic",
+          "field": "keywords",
+          "is_array": true
+        }
+      },
+      "sample_response": [
+        {
+          "id": "kb-001",
+          "title": "Getting Started Guide",
+          "topic": "documentation",
+          "keywords": ["setup", "installation", "quickstart"],
+          "content": "Welcome to our platform..."
+        },
+        {
+          "id": "kb-002",
+          "title": "API Authentication",
+          "topic": "api",
+          "keywords": ["api", "auth", "tokens", "security"],
+          "content": "To authenticate API requests..."
+        },
+        {
+          "id": "kb-003",
+          "title": "Billing FAQ",
+          "topic": "billing",
+          "keywords": ["payment", "invoice", "subscription"],
+          "content": "Common billing questions..."
+        }
+      ]
+    },
+    {
+      "name": "user_segments",
+      "type": "file",
+      "path": "./demo_data/user_segments.csv",
+      "format": "csv",
+      "refresh_interval": "24h",
+      "mapping": {
+        "segment_name": {
+          "term_type": "category",
+          "field": "name"
+        },
+        "keywords": {
+          "term_type": "topic",
+          "field": "associated_topics",
+          "delimiter": ","
+        }
+      }
+    }
+  ],
+  "enrichment_rules": [
+    {
+      "name": "auto_product_lookup",
+      "description": "Automatically enrich memories mentioning product names",
+      "trigger": "on_store",
+      "condition": "memory.topics contains 'product'",
+      "source": "product_catalog",
+      "action": "add_entities",
+      "fields": ["sku", "category"]
+    },
+    {
+      "name": "customer_tier_lookup",
+      "description": "Add customer tier info when user_id is known",
+      "trigger": "on_query",
+      "condition": "user_id in crm_contacts",
+      "source": "crm_contacts",
+      "action": "add_metadata",
+      "fields": ["segment", "tier"]
+    }
+  ],
+  "mock_api_config": {
+    "port": 8001,
+    "endpoints": {
+      "/products": {
+        "method": "GET",
+        "response_file": "products.json",
+        "delay_ms": 50
+      },
+      "/kb/articles": {
+        "method": "GET",
+        "response_file": "kb_articles.json",
+        "delay_ms": 30
+      },
+      "/health": {
+        "method": "GET",
+        "response": {"status": "ok"}
+      }
+    }
+  }
+}

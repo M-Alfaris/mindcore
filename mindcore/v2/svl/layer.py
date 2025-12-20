@@ -468,9 +468,15 @@ class SharedVocabularyLayer:
     # Domain Management
     # ==========================================================================
 
-    def add_domain(self, domain_name: str) -> None:
-        """Add a domain vocabulary."""
-        if domain_name not in DOMAIN_REGISTRY:
+    def add_domain(self, domain_name: str, strict: bool = False) -> None:
+        """Add a domain vocabulary.
+
+        Args:
+            domain_name: Name of the domain to add
+            strict: If True, only allow domains from DOMAIN_REGISTRY.
+                   If False (default), allow any domain name including custom ones.
+        """
+        if strict and domain_name not in DOMAIN_REGISTRY:
             available = list_domains()
             raise ValueError(f"Domain '{domain_name}' not found. Available: {available}")
         if domain_name not in self.schema.domains:
@@ -541,7 +547,7 @@ class SharedVocabularyLayer:
     def map_source(
         self,
         term: str,
-        source: DataSource,
+        source: DataSource | dict,
         term_type: str = "topic",
     ) -> None:
         """Map a vocabulary term to a data source.
@@ -550,7 +556,7 @@ class SharedVocabularyLayer:
 
         Args:
             term: Topic, category, or domain name
-            source: Data source (TableSource, APISource, MCPSource, FunctionSource)
+            source: Data source (TableSource, APISource, MCPSource, FunctionSource, or dict)
             term_type: Type of term ("topic", "category", "domain", "intent")
         """
         self._sources.map(term, source, term_type)
@@ -924,6 +930,18 @@ class SharedVocabularyLayer:
         """
         properties: dict[str, Any] = {}
 
+        # Always include memory_type
+        memory_types = (
+            self.schema.memory_types
+            if self.schema.memory_types
+            else ["episodic", "semantic", "procedural", "preference", "entity"]
+        )
+        properties["memory_type"] = {
+            "type": "string",
+            "enum": memory_types,
+            "description": "Type of memory (episodic, semantic, procedural, preference, entity)",
+        }
+
         msg_types = self.schema.get_message_types()
         if msg_types or include_all:
             properties["message_type"] = {
@@ -1213,6 +1231,21 @@ export interface AgentResponse {{
   memories_to_store?: Memory[];
 }}
 """
+
+    def to_json_schema(self, include_response: bool = True) -> dict[str, Any]:
+        """Alias for get_full_memory_schema() for backwards compatibility.
+
+        Args:
+            include_response: Include response field for agent output
+
+        Returns:
+            JSON Schema dict for LLM structured output
+        """
+        return self.get_full_memory_schema(include_response=include_response)
+
+    def to_prompt_instructions(self) -> str:
+        """Alias for get_prompt_instructions() for backwards compatibility."""
+        return self.get_prompt_instructions()
 
     def get_prompt_instructions(self) -> str:
         """Generate prompt instructions for LLM."""

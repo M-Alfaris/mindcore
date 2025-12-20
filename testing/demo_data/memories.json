@@ -1,0 +1,142 @@
+{
+  "description": "Sample memories for testing mindcore storage and recall",
+  "user_memories": [
+    {
+      "user_id": "user_001",
+      "memories": [
+        {
+          "content": "User prefers Python over JavaScript for backend development",
+          "memory_type": "preference",
+          "topics": ["api", "integration"],
+          "categories": ["technical"],
+          "importance": 0.9,
+          "entities": ["Python", "JavaScript"]
+        },
+        {
+          "content": "User works at TechCorp as a Senior Developer since 2020",
+          "memory_type": "entity",
+          "topics": ["account"],
+          "categories": ["account"],
+          "importance": 0.8,
+          "entities": ["TechCorp", "Senior Developer"]
+        },
+        {
+          "content": "Yesterday user asked about async patterns in Python",
+          "memory_type": "episodic",
+          "topics": ["api", "documentation"],
+          "categories": ["technical"],
+          "importance": 0.6,
+          "entities": ["async", "Python"]
+        },
+        {
+          "content": "User birthday is March 15",
+          "memory_type": "semantic",
+          "topics": ["account"],
+          "categories": ["account"],
+          "importance": 0.5,
+          "entities": ["March 15", "birthday"]
+        },
+        {
+          "content": "To deploy Python app: 1. Create virtualenv 2. Install requirements 3. Set env vars 4. Run gunicorn",
+          "memory_type": "procedural",
+          "topics": ["setup", "api"],
+          "categories": ["technical"],
+          "importance": 0.7,
+          "entities": ["virtualenv", "gunicorn"]
+        },
+        {
+          "content": "User had billing issue resolved on Nov 1st with refund processed",
+          "memory_type": "episodic",
+          "topics": ["billing", "refund"],
+          "categories": ["billing"],
+          "importance": 0.65,
+          "entities": ["refund", "Nov 1st"]
+        }
+      ]
+    },
+    {
+      "user_id": "user_002",
+      "memories": [
+        {
+          "content": "User prefers email notifications over SMS",
+          "memory_type": "preference",
+          "topics": ["settings", "account"],
+          "categories": ["account"],
+          "importance": 0.7,
+          "entities": ["email", "SMS"]
+        },
+        {
+          "content": "User is on the Enterprise plan with 50 seats",
+          "memory_type": "entity",
+          "topics": ["subscription", "billing"],
+          "categories": ["billing"],
+          "importance": 0.9,
+          "entities": ["Enterprise plan", "50 seats"]
+        },
+        {
+          "content": "User requested API rate limit increase last week",
+          "memory_type": "episodic",
+          "topics": ["api", "feature"],
+          "categories": ["technical"],
+          "importance": 0.75,
+          "entities": ["rate limit", "API"]
+        },
+        {
+          "content": "John Smith is the primary contact at user_002's company",
+          "memory_type": "relationship",
+          "topics": ["account"],
+          "categories": ["account"],
+          "importance": 0.6,
+          "entities": ["John Smith", "primary contact"]
+        }
+      ]
+    },
+    {
+      "user_id": "user_003",
+      "memories": [
+        {
+          "content": "User reported bug with order tracking on mobile app",
+          "memory_type": "episodic",
+          "topics": ["bug", "order", "tracking"],
+          "categories": ["support"],
+          "importance": 0.8,
+          "entities": ["order tracking", "mobile app"]
+        },
+        {
+          "content": "User prefers dark mode interface",
+          "memory_type": "preference",
+          "topics": ["settings"],
+          "categories": ["account"],
+          "importance": 0.5,
+          "entities": ["dark mode"]
+        },
+        {
+          "content": "User has pending order #12345 shipping to New York",
+          "memory_type": "entity",
+          "topics": ["order", "shipping"],
+          "categories": ["support"],
+          "importance": 0.85,
+          "entities": ["order #12345", "New York"]
+        }
+      ]
+    }
+  ],
+  "cross_user_memories": [
+    {
+      "content": "Company holiday schedule: Dec 24-26 and Jan 1 are non-working days",
+      "memory_type": "semantic",
+      "topics": ["help"],
+      "categories": ["general"],
+      "importance": 0.6,
+      "access_level": "global"
+    },
+    {
+      "content": "Current API version is v2.1.0 with deprecation of v1 endpoints on Jan 15",
+      "memory_type": "semantic",
+      "topics": ["api", "documentation"],
+      "categories": ["technical"],
+      "importance": 0.9,
+      "access_level": "global"
+    }
+  ]
+}

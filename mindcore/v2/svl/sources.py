@@ -622,6 +622,64 @@ class FunctionSource(DataSource):
 
 
 @dataclass
+class GenericSource(DataSource):
+    """Generic data source created from a dict config.
+
+    Used when source configuration is provided as a plain dict
+    rather than a specific DataSource subclass.
+    """
+
+    source_type: SourceType = field(default=SourceType.FUNCTION, init=False)
+    name: str = ""
+    description: str = ""
+
+    # Store raw config
+    config: dict[str, Any] = field(default_factory=dict)
+
+    # Options
+    enabled: bool = True
+    cache_ttl_seconds: int = 0
+    trigger: TriggerCondition = TriggerCondition.ON_QUERY
+
+    def fetch(self, context: dict[str, Any]) -> FetchResult:
+        """Return config as data."""
+        import time
+
+        start = time.time()
+        latency = (time.time() - start) * 1000
+
+        return FetchResult(
+            source_name=self.name,
+            source_type=self.source_type,
+            data=self.config,
+            success=True,
+            latency_ms=latency,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_type": self.source_type.value,
+            "name": self.name,
+            "description": self.description,
+            "config": self.config,
+            "enabled": self.enabled,
+            "cache_ttl_seconds": self.cache_ttl_seconds,
+            "trigger": self.trigger.value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GenericSource:
+        return cls(
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            config=data.get("config", data),
+            enabled=data.get("enabled", True),
+            cache_ttl_seconds=data.get("cache_ttl_seconds", 0),
+            trigger=TriggerCondition(data.get("trigger", "on_query")),
+        )
+
+
+@dataclass
 class SourceMapping:
     """Maps a vocabulary term to one or more data sources."""
 
@@ -715,18 +773,26 @@ class SourceRegistry:
     def map(
         self,
         term: str,
-        source: DataSource,
+        source: DataSource | dict[str, Any],
         term_type: str = "topic",
     ) -> None:
         """Map a vocabulary term to a data source.
 
         Args:
             term: Topic, category, or domain name
-            source: Data source to map
+            source: Data source to map (DataSource object or dict config)
             term_type: Type of term ("topic", "category", "domain", "intent")
         """
         if term not in self._mappings:
             self._mappings[term] = SourceMapping(term=term, term_type=term_type)
+
+        # Convert dict to GenericSource
+        if isinstance(source, dict):
+            source = GenericSource(
+                name=source.get("name", term),
+                description=source.get("description", ""),
+                config=source,
+            )
 
         # Set MCP client if needed
         if isinstance(source, MCPSource) and self._mcp_client:

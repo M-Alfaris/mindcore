@@ -78,12 +78,22 @@ class PostgresStorage(BaseStorage):
         self._connection_timeout = connection_timeout
 
         try:
+            # Configure connection for better performance
+            def configure_conn(conn):
+                # Disable synchronous_commit for better write performance
+                # Data is still safe (WAL is written), just not synced to disk immediately
+                with conn.transaction():
+                    conn.execute("SET synchronous_commit = off")
+
             self._pool = ConnectionPool(
                 connection_string,
                 min_size=pool_size,
                 max_size=pool_size + max_overflow,
                 timeout=connection_timeout,
+                configure=configure_conn,
             )
+            # Pre-warm the connection pool
+            self._pool.wait()
         except Exception as e:
             raise StorageError(
                 f"Failed to create connection pool: {e}",

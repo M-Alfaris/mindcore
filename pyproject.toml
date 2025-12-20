@@ -272,6 +272,8 @@ unfixable = []
 "**/vectorstores/**/*.py" = ["F401"]
 # Prometheus metrics may import for availability check
 "**/prometheus_metrics.py" = ["F401"]
+# Testing scripts need subprocess and BaseHTTPRequestHandler methods
+"testing/scripts/*.py" = ["S603", "S607", "N802"]
 
 [tool.ruff.lint.pydocstyle]
 # Use Google-style docstrings
@@ -399,12 +401,13 @@ source = [
 # Bandit - Security scanning
 # ============================================================================
 [tool.bandit]
-exclude_dirs = ["tests", "mindcore/tests"]
+exclude_dirs = ["tests", "mindcore/tests", "testing"]
 skips = [
     "B101",  # Skip assert warnings (needed in tests)
     "B104",  # Bind to 0.0.0.0 - needed for server accessibility
     "B110",  # Try-except-pass - sometimes intentional for robustness
     "B112",  # Try-except-continue - sometimes intentional for robustness
     "B310",  # URL open - needed for downloading models from HuggingFace
+    "B404",  # Import subprocess - needed for testing scripts
     "B608",  # SQL injection - false positive for controlled table names (not user input)
 ]
