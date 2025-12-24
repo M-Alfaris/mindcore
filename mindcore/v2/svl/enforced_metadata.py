@@ -754,3 +754,273 @@ Respond with valid JSON only."""
         if self._svl:
             return self._svl.schema.get_temporal_qualifiers()
         return ["past_event", "current", "future_plan", "recurring"]
+
+    # =========================================================================
+    # Provider Integration Methods
+    # =========================================================================
+
+    def get_provider_request(
+        self,
+        provider: str,
+        user_message: str,
+        request_type: str = "metadata",
+        session_id: str = "",
+        user_id: str = "",
+        **provider_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Get a complete request ready for an LLM provider.
+
+        This method combines the prompt, schema, and provider-specific
+        configuration into a ready-to-send request.
+
+        Args:
+            provider: Provider name (openai, anthropic, google, etc.)
+            user_message: The user's message to process
+            request_type: Type of extraction ("metadata" or "context_decision")
+            session_id: Session ID for metadata
+            user_id: User ID for metadata
+            **provider_kwargs: Provider-specific configuration options
+
+        Returns:
+            Dict with all request parameters for the provider
+
+        Example:
+            # OpenAI GPT-5 with reasoning
+            request = extractor.get_provider_request(
+                provider="openai",
+                user_message="What's my order status?",
+                request_type="metadata",
+                session_id="session_123",
+                user_id="user_456",
+                model="gpt-5",
+                reasoning_effort="high",
+            )
+
+            # Claude with extended thinking
+            request = extractor.get_provider_request(
+                provider="anthropic",
+                user_message="What's my order status?",
+                request_type="context_decision",
+                thinking_budget=16000,
+            )
+        """
+        from .llm_providers import get_provider_config
+
+        # Get provider configuration
+        config = get_provider_config(provider, **provider_kwargs)
+
+        # Get appropriate schema
+        schema = self.get_json_schema()
+
+        # Get provider-specific parameters
+        params = config.get_request_params(schema, include_reasoning=True)
+        headers = config.get_headers()
+
+        # Build the prompt
+        if request_type == "context_decision":
+            prompt = self.get_context_decision_prompt(user_message)
+        else:
+            prompt = self.get_extraction_prompt(
+                user_message=user_message,
+                session_id=session_id,
+                user_id=user_id,
+            )
+
+        # Build messages based on provider
+        if config.get_provider_name() == "openai":
+            params["input"] = prompt  # Responses API uses 'input'
+        elif config.get_provider_name() == "anthropic":
+            params["messages"] = [{"role": "user", "content": prompt}]
+        elif config.get_provider_name() == "google":
+            params["contents"] = [{"parts": [{"text": prompt}]}]
+        else:
+            params["messages"] = [{"role": "user", "content": prompt}]
+
+        return {
+            "params": params,
+            "headers": headers,
+            "provider": config.get_provider_name(),
+        }
+
+    def get_openai_request(
+        self,
+        user_message: str,
+        request_type: str = "metadata",
+        session_id: str = "",
+        user_id: str = "",
+        model: str = "gpt-5",
+        reasoning_effort: str = "high",
+        use_responses_api: bool = True,
+    ) -> dict[str, Any]:
+        """Get OpenAI GPT-5 request with Responses API.
+
+        Uses the new Responses API for:
+        - Preserved reasoning across turns
+        - Better intelligence (3-5% improvement)
+        - Lower costs (40-80% better cache utilization)
+
+        Args:
+            user_message: The message to process
+            request_type: "metadata" or "context_decision"
+            session_id: Session ID
+            user_id: User ID
+            model: Model name (gpt-5, gpt-5-pro, gpt-5-mini)
+            reasoning_effort: low, medium, high, or xhigh
+            use_responses_api: Use Responses API (recommended)
+
+        Returns:
+            Request parameters for OpenAI API
+
+        Reference: https://platform.openai.com/docs/guides/responses-vs-chat-completions
+        """
+        from .llm_providers import OpenAIConfig, ReasoningEffort
+
+        effort = ReasoningEffort(reasoning_effort)
+        config = OpenAIConfig(
+            model=model,
+            reasoning_effort=effort,
+            use_responses_api=use_responses_api,
+            temperature=0.0,
+        )
+
+        schema = self.get_json_schema()
+        params = config.get_request_params(schema, include_reasoning=True)
+
+        if request_type == "context_decision":
+            prompt = self.get_context_decision_prompt(user_message)
+        else:
+            prompt = self.get_extraction_prompt(
+                user_message=user_message,
+                session_id=session_id,
+                user_id=user_id,
+            )
+
+        if use_responses_api:
+            params["input"] = prompt
+        else:
+            params["messages"] = [{"role": "user", "content": prompt}]
+
+        return params
+
+    def get_claude_request(
+        self,
+        user_message: str,
+        request_type: str = "metadata",
+        session_id: str = "",
+        user_id: str = "",
+        model: str = "claude-sonnet-4-5-20250514",
+        thinking_budget: int = 16000,
+        use_extended_thinking: bool = True,
+        use_interleaved_thinking: bool = True,
+    ) -> dict[str, Any]:
+        """Get Claude request with Extended Thinking.
+
+        Uses Extended Thinking for:
+        - Deep reasoning before responding
+        - Better metadata classification
+        - Interleaved thinking for complex queries
+
+        Note: Temperature not supported with extended thinking.
+
+        Args:
+            user_message: The message to process
+            request_type: "metadata" or "context_decision"
+            session_id: Session ID
+            user_id: User ID
+            model: Model name
+            thinking_budget: Max tokens for internal reasoning
+            use_extended_thinking: Enable extended thinking
+            use_interleaved_thinking: Enable thinking between tool calls
+
+        Returns:
+            Dict with params and headers for Anthropic API
+
+        Reference: https://docs.claude.com/en/docs/build-with-claude/extended-thinking
+        """
+        from .llm_providers import ClaudeConfig
+
+        config = ClaudeConfig(
+            model=model,
+            thinking_budget=thinking_budget,
+            use_extended_thinking=use_extended_thinking,
+            use_interleaved_thinking=use_interleaved_thinking,
+        )
+
+        schema = self.get_json_schema()
+        params = config.get_request_params(schema, include_reasoning=True)
+        headers = config.get_headers()
+
+        if request_type == "context_decision":
+            prompt = self.get_context_decision_prompt(user_message)
+        else:
+            prompt = self.get_extraction_prompt(
+                user_message=user_message,
+                session_id=session_id,
+                user_id=user_id,
+            )
+
+        params["messages"] = [{"role": "user", "content": prompt}]
+
+        return {
+            "params": params,
+            "headers": headers,
+        }
+
+    def get_gemini_request(
+        self,
+        user_message: str,
+        request_type: str = "metadata",
+        session_id: str = "",
+        user_id: str = "",
+        model: str = "gemini-2.5-flash",
+        thinking_mode: str = "dynamic",
+        thinking_budget: int | None = None,
+    ) -> dict[str, Any]:
+        """Get Gemini request with Thinking Mode.
+
+        Uses Thinking Mode for:
+        - Automatic complexity-based thinking budget
+        - Better reasoning for metadata extraction
+        - Works with all Gemini tools
+
+        Args:
+            user_message: The message to process
+            request_type: "metadata" or "context_decision"
+            session_id: Session ID
+            user_id: User ID
+            model: Model name
+            thinking_mode: "disabled", "dynamic", or "fixed"
+            thinking_budget: Budget for "fixed" mode
+
+        Returns:
+            Request parameters for Gemini API
+
+        Reference: https://ai.google.dev/gemini-api/docs/thinking
+        """
+        from .llm_providers import GeminiConfig, ThinkingMode
+
+        mode = ThinkingMode(thinking_mode) if thinking_mode in ["disabled", "dynamic", "fixed"] else ThinkingMode.DYNAMIC
+
+        config = GeminiConfig(
+            model=model,
+            thinking_mode=mode,
+            thinking_budget=thinking_budget,
+            temperature=0.0,
+        )
+
+        schema = self.get_json_schema()
+        params = config.get_request_params(schema, include_reasoning=True)
+
+        if request_type == "context_decision":
+            prompt = self.get_context_decision_prompt(user_message)
+        else:
+            prompt = self.get_extraction_prompt(
+                user_message=user_message,
+                session_id=session_id,
+                user_id=user_id,
+            )
+
+        params["contents"] = [{"parts": [{"text": prompt}]}]
+
+        return params
+

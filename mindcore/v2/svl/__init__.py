@@ -141,6 +141,19 @@ from .enforced_metadata import (
     MetadataExtractor,
 )
 
+# LLM Provider Configurations
+from .llm_providers import (
+    ClaudeConfig,
+    GeminiConfig,
+    GenericConfig,
+    LLMProviderConfig,
+    OpenAIConfig,
+    ReasoningEffort,
+    ThinkingMode,
+    get_provider_config,
+    get_recommended_config,
+)
+
 
 __all__ = [
     # Enforced Metadata
@@ -148,6 +161,16 @@ __all__ = [
     "EnforcedMetadata",
     "HistoricalContextNeeded",
     "MetadataExtractor",
+    # LLM Provider Configurations
+    "ClaudeConfig",
+    "GeminiConfig",
+    "GenericConfig",
+    "LLMProviderConfig",
+    "OpenAIConfig",
+    "ReasoningEffort",
+    "ThinkingMode",
+    "get_provider_config",
+    "get_recommended_config",
     # Domains
     "CUSTOMER_SERVICE_DOMAIN",
     "DEFAULT_SVL",
