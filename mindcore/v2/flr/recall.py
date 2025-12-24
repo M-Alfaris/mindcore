@@ -7,8 +7,27 @@ FLR handles:
 - Short-term memory (active context)
 - Fast retrieval from long-term storage (CLST)
 - Attention routing and scoring
-- Reinforcement signals
+- Reinforcement signals (naive and robust modes)
 - Cross-agent attention routing
+
+Reinforcement Modes:
+- Legacy (naive): Simple bounded accumulation with diminishing returns
+- Robust: Temporal decay, multi-signal types, exploration bonus, trend tracking
+
+Example (robust reinforcement):
+    from mindcore.v2.flr import FLR
+    from mindcore.v2.flr.reinforcement import SignalType, SignalSource
+
+    flr = FLR(storage=storage, use_robust_reinforcement=True)
+
+    # Apply detailed signal
+    flr.reinforce_robust(
+        memory_id="mem_123",
+        signal_value=0.8,
+        signal_type=SignalType.RELEVANCE,
+        source=SignalSource.USER_EXPLICIT,
+        context_similarity=0.9,
+    )
 """
 
 from __future__ import annotations
@@ -18,6 +37,14 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
+
+from .reinforcement import (
+    RobustReinforcement,
+    ReinforcementSignal,
+    SignalType,
+    SignalSource,
+    create_feedback_signal,
+)
 
 
 if TYPE_CHECKING:
@@ -58,23 +85,31 @@ class Memory:
     last_accessed: datetime | None = None
     expires_at: datetime | None = None
 
-    # FLR-specific
+    # FLR-specific (legacy naive reinforcement)
     reinforcement_score: float = 0.0  # Accumulated reinforcement signals (bounded to [-1, 1])
     access_count: int = 0
     embedding: list[float] | None = None
 
+    # Robust reinforcement (optional, stores full signal history)
+    robust_reinforcement: RobustReinforcement | None = None
+
     # Versioning
     vocabulary_version: str = "1.0.0"
 
-    def apply_reinforcement(self, signal: float) -> float:
+    def apply_reinforcement(self, signal: float, use_robust: bool = False) -> float:
         """Apply a reinforcement signal with bounds checking.
 
         Args:
             signal: Reinforcement signal to apply (will be clamped to [-1, 1])
+            use_robust: If True, use robust reinforcement with temporal decay
 
         Returns:
             The new reinforcement score after applying the signal
         """
+        if use_robust:
+            return self.apply_robust_reinforcement(signal)
+
+        # Legacy naive implementation
         # Clamp signal to valid range
         clamped_signal = max(-1.0, min(1.0, signal))
 
@@ -98,9 +133,79 @@ class Memory:
 
         return self.reinforcement_score
 
+    def apply_robust_reinforcement(
+        self,
+        signal_value: float,
+        signal_type: SignalType = SignalType.RELEVANCE,
+        source: SignalSource = SignalSource.LLM_EVALUATION,
+        context_similarity: float = 1.0,
+        query_id: str | None = None,
+    ) -> float:
+        """Apply a robust reinforcement signal with full tracking.
+
+        Args:
+            signal_value: Signal value (-1 to 1)
+            signal_type: Type of reinforcement signal
+            source: Source of the signal
+            context_similarity: How similar the retrieval context was
+            query_id: Associated query ID
+
+        Returns:
+            The new aggregated reinforcement score
+        """
+        # Initialize robust reinforcement if not present
+        if self.robust_reinforcement is None:
+            self.robust_reinforcement = RobustReinforcement()
+            # Migrate legacy score as initial signal if non-zero
+            if self.reinforcement_score != 0.0:
+                self.robust_reinforcement.apply_simple_signal(
+                    value=self.reinforcement_score,
+                    signal_type=SignalType.RELEVANCE,
+                    source=SignalSource.AUTOMATED_METRIC,
+                )
+
+        signal = ReinforcementSignal(
+            signal_type=signal_type,
+            value=signal_value,
+            source=source,
+            context_similarity=context_similarity,
+            query_id=query_id,
+            session_id=self.session_id,
+        )
+
+        new_score = self.robust_reinforcement.apply_signal(signal)
+
+        # Keep legacy score in sync for backward compatibility
+        self.reinforcement_score = new_score
+
+        return new_score
+
+    def get_effective_reinforcement_score(
+        self,
+        use_robust: bool = False,
+        exploration_factor: float = 0.1,
+        total_retrievals: int = 1000,
+    ) -> float:
+        """Get effective reinforcement score for ranking.
+
+        Args:
+            use_robust: Use robust reinforcement with exploration bonus
+            exploration_factor: Weight for exploration (0-1)
+            total_retrievals: Total retrievals for UCB calculation
+
+        Returns:
+            Effective score for ranking
+        """
+        if use_robust and self.robust_reinforcement is not None:
+            return self.robust_reinforcement.get_effective_score(
+                exploration_factor=exploration_factor,
+                total_retrievals=total_retrievals,
+            )
+        return self.reinforcement_score
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        data = {
             "memory_id": self.memory_id,
             "content": self.content,
             "memory_type": self.memory_type,
@@ -123,9 +228,18 @@ class Memory:
             "vocabulary_version": self.vocabulary_version,
         }
 
+        # Include robust reinforcement if present
+        if self.robust_reinforcement is not None:
+            data["robust_reinforcement"] = self.robust_reinforcement.to_dict()
+
+        return data
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Memory:
         """Create from dictionary."""
+        # Make a copy to avoid modifying the original
+        data = dict(data)
+
         # Parse datetime fields
         for dt_field in ["created_at", "last_accessed", "expires_at"]:
             if data.get(dt_field) and isinstance(data[dt_field], str):
@@ -134,8 +248,16 @@ class Memory:
         # Remove embedding if present but None
         embedding = data.pop("embedding", None)
 
+        # Extract robust reinforcement data
+        robust_data = data.pop("robust_reinforcement", None)
+
         memory = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
         memory.embedding = embedding
+
+        # Restore robust reinforcement if present
+        if robust_data is not None:
+            memory.robust_reinforcement = RobustReinforcement.from_dict(robust_data)
+
         return memory
 
 
@@ -224,6 +346,9 @@ class FLR:
         cache_ttl_seconds: int = 300,
         embedding_fn: callable | None = None,
         agent_registry: AgentRegistry | None = None,
+        use_robust_reinforcement: bool = False,
+        exploration_factor: float = 0.1,
+        decay_half_life_hours: float = 168.0,
     ):
         """Initialize FLR.
 
@@ -233,12 +358,20 @@ class FLR:
             cache_ttl_seconds: Cache TTL
             embedding_fn: Optional function to generate embeddings
             agent_registry: Optional agent registry for team-based access control
+            use_robust_reinforcement: Use robust reinforcement with temporal decay
+            exploration_factor: Weight for exploration bonus (0-1, only for robust mode)
+            decay_half_life_hours: Reinforcement half-life in hours (only for robust mode)
         """
         self.storage = storage
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl_seconds
         self.embedding_fn = embedding_fn
         self.agent_registry = agent_registry
+
+        # Reinforcement configuration
+        self.use_robust_reinforcement = use_robust_reinforcement
+        self.exploration_factor = exploration_factor
+        self.decay_half_life_hours = decay_half_life_hours
 
         # Hot cache (LRU)
         self._cache: OrderedDict[str, tuple[Memory, float]] = OrderedDict()
@@ -248,6 +381,12 @@ class FLR:
 
         # Reinforcement scores (in-memory, periodically flushed to storage)
         self._reinforcement_buffer: dict[str, float] = {}
+
+        # Robust reinforcement buffer (stores full signals)
+        self._robust_reinforcement_buffer: dict[str, list[ReinforcementSignal]] = {}
+
+        # Total retrieval count for UCB exploration calculation
+        self._total_retrievals: int = 0
 
     def query(
         self,
@@ -329,6 +468,12 @@ class FLR:
             self._cache_memory(memory)
             memory.last_accessed = datetime.now(timezone.utc)
             memory.access_count += 1
+            # Track access for robust reinforcement
+            if self.use_robust_reinforcement and memory.robust_reinforcement:
+                memory.robust_reinforcement.record_access()
+
+        # Track total retrievals for UCB exploration calculation
+        self._total_retrievals += len(filtered)
 
         # 7. Extract attention focus
         attention_focus = self._extract_attention_focus([m for m, _ in filtered], attention_hints)
@@ -404,6 +549,138 @@ class FLR:
             pass
 
         return new_score
+
+    def reinforce_robust(
+        self,
+        memory_id: str,
+        signal_value: float,
+        signal_type: SignalType = SignalType.RELEVANCE,
+        source: SignalSource = SignalSource.LLM_EVALUATION,
+        context_similarity: float = 1.0,
+        query_id: str | None = None,
+        session_id: str | None = None,
+    ) -> float:
+        """Apply robust reinforcement signal with full tracking.
+
+        This method provides detailed reinforcement with:
+        - Signal type classification (relevance, usefulness, correctness, etc.)
+        - Source weighting (user explicit, LLM evaluation, automated, etc.)
+        - Context similarity weighting
+        - Temporal decay (automatic via RobustReinforcement)
+
+        Args:
+            memory_id: Memory to reinforce
+            signal_value: Signal value (-1.0 to +1.0)
+            signal_type: Type of reinforcement signal
+            source: Source of the signal
+            context_similarity: How similar the retrieval context was (0-1)
+            query_id: Associated query ID (for tracking)
+            session_id: Associated session ID (for tracking)
+
+        Returns:
+            The new aggregated reinforcement score
+
+        Example:
+            # User gave explicit positive feedback
+            flr.reinforce_robust(
+                memory_id="mem_123",
+                signal_value=0.9,
+                signal_type=SignalType.USEFULNESS,
+                source=SignalSource.USER_EXPLICIT,
+                context_similarity=0.85,
+            )
+        """
+        # Create the signal
+        signal = ReinforcementSignal(
+            signal_type=signal_type,
+            value=max(-1.0, min(1.0, signal_value)),
+            source=source,
+            context_similarity=context_similarity,
+            query_id=query_id,
+            session_id=session_id,
+        )
+
+        # Buffer for batch persistence
+        if memory_id not in self._robust_reinforcement_buffer:
+            self._robust_reinforcement_buffer[memory_id] = []
+        self._robust_reinforcement_buffer[memory_id].append(signal)
+
+        # Update cache if present
+        new_score = 0.0
+        if memory_id in self._cache:
+            memory, timestamp = self._cache[memory_id]
+
+            # Initialize robust reinforcement if needed
+            if memory.robust_reinforcement is None:
+                memory.robust_reinforcement = RobustReinforcement(
+                    decay_half_life_hours=self.decay_half_life_hours
+                )
+
+            new_score = memory.robust_reinforcement.apply_signal(signal)
+            memory.reinforcement_score = new_score  # Keep legacy in sync
+            self._cache[memory_id] = (memory, timestamp)
+
+        # Also update via legacy method for storage persistence
+        try:
+            self.storage.update_reinforcement(memory_id, signal_value)
+            # Clear buffer on success
+            self._robust_reinforcement_buffer.pop(memory_id, None)
+
+            if new_score == 0.0:
+                memory = self.storage.get(memory_id)
+                if memory:
+                    new_score = memory.reinforcement_score
+        except Exception:
+            # Keep in buffer for later flush
+            pass
+
+        return new_score
+
+    def reinforce_from_feedback(
+        self,
+        memory_id: str,
+        feedback_value: float,
+        is_user_feedback: bool = False,
+        context_similarity: float = 1.0,
+        query_id: str | None = None,
+        session_id: str | None = None,
+    ) -> float:
+        """Convenience method to reinforce from simple feedback.
+
+        Automatically determines signal type and source based on the feedback.
+
+        Args:
+            memory_id: Memory to reinforce
+            feedback_value: Feedback value (-1 to 1)
+            is_user_feedback: Whether this is direct user feedback
+            context_similarity: How similar the retrieval context was
+            query_id: Associated query ID
+            session_id: Associated session ID
+
+        Returns:
+            New reinforcement score
+        """
+        if not self.use_robust_reinforcement:
+            # Fall back to simple reinforcement
+            return self.reinforce(memory_id, feedback_value)
+
+        signal = create_feedback_signal(
+            value=feedback_value,
+            is_user_feedback=is_user_feedback,
+            context_similarity=context_similarity,
+            query_id=query_id,
+            session_id=session_id,
+        )
+
+        return self.reinforce_robust(
+            memory_id=memory_id,
+            signal_value=signal.value,
+            signal_type=signal.signal_type,
+            source=signal.source,
+            context_similarity=signal.context_similarity,
+            query_id=query_id,
+            session_id=session_id,
+        )
 
     def promote(self, memory_id: str) -> bool:
         """Promote a working memory to long-term storage.
@@ -578,7 +855,14 @@ class FLR:
         query: str,
         attention_hints: list[str],
     ) -> list[tuple[Memory, float]]:
-        """Score memories by relevance."""
+        """Score memories by relevance.
+
+        Uses either legacy or robust reinforcement scoring based on configuration.
+        Robust mode includes:
+        - Temporal decay of reinforcement
+        - UCB-like exploration bonus
+        - Multi-signal type weighting
+        """
         scored = []
         query_lower = query.lower()
         query_words = set(query_lower.split())
@@ -607,15 +891,29 @@ class FLR:
                 recency_score = max(0, 1 - (age_hours / 168))  # Decay over 1 week
                 score += recency_score * 0.15
 
-            # 4. Reinforcement score
-            score += memory.reinforcement_score * 0.2
+            # 4. Reinforcement score (robust or legacy)
+            if self.use_robust_reinforcement:
+                # Use effective score with exploration bonus
+                reinforcement_score = memory.get_effective_reinforcement_score(
+                    use_robust=True,
+                    exploration_factor=self.exploration_factor,
+                    total_retrievals=max(1, self._total_retrievals),
+                )
+            else:
+                # Legacy simple score
+                reinforcement_score = memory.reinforcement_score
+            score += reinforcement_score * 0.2
 
             # 5. Importance
             score += memory.importance * 0.15
 
-            # 6. Access count (popularity)
+            # 6. Access count (popularity) - reduced weight in robust mode
+            # as exploration bonus already accounts for this
             popularity = min(1.0, memory.access_count / 100)
-            score += popularity * 0.1
+            if self.use_robust_reinforcement:
+                score += popularity * 0.05  # Lower weight, exploration handles it
+            else:
+                score += popularity * 0.1
 
             # Normalize to 0-1
             score = min(1.0, max(0.0, score))
@@ -783,9 +1081,26 @@ class FLR:
 
     def get_stats(self) -> dict[str, Any]:
         """Get FLR statistics."""
-        return {
+        stats = {
             "cache_size": len(self._cache),
             "cache_max": self.cache_size,
             "active_contexts": len(self._contexts),
             "pending_reinforcements": len(self._reinforcement_buffer),
+            "total_retrievals": self._total_retrievals,
         }
+
+        # Add robust reinforcement stats if enabled
+        if self.use_robust_reinforcement:
+            stats["robust_reinforcement"] = {
+                "enabled": True,
+                "exploration_factor": self.exploration_factor,
+                "decay_half_life_hours": self.decay_half_life_hours,
+                "pending_robust_signals": sum(
+                    len(signals)
+                    for signals in self._robust_reinforcement_buffer.values()
+                ),
+            }
+        else:
+            stats["robust_reinforcement"] = {"enabled": False}
+
+        return stats
