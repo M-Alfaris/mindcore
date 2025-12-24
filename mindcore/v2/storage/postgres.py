@@ -1,6 +1,7 @@
 """PostgreSQL storage backend for Mindcore v2.
 
 Primary production storage backend with full-text search and JSON support.
+Includes hierarchical session aggregates for fast weighted metadata queries.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from mindcore.v2.clst.aggregates import SessionAggregate
 from mindcore.v2.exceptions import MemoryNotFoundError, StorageError
 from mindcore.v2.flr import Memory
 
@@ -119,6 +121,8 @@ class PostgresStorage(BaseStorage):
                         importance REAL DEFAULT 0.5,
                         entities JSONB DEFAULT '[]'::jsonb,
                         access_level TEXT DEFAULT 'private',
+                        session_id TEXT,
+                        message_index INTEGER DEFAULT 0,
                         created_at TIMESTAMPTZ DEFAULT NOW(),
                         last_accessed TIMESTAMPTZ,
                         expires_at TIMESTAMPTZ,
@@ -131,6 +135,41 @@ class PostgresStorage(BaseStorage):
                             setweight(to_tsvector('english', coalesce(topics::text, '')), 'B') ||
                             setweight(to_tsvector('english', coalesce(entities::text, '')), 'C')
                         ) STORED
+                    )
+                """)
+
+            # Session aggregates table for hierarchical retrieval
+            cur.execute("""
+                    CREATE TABLE IF NOT EXISTS session_aggregates (
+                        session_id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        agent_id TEXT,
+                        topic_weights JSONB DEFAULT '{}'::jsonb,
+                        category_weights JSONB DEFAULT '{}'::jsonb,
+                        entity_weights JSONB DEFAULT '{}'::jsonb,
+                        intent_weights JSONB DEFAULT '{}'::jsonb,
+                        sentiment_weights JSONB DEFAULT '{}'::jsonb,
+                        importance_min REAL DEFAULT 1.0,
+                        importance_max REAL DEFAULT 0.0,
+                        importance_avg REAL DEFAULT 0.0,
+                        importance_sum REAL DEFAULT 0.0,
+                        confidence_min REAL DEFAULT 1.0,
+                        confidence_max REAL DEFAULT 0.0,
+                        confidence_avg REAL DEFAULT 0.0,
+                        confidence_sum REAL DEFAULT 0.0,
+                        memory_count INTEGER DEFAULT 0,
+                        message_count INTEGER DEFAULT 0,
+                        started_at TIMESTAMPTZ,
+                        last_activity_at TIMESTAMPTZ,
+                        dominant_topic TEXT,
+                        dominant_category TEXT,
+                        dominant_sentiment TEXT,
+                        max_urgency TEXT,
+                        access_level TEXT DEFAULT 'private',
+                        summary_text TEXT,
+                        summary_embedding JSONB,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
                     )
                 """)
 
@@ -172,6 +211,46 @@ class PostgresStorage(BaseStorage):
                     ON memories(access_level)
                 """)
 
+            # Session-related indexes on memories
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_memories_session_id
+                    ON memories(session_id)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_memories_session_order
+                    ON memories(session_id, message_index)
+                """)
+
+            # Session aggregates indexes for fast hierarchical queries
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_user_id
+                    ON session_aggregates(user_id)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_agent_id
+                    ON session_aggregates(agent_id)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_topics
+                    ON session_aggregates USING GIN(topic_weights)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_categories
+                    ON session_aggregates USING GIN(category_weights)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_importance
+                    ON session_aggregates(importance_avg DESC)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_activity
+                    ON session_aggregates(last_activity_at DESC)
+                """)
+            cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_user_activity
+                    ON session_aggregates(user_id, last_activity_at DESC)
+                """)
+
             # Transfers table
             cur.execute("""
                     CREATE TABLE IF NOT EXISTS transfers (
@@ -192,17 +271,23 @@ class PostgresStorage(BaseStorage):
             memory.created_at = datetime.now(timezone.utc)
 
         with self._pool.connection() as conn, conn.cursor() as cur:
+            # Get next message_index if session_id is set and message_index is 0
+            if memory.session_id and memory.message_index == 0:
+                memory.message_index = self._get_next_message_index_internal(cur, memory.session_id)
+
             cur.execute(
                 """
                     INSERT INTO memories (
                         memory_id, content, memory_type, user_id, agent_id,
                         topics, categories, sentiment, importance, entities,
-                        access_level, created_at, last_accessed, expires_at,
+                        access_level, session_id, message_index,
+                        created_at, last_accessed, expires_at,
                         reinforcement_score, access_count, vocabulary_version, embedding
                     ) VALUES (
                         %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s,
+                        %s, %s, %s,
+                        %s, %s, %s,
                         %s, %s, %s, %s
                     )
                     ON CONFLICT (memory_id) DO UPDATE SET
@@ -214,6 +299,8 @@ class PostgresStorage(BaseStorage):
                         importance = EXCLUDED.importance,
                         entities = EXCLUDED.entities,
                         access_level = EXCLUDED.access_level,
+                        session_id = EXCLUDED.session_id,
+                        message_index = EXCLUDED.message_index,
                         last_accessed = EXCLUDED.last_accessed,
                         reinforcement_score = EXCLUDED.reinforcement_score,
                         access_count = EXCLUDED.access_count,
@@ -232,6 +319,8 @@ class PostgresStorage(BaseStorage):
                     memory.importance,
                     json.dumps(memory.entities),
                     memory.access_level,
+                    memory.session_id,
+                    memory.message_index,
                     memory.created_at,
                     memory.last_accessed,
                     memory.expires_at,
@@ -241,9 +330,144 @@ class PostgresStorage(BaseStorage):
                     json.dumps(memory.embedding) if memory.embedding else None,
                 ),
             )
+
+            # Update session aggregate if session_id is set
+            if memory.session_id:
+                self._update_session_aggregate_internal(cur, memory.session_id, memory)
+
             conn.commit()
 
         return memory.memory_id
+
+    def _get_next_message_index_internal(self, cur, session_id: str) -> int:
+        """Get next message index (internal, uses existing cursor)."""
+        cur.execute(
+            "SELECT COALESCE(MAX(message_index), -1) + 1 FROM memories WHERE session_id = %s",
+            (session_id,),
+        )
+        return cur.fetchone()[0]
+
+    def _update_session_aggregate_internal(self, cur, session_id: str, memory: Memory) -> None:
+        """Update session aggregate incrementally (internal, uses existing cursor)."""
+        now = datetime.now(timezone.utc)
+
+        # Try to get existing aggregate
+        cur.execute("SELECT * FROM session_aggregates WHERE session_id = %s", (session_id,))
+        row = cur.fetchone()
+
+        if row is None:
+            # Create new aggregate
+            aggregate = SessionAggregate(
+                session_id=session_id,
+                user_id=memory.user_id,
+                agent_id=memory.agent_id,
+            )
+            aggregate.update_from_memory(memory)
+
+            cur.execute(
+                """
+                INSERT INTO session_aggregates (
+                    session_id, user_id, agent_id,
+                    topic_weights, category_weights, entity_weights,
+                    intent_weights, sentiment_weights,
+                    importance_min, importance_max, importance_avg, importance_sum,
+                    confidence_min, confidence_max, confidence_avg, confidence_sum,
+                    memory_count, message_count,
+                    started_at, last_activity_at,
+                    dominant_topic, dominant_category, dominant_sentiment,
+                    max_urgency, access_level,
+                    created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s
+                )
+                """,
+                (
+                    aggregate.session_id,
+                    aggregate.user_id,
+                    aggregate.agent_id,
+                    json.dumps(aggregate.topic_weights),
+                    json.dumps(aggregate.category_weights),
+                    json.dumps(aggregate.entity_weights),
+                    json.dumps(aggregate.intent_weights),
+                    json.dumps(aggregate.sentiment_weights),
+                    aggregate.importance_min,
+                    aggregate.importance_max,
+                    aggregate.importance_avg,
+                    aggregate.importance_sum,
+                    aggregate.confidence_min,
+                    aggregate.confidence_max,
+                    aggregate.confidence_avg,
+                    aggregate.confidence_sum,
+                    aggregate.memory_count,
+                    aggregate.message_count,
+                    aggregate.started_at,
+                    aggregate.last_activity_at,
+                    aggregate.dominant_topic,
+                    aggregate.dominant_category,
+                    aggregate.dominant_sentiment,
+                    aggregate.max_urgency,
+                    aggregate.access_level,
+                    now,
+                    now,
+                ),
+            )
+        else:
+            # Load existing aggregate and update
+            columns = [desc[0] for desc in cur.description]
+            data = dict(zip(columns, row, strict=False))
+            aggregate = self._row_to_session_aggregate(data)
+            aggregate.update_from_memory(memory)
+
+            cur.execute(
+                """
+                UPDATE session_aggregates SET
+                    topic_weights = %s,
+                    category_weights = %s,
+                    entity_weights = %s,
+                    sentiment_weights = %s,
+                    importance_min = %s,
+                    importance_max = %s,
+                    importance_avg = %s,
+                    importance_sum = %s,
+                    memory_count = %s,
+                    message_count = %s,
+                    last_activity_at = %s,
+                    dominant_topic = %s,
+                    dominant_category = %s,
+                    dominant_sentiment = %s,
+                    access_level = %s,
+                    updated_at = %s
+                WHERE session_id = %s
+                """,
+                (
+                    json.dumps(aggregate.topic_weights),
+                    json.dumps(aggregate.category_weights),
+                    json.dumps(aggregate.entity_weights),
+                    json.dumps(aggregate.sentiment_weights),
+                    aggregate.importance_min,
+                    aggregate.importance_max,
+                    aggregate.importance_avg,
+                    aggregate.importance_sum,
+                    aggregate.memory_count,
+                    aggregate.message_count,
+                    aggregate.last_activity_at,
+                    aggregate.dominant_topic,
+                    aggregate.dominant_category,
+                    aggregate.dominant_sentiment,
+                    aggregate.access_level,
+                    now,
+                    session_id,
+                ),
+            )
 
     def get(self, memory_id: str) -> Memory | None:
         """Retrieve a memory by ID."""
@@ -575,6 +799,8 @@ class PostgresStorage(BaseStorage):
             importance=data.get("importance", 0.5),
             entities=entities if isinstance(entities, list) else [],
             access_level=data.get("access_level", "private"),
+            session_id=data.get("session_id"),
+            message_index=data.get("message_index", 0),
             created_at=created_at,
             last_accessed=last_accessed,
             expires_at=expires_at,
@@ -583,3 +809,284 @@ class PostgresStorage(BaseStorage):
             vocabulary_version=data.get("vocabulary_version", "1.0.0"),
             embedding=embedding,
         )
+
+    def _row_to_session_aggregate(self, data: dict[str, Any]) -> SessionAggregate:
+        """Convert database row dict to SessionAggregate object."""
+        return SessionAggregate(
+            session_id=data["session_id"],
+            user_id=data["user_id"],
+            agent_id=data.get("agent_id"),
+            topic_weights=data.get("topic_weights", {}),
+            category_weights=data.get("category_weights", {}),
+            entity_weights=data.get("entity_weights", {}),
+            intent_weights=data.get("intent_weights", {}),
+            sentiment_weights=data.get("sentiment_weights", {}),
+            importance_min=data.get("importance_min", 1.0),
+            importance_max=data.get("importance_max", 0.0),
+            importance_avg=data.get("importance_avg", 0.0),
+            importance_sum=data.get("importance_sum", 0.0),
+            confidence_min=data.get("confidence_min", 1.0),
+            confidence_max=data.get("confidence_max", 0.0),
+            confidence_avg=data.get("confidence_avg", 0.0),
+            confidence_sum=data.get("confidence_sum", 0.0),
+            memory_count=data.get("memory_count", 0),
+            message_count=data.get("message_count", 0),
+            started_at=data.get("started_at"),
+            last_activity_at=data.get("last_activity_at"),
+            dominant_topic=data.get("dominant_topic"),
+            dominant_category=data.get("dominant_category"),
+            dominant_sentiment=data.get("dominant_sentiment"),
+            max_urgency=data.get("max_urgency"),
+            access_level=data.get("access_level", "private"),
+            summary_text=data.get("summary_text"),
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
+        )
+
+    # ==========================================================================
+    # Session Aggregate Methods
+    # ==========================================================================
+
+    def store_session_aggregate(self, aggregate: SessionAggregate) -> str:
+        """Store or update a session aggregate."""
+        now = datetime.now(timezone.utc)
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO session_aggregates (
+                    session_id, user_id, agent_id,
+                    topic_weights, category_weights, entity_weights,
+                    intent_weights, sentiment_weights,
+                    importance_min, importance_max, importance_avg, importance_sum,
+                    confidence_min, confidence_max, confidence_avg, confidence_sum,
+                    memory_count, message_count,
+                    started_at, last_activity_at,
+                    dominant_topic, dominant_category, dominant_sentiment,
+                    max_urgency, access_level, summary_text,
+                    created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                ON CONFLICT (session_id) DO UPDATE SET
+                    topic_weights = EXCLUDED.topic_weights,
+                    category_weights = EXCLUDED.category_weights,
+                    entity_weights = EXCLUDED.entity_weights,
+                    intent_weights = EXCLUDED.intent_weights,
+                    sentiment_weights = EXCLUDED.sentiment_weights,
+                    importance_min = EXCLUDED.importance_min,
+                    importance_max = EXCLUDED.importance_max,
+                    importance_avg = EXCLUDED.importance_avg,
+                    importance_sum = EXCLUDED.importance_sum,
+                    memory_count = EXCLUDED.memory_count,
+                    message_count = EXCLUDED.message_count,
+                    last_activity_at = EXCLUDED.last_activity_at,
+                    dominant_topic = EXCLUDED.dominant_topic,
+                    dominant_category = EXCLUDED.dominant_category,
+                    dominant_sentiment = EXCLUDED.dominant_sentiment,
+                    max_urgency = EXCLUDED.max_urgency,
+                    access_level = EXCLUDED.access_level,
+                    summary_text = EXCLUDED.summary_text,
+                    updated_at = %s
+                """,
+                (
+                    aggregate.session_id,
+                    aggregate.user_id,
+                    aggregate.agent_id,
+                    json.dumps(aggregate.topic_weights),
+                    json.dumps(aggregate.category_weights),
+                    json.dumps(aggregate.entity_weights),
+                    json.dumps(aggregate.intent_weights),
+                    json.dumps(aggregate.sentiment_weights),
+                    aggregate.importance_min,
+                    aggregate.importance_max,
+                    aggregate.importance_avg,
+                    aggregate.importance_sum,
+                    aggregate.confidence_min,
+                    aggregate.confidence_max,
+                    aggregate.confidence_avg,
+                    aggregate.confidence_sum,
+                    aggregate.memory_count,
+                    aggregate.message_count,
+                    aggregate.started_at,
+                    aggregate.last_activity_at,
+                    aggregate.dominant_topic,
+                    aggregate.dominant_category,
+                    aggregate.dominant_sentiment,
+                    aggregate.max_urgency,
+                    aggregate.access_level,
+                    aggregate.summary_text,
+                    now,
+                    now,
+                    now,  # For the UPDATE clause
+                ),
+            )
+            conn.commit()
+
+        return aggregate.session_id
+
+    def get_session_aggregate(self, session_id: str) -> SessionAggregate | None:
+        """Retrieve a session aggregate by ID."""
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM session_aggregates WHERE session_id = %s", (session_id,))
+            row = cur.fetchone()
+
+            if not row:
+                return None
+
+            columns = [desc[0] for desc in cur.description]
+            data = dict(zip(columns, row, strict=False))
+            return self._row_to_session_aggregate(data)
+
+    def query_sessions(
+        self,
+        user_id: str,
+        topic_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        min_importance_avg: float | None = None,
+        min_topic_weight: float = 0.0,
+        agent_ids: list[str] | None = None,
+        access_levels: list[str] | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> list[SessionAggregate]:
+        """Query sessions by weighted metadata.
+
+        This enables hierarchical retrieval - find relevant sessions first,
+        then drill down to specific memories.
+        """
+        conditions = ["user_id = %s"]
+        params: list[Any] = [user_id]
+
+        if agent_ids:
+            conditions.append("agent_id = ANY(%s)")
+            params.append(agent_ids)
+
+        if access_levels:
+            conditions.append("access_level = ANY(%s)")
+            params.append(access_levels)
+
+        if min_importance_avg is not None:
+            conditions.append("importance_avg >= %s")
+            params.append(min_importance_avg)
+
+        if start_date:
+            conditions.append("started_at >= %s")
+            params.append(start_date)
+
+        if end_date:
+            conditions.append("last_activity_at <= %s")
+            params.append(end_date)
+
+        # Build topic matching condition with weight threshold
+        if topic_hints:
+            # Match sessions that have any of the topic hints with sufficient weight
+            topic_conditions = []
+            for topic in topic_hints:
+                topic_conditions.append(f"(topic_weights ? %s AND (topic_weights->>%s)::float >= %s)")
+                params.extend([topic, topic, min_topic_weight])
+            conditions.append(f"({' OR '.join(topic_conditions)})")
+
+        if category_hints:
+            category_conditions = []
+            for category in category_hints:
+                category_conditions.append(f"(category_weights ? %s)")
+                params.append(category)
+            conditions.append(f"({' OR '.join(category_conditions)})")
+
+        where_clause = " AND ".join(conditions)
+
+        # Build ORDER BY with weighted scoring
+        order_parts = []
+        if topic_hints:
+            # Score by sum of topic weights for matching hints
+            weight_calcs = []
+            for topic in topic_hints:
+                weight_calcs.append(f"COALESCE((topic_weights->>%s)::float, 0)")
+                params.append(topic)
+            order_parts.append(f"({' + '.join(weight_calcs)}) DESC")
+
+        order_parts.append("importance_avg DESC")
+        order_parts.append("last_activity_at DESC")
+        order_by = ", ".join(order_parts)
+
+        params.extend([limit, offset])
+
+        sql = f"""
+            SELECT * FROM session_aggregates
+            WHERE {where_clause}
+            ORDER BY {order_by}
+            LIMIT %s OFFSET %s
+        """
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            columns = [desc[0] for desc in cur.description]
+            return [
+                self._row_to_session_aggregate(dict(zip(columns, row, strict=False)))
+                for row in rows
+            ]
+
+    def query_memories_by_sessions(
+        self,
+        session_ids: list[str],
+        min_importance: float | None = None,
+        min_confidence: float | None = None,
+        memory_types: list[str] | None = None,
+        limit: int = 100,
+        order_by_message_index: bool = True,
+    ) -> list[Memory]:
+        """Query memories from specific sessions, preserving event order."""
+        if not session_ids:
+            return []
+
+        conditions = ["session_id = ANY(%s)"]
+        params: list[Any] = [session_ids]
+
+        if min_importance is not None:
+            conditions.append("importance >= %s")
+            params.append(min_importance)
+
+        if memory_types:
+            conditions.append("memory_type = ANY(%s)")
+            params.append(memory_types)
+
+        # Filter expired
+        conditions.append("(expires_at IS NULL OR expires_at > NOW())")
+
+        where_clause = " AND ".join(conditions)
+
+        order_by = "session_id, message_index" if order_by_message_index else "created_at DESC"
+
+        sql = f"""
+            SELECT * FROM memories
+            WHERE {where_clause}
+            ORDER BY {order_by}
+            LIMIT %s
+        """
+        params.append(limit)
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            return [self._row_to_memory(row, cur.description) for row in rows]
+
+    def get_next_message_index(self, session_id: str) -> int:
+        """Get the next message index for a session."""
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            return self._get_next_message_index_internal(cur, session_id)
+
+    def update_session_aggregate_from_memory(
+        self,
+        session_id: str,
+        memory: Memory,
+    ) -> None:
+        """Update session aggregate incrementally from a new memory."""
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            self._update_session_aggregate_internal(cur, session_id, memory)
+            conn.commit()
