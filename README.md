@@ -539,15 +539,37 @@ Store Flow:
   Content → SVL.validate() → CLST.store() → Storage
                                   ↓
                             FLR.cache_update()
+                                  ↓
+                       SessionAggregate.update()
 
-Recall Flow:
-  Query → FLR.cache_check() → hit? → return cached
-              ↓ miss
-          FLR.query() → CLST.search() → Storage
+Recall Flow (with ContextGateway):
+  Query → MetadataExtractor.get_context_decision_prompt()
               ↓
-          Score & Rank → Cache → Return
+          LLM decides: HistoricalContextNeeded?
+              │
+              ├─ "False" → FLR only (current session)
+              │            ↓
+              │     ContextGateway._build_flr_only_context()
+              │            ↓
+              │     Return current session memories
+              │
+              └─ "True" → Full hierarchical query
+                          ↓
+                   ContextGateway.build_context()
+                          ↓
+                   Query sessions by weighted metadata
+                          ↓
+                   Query memories from matched sessions
+                          ↓
+                   Fetch SVL data sources
+                          ↓
+                   Return ContextResult
               ↓
-          Reinforcement signals → Buffer → Batch flush
+          MetadataExtractor.get_extraction_prompt()
+              ↓
+          LLM assigns EnforcedMetadata (SVL-compliant)
+              ↓
+          ContextGateway.record_response()
 ```
 
 ---
@@ -559,25 +581,33 @@ mindcore/
 ├── __init__.py                 # Public API exports
 ├── mindcore.py                 # Main Mindcore orchestrator
 │
-├── flr/                        # Fast Learning Recall protocol
-│   ├── __init__.py
-│   └── recall.py               # FLR, Memory, RecallResult, ContextWindow
-│
-├── clst/                       # Cognitive Long-term Storage Transfer
-│   ├── __init__.py
-│   └── storage.py              # CLST, CompressionResult, SyncResult
-│
-├── svl/                        # Shared Vocabulary Layer
-│   ├── __init__.py
-│   ├── layer.py                # SharedVocabularyLayer, Migration
-│   ├── ontology.py             # MessageType, Intent, Sentiment enums
-│   ├── domains.py              # Pre-built domain vocabularies
-│   └── sources.py              # TableSource, APISource, MCPSource
-│
-├── storage/                    # Storage backends
-│   ├── base.py                 # BaseStorage abstract class
-│   ├── sqlite.py               # SQLiteStorage
-│   └── postgres.py             # PostgresStorage
+├── v2/                         # Version 2 with ContextGateway
+│   ├── flr/                    # Fast Learning Recall protocol
+│   │   ├── __init__.py
+│   │   └── recall.py           # FLR, Memory (with session_id, thread_id)
+│   │
+│   ├── clst/                   # Cognitive Long-term Storage Transfer
+│   │   ├── __init__.py
+│   │   ├── storage.py          # CLST, CompressionResult, SyncResult
+│   │   └── aggregates.py       # SessionAggregate, WeightCalculator
+│   │
+│   ├── svl/                    # Shared Vocabulary Layer
+│   │   ├── __init__.py
+│   │   ├── layer.py            # SharedVocabularyLayer, Migration
+│   │   ├── ontology.py         # MessageType, Intent, Sentiment enums
+│   │   ├── domains.py          # Pre-built domain vocabularies
+│   │   ├── sources.py          # TableSource, APISource, MCPSource
+│   │   ├── enforced_metadata.py # EnforcedMetadata, ContextDecision, MetadataExtractor
+│   │   └── llm_providers.py    # OpenAIConfig, ClaudeConfig, GeminiConfig
+│   │
+│   ├── context/                # Unified context assembly
+│   │   ├── __init__.py
+│   │   └── gateway.py          # ContextGateway, QueryMetadata, ResponseMetadata
+│   │
+│   └── storage/                # Storage backends
+│       ├── base.py             # BaseStorage with session aggregate methods
+│       ├── sqlite.py           # SQLiteStorage
+│       └── postgres.py         # PostgresStorage with session_aggregates table
 │
 ├── cross_agent/                # Multi-agent support
 │   ├── layer.py                # CrossAgentLayer
@@ -597,10 +627,6 @@ mindcore/
 │
 ├── exceptions.py               # Standardized exceptions
 ├── tests/                      # Test suite
-│   ├── test_mindcore.py
-│   ├── test_svl.py
-│   ├── test_cross_agent.py
-│   └── test_enterprise.py
 │
 └── utils/                      # Logging utilities
 ```
@@ -666,6 +692,205 @@ class SharedVocabularyLayer:
     def to_typescript() -> str
     def to_pydantic() -> str
 ```
+
+### ContextGateway
+
+```python
+class ContextGateway:
+    def build_context(query, user_id, session_id, attention_hints, ...) -> ContextResult
+    def build_context_with_decision(query, context_decision, user_id, ...) -> ContextResult
+    def record_response(query_metadata, response_text, memories_to_store, ...) -> ResponseMetadata
+```
+
+---
+
+## ContextGateway & Hierarchical Retrieval
+
+The **ContextGateway** is the unified entry point for building LLM context, orchestrating FLR (hot path), CLST (cold path), and SVL (data sources).
+
+### Architecture
+
+```text
+User Query
+    │
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│                   ContextGateway                         │
+│                                                          │
+│  1. LLM decides: HistoricalContextNeeded?               │
+│     ├─ "False" → FLR only (current session)             │
+│     └─ "True"  → Full CLST hierarchical query           │
+│                                                          │
+│  2. Hierarchical Retrieval (if CLST needed)             │
+│     ├─ Query sessions by weighted metadata              │
+│     └─ Query memories from matched sessions             │
+│                                                          │
+│  3. Fetch SVL data sources for matched topics           │
+│                                                          │
+│  4. Create SVL-compliant QueryMetadata                  │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+    │
+    ▼
+ContextResult (unified context for LLM)
+```
+
+### Session Aggregates with Weighted Metadata
+
+Instead of flat memory search, Mindcore uses **hierarchical retrieval**:
+
+```python
+from mindcore.v2.clst import SessionAggregate
+
+# Session-level metadata with weights
+aggregate = SessionAggregate(
+    session_id="session_123",
+    user_id="user_456",
+
+    # Weighted distributions (term → weight 0-1)
+    topic_weights={"orders": 0.85, "shipping": 0.6, "returns": 0.3},
+    category_weights={"support": 0.9, "billing": 0.4},
+    intent_weights={"ask_question": 0.7, "request_action": 0.5},
+
+    # Importance statistics
+    importance_avg=0.72,
+    importance_max=0.95,
+
+    # Dominant values
+    dominant_topic="orders",
+    dominant_category="support",
+)
+```
+
+**Weight Calculation:**
+```python
+topic_weight = (frequency * 0.4) + (avg_importance * 0.4) + (recency * 0.2)
+```
+
+### HistoricalContextNeeded Decision
+
+The LLM decides if historical context (CLST) is needed:
+
+```python
+from mindcore.v2.svl import ContextDecision, HistoricalContextNeeded, MetadataExtractor
+from mindcore.v2.context import ContextGateway
+
+extractor = MetadataExtractor(svl=shared_vocabulary_layer)
+gateway = ContextGateway(storage=postgres_storage, svl=svl)
+
+# Get LLM to decide
+decision_prompt = extractor.get_context_decision_prompt(
+    user_message="What did you tell me about my order last week?",
+)
+# ... send to LLM ...
+
+# Parse decision
+decision = extractor.parse_context_decision(llm_response)
+# ContextDecision(historical_context_needed="True", suggested_topics=["orders"], ...)
+
+# Build context based on decision
+context = gateway.build_context_with_decision(
+    query="What did you tell me about my order last week?",
+    context_decision=decision,
+    user_id="user_123",
+    session_id="session_abc",
+)
+
+# If HistoricalContextNeeded = "False", only current session is queried (faster)
+# If HistoricalContextNeeded = "True", full hierarchical CLST query
+```
+
+---
+
+## Enforced SVL Metadata Extraction
+
+The **MetadataExtractor** forces LLMs to assign metadata from SVL vocabulary:
+
+### Enforced Metadata Schema
+
+```python
+from mindcore.v2.svl import EnforcedMetadata
+
+metadata = EnforcedMetadata(
+    message_id="msg_abc123",
+    user_id="user_123",
+    session_id="session_456",
+    thread_id="thread_789",  # For multi-thread conversations
+
+    # SVL-enforced (LLM must choose from vocabulary)
+    topics=["orders", "shipping"],
+    categories=["support"],
+    entities=["Order #12345"],
+    message_type="query",           # query, command, statement, ...
+    message_intent="ask_question",  # ask_question, request_action, ...
+
+    # Scores
+    importance=0.7,
+    confidence=0.9,
+    urgency="medium",
+    sentiment="neutral",
+    emotional_classification="neutral",
+
+    # Memory classification
+    memory_type="episodic",
+    access_level="private",
+)
+```
+
+### Multi-Provider LLM Support
+
+Mindcore supports the latest LLM APIs with reasoning/thinking modes:
+
+```python
+from mindcore.v2.svl import (
+    MetadataExtractor,
+    OpenAIConfig,
+    ClaudeConfig,
+    GeminiConfig,
+    ReasoningEffort,
+    ThinkingMode,
+)
+
+extractor = MetadataExtractor(svl=shared_vocabulary_layer)
+
+# OpenAI GPT-5 with Responses API
+request = extractor.get_openai_request(
+    user_message="What's my order status?",
+    model="gpt-5",
+    reasoning_effort="high",      # low, medium, high, xhigh
+    use_responses_api=True,       # 3-5% better intelligence
+)
+
+# Claude with Extended Thinking
+request = extractor.get_claude_request(
+    user_message="What's my order status?",
+    model="claude-sonnet-4-5-20250514",
+    thinking_budget=16000,        # Max reasoning tokens
+    use_extended_thinking=True,
+)
+
+# Gemini with Thinking Mode
+request = extractor.get_gemini_request(
+    user_message="What's my order status?",
+    model="gemini-2.5-flash",
+    thinking_mode="dynamic",      # disabled, dynamic, fixed
+)
+```
+
+### Provider Configurations
+
+| Provider | API | Key Features | Temperature |
+|----------|-----|--------------|-------------|
+| **OpenAI GPT-5** | Responses API | `reasoning_effort`, preserved reasoning across turns, structured outputs | 0.0 |
+| **Claude** | Messages API | `thinking.budget_tokens`, interleaved thinking, `output_format` | N/A (thinking) |
+| **Gemini** | GenerativeAI | `thinkingBudget`, dynamic thinking, `response_schema` | 0.0 |
+
+### Best Practices
+
+- **Temperature 0** for deterministic metadata extraction
+- **Reasoning/thinking enabled** for accurate classification
+- **JSON Schema validation** ensures SVL vocabulary compliance
+- **Seed parameter** (42) for reproducibility (OpenAI, Gemini)
 
 ---
 
