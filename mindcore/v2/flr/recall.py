@@ -50,7 +50,8 @@ class Memory:
 
     # Session/Thread context (for hierarchical retrieval)
     session_id: str | None = None
-    message_index: int = 0  # Order within session for event series
+    thread_id: str | None = None  # For multi-thread conversations within a session
+    message_index: int = 0  # Order within session/thread for event series
 
     # Timestamps
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -112,6 +113,7 @@ class Memory:
             "entities": self.entities,
             "access_level": self.access_level,
             "session_id": self.session_id,
+            "thread_id": self.thread_id,
             "message_index": self.message_index,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,

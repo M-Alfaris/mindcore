@@ -10,6 +10,7 @@ Key Features:
 - SVL data source integration: Auto-fetches tables/APIs based on topics
 - FLR hot cache: Fast path for recent/frequent memories
 - Unified context format: Single API for all context needs
+- HistoricalContextNeeded: LLM decides if CLST query is needed
 
 Example:
     gateway = ContextGateway(
@@ -24,6 +25,17 @@ Example:
         user_id="user_123",
         session_id="session_abc",
         attention_hints=["orders", "shipping"],
+    )
+
+    # Or use LLM-driven context decision
+    context = gateway.build_context_with_decision(
+        query="What about my order?",
+        context_decision=ContextDecision(
+            historical_context_needed=HistoricalContextNeeded.TRUE,
+            suggested_topics=["orders", "shipping"],
+        ),
+        user_id="user_123",
+        session_id="session_abc",
     )
 
     # Context contains:
@@ -46,6 +58,7 @@ if TYPE_CHECKING:
     from mindcore.v2.flr import Memory
     from mindcore.v2.storage.base import BaseStorage
     from mindcore.v2.svl import SharedVocabularyLayer
+    from mindcore.v2.svl.enforced_metadata import ContextDecision, EnforcedMetadata
 
 
 @dataclass
@@ -468,6 +481,160 @@ class ContextGateway:
         # Store query as memory for traceability if session is active
         if session_id and self._track_queries:
             self._store_query_memory(result.query_metadata)
+
+        return result
+
+    def build_context_with_decision(
+        self,
+        query: str,
+        context_decision: ContextDecision,
+        user_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+        enforced_metadata: EnforcedMetadata | None = None,
+        min_importance: float = 0.3,
+        session_limit: int | None = None,
+        memory_limit: int | None = None,
+        include_source_data: bool = True,
+    ) -> ContextResult:
+        """Build context based on LLM's HistoricalContextNeeded decision.
+
+        This method respects the LLM's decision on whether to query CLST
+        (historical context) or only use FLR (current session).
+
+        Args:
+            query: User query text
+            context_decision: LLM's decision on context requirements
+            user_id: User identifier
+            session_id: Current session
+            agent_id: Agent identifier
+            thread_id: Thread identifier for multi-thread conversations
+            enforced_metadata: Optional pre-extracted metadata
+            min_importance: Minimum importance threshold
+            session_limit: Max sessions to search (if CLST needed)
+            memory_limit: Max memories to return
+            include_source_data: Whether to fetch SVL sources
+
+        Returns:
+            ContextResult with appropriate context based on decision
+        """
+        start_time = time.time()
+
+        # Use suggested topics/categories from LLM decision
+        attention_hints = context_decision.suggested_topics or []
+        category_hints = context_decision.suggested_categories or []
+
+        # If LLM says historical context is NOT needed, use FLR only
+        if not context_decision.needs_clst():
+            return self._build_flr_only_context(
+                query=query,
+                user_id=user_id,
+                session_id=session_id,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                attention_hints=attention_hints,
+                memory_limit=memory_limit or self._default_memory_limit,
+                include_source_data=include_source_data,
+                start_time=start_time,
+            )
+
+        # Historical context needed - use full hierarchical retrieval
+        return self.build_context(
+            query=query,
+            user_id=user_id,
+            session_id=session_id,
+            agent_id=agent_id,
+            attention_hints=attention_hints,
+            category_hints=category_hints,
+            min_importance=min_importance,
+            session_limit=session_limit,
+            memory_limit=memory_limit,
+            include_source_data=include_source_data,
+            use_cache=True,
+        )
+
+    def _build_flr_only_context(
+        self,
+        query: str,
+        user_id: str,
+        session_id: str | None,
+        agent_id: str | None,
+        thread_id: str | None,
+        attention_hints: list[str],
+        memory_limit: int,
+        include_source_data: bool,
+        start_time: float,
+    ) -> ContextResult:
+        """Build context using only FLR (current session).
+
+        Skips CLST hierarchical query when historical context not needed.
+        This is faster and uses less resources.
+        """
+        result = ContextResult()
+
+        # Get current session context only
+        if session_id:
+            result.current_session = self._storage.get_session_aggregate(session_id)
+
+            # Query memories only from current session
+            if result.current_session:
+                result.memories = self._storage.query_memories_by_sessions(
+                    session_ids=[session_id],
+                    min_importance=0.0,  # Get all from current session
+                    limit=memory_limit,
+                    order_by_message_index=True,
+                )
+                result.total_memories_searched = len(result.memories)
+
+                # If thread_id specified, filter to that thread
+                if thread_id and result.memories:
+                    result.memories = [
+                        m for m in result.memories
+                        if getattr(m, 'thread_id', None) == thread_id or getattr(m, 'thread_id', None) is None
+                    ]
+
+        # Fallback: Check cache
+        cache_key = self._build_cache_key(user_id, session_id, attention_hints)
+        if not result.memories and cache_key in self._hot_cache:
+            cached_memories, cache_time = self._hot_cache[cache_key]
+            if time.time() - cache_time < self._flr_cache_ttl:
+                result.memories = cached_memories
+                result.from_cache = True
+
+        # Collect matched topics/categories from current session only
+        result.matched_topics = self._collect_topics(result.memories)
+        result.matched_categories = self._collect_categories(result.memories)
+
+        # Fetch SVL sources for current session topics
+        if include_source_data and self._svl and result.matched_topics:
+            result.source_data = self._fetch_source_data(
+                topics=result.matched_topics,
+                user_id=user_id,
+                session_id=session_id,
+                query=query,
+            )
+            result.sources_fetched = len(result.source_data)
+
+        result.latency_ms = (time.time() - start_time) * 1000
+        result.sessions_searched = 1 if session_id else 0
+
+        # Create query metadata
+        result.query_metadata = QueryMetadata(
+            query_id=f"qry_{uuid.uuid4().hex[:12]}",
+            query_text=query,
+            session_id=session_id,
+            user_id=user_id,
+            topics=result.matched_topics,
+            categories=result.matched_categories,
+            message_type="query",
+            message_intent=self._infer_intent(query) if query else None,
+            attention_hints=attention_hints,
+            sessions_searched=result.sessions_searched,
+            memories_retrieved=result.total_memories_searched,
+            sources_fetched=result.sources_fetched,
+            latency_ms=result.latency_ms,
+        )
 
         return result
 

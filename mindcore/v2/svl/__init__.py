@@ -133,8 +133,22 @@ from .sources import (
     create_source,
 )
 
+# Enforced Metadata - LLM metadata extraction
+from .enforced_metadata import (
+    ContextDecision,
+    EnforcedMetadata,
+    HistoricalContextNeeded,
+    MetadataExtractor,
+)
+
 
 __all__ = [
+    # Enforced Metadata
+    "ContextDecision",
+    "EnforcedMetadata",
+    "HistoricalContextNeeded",
+    "MetadataExtractor",
+    # Domains
     "CUSTOMER_SERVICE_DOMAIN",
     "DEFAULT_SVL",
     "DOMAIN_REGISTRY",
