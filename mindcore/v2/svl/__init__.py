@@ -152,6 +152,11 @@ from .llm_providers import (
     ThinkingMode,
     get_provider_config,
     get_recommended_config,
+    # API-Level Context Injection
+    ContextInjector,
+    FeedbackInjection,
+    create_injector_from_flr,
+    create_injector_from_optimizer,
 )
 
 
@@ -171,6 +176,11 @@ __all__ = [
     "ThinkingMode",
     "get_provider_config",
     "get_recommended_config",
+    # API-Level Context Injection
+    "ContextInjector",
+    "FeedbackInjection",
+    "create_injector_from_flr",
+    "create_injector_from_optimizer",
     # Domains
     "CUSTOMER_SERVICE_DOMAIN",
     "DEFAULT_SVL",

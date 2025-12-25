@@ -510,3 +510,310 @@ def get_recommended_config(provider: str) -> LLMProviderConfig:
     if provider_lower == "gemini":
         return RECOMMENDED_CONFIGS["google"]
     return GenericConfig(provider=provider)
+
+
+# =============================================================================
+# API-Level Context Injection (No Prompt Modification)
+# =============================================================================
+
+
+@dataclass
+class FeedbackInjection:
+    """Configuration for injecting feedback via API without modifying user prompt.
+
+    Supports multiple injection methods:
+    1. System/Instructions: High-authority guidance separate from user input
+    2. Schema Descriptions: Embed hints in structured output schema
+    3. Developer Role: Higher priority than user messages (OpenAI)
+    4. Meta Messages: Hidden context in Claude (isMeta: true)
+    """
+
+    # What to inject
+    effective_topics: list[tuple[str, float]] = field(default_factory=list)
+    ineffective_topics: list[tuple[str, float]] = field(default_factory=list)
+    effective_categories: list[tuple[str, float]] = field(default_factory=list)
+    ineffective_categories: list[tuple[str, float]] = field(default_factory=list)
+
+    # Overall guidance
+    overall_usage_rate: float = 0.5
+    recommendations: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_feedback(cls, feedback: dict[str, Any]) -> FeedbackInjection:
+        """Create from FLR.get_metadata_feedback_for_extractor() output."""
+        return cls(
+            effective_topics=feedback.get("high_quality_topics", []),
+            ineffective_topics=feedback.get("low_quality_topics", []),
+            effective_categories=feedback.get("high_quality_categories", []),
+            ineffective_categories=feedback.get("low_quality_categories", []),
+        )
+
+    @classmethod
+    def from_optimizer(cls, optimization: dict[str, Any]) -> FeedbackInjection:
+        """Create from QueryOptimizer.get_recommendations() output."""
+        return cls(
+            effective_topics=[
+                (t["topic"], t.get("usage_rate", 0.5))
+                for t in optimization.get("top_performing_topics", [])
+            ],
+            ineffective_topics=[
+                (t["topic"], t.get("usage_rate", 0.5))
+                for t in optimization.get("underperforming_topics", [])
+            ],
+            overall_usage_rate=optimization.get("overall_usage_rate", 0.5),
+            recommendations=optimization.get("recommendations", []),
+        )
+
+    def to_system_instruction(self) -> str:
+        """Generate system-level instruction text.
+
+        Use this in:
+        - OpenAI: instructions parameter or developer role message
+        - Claude: system prompt
+        - Gemini: systemInstruction
+        """
+        lines = []
+
+        if self.effective_topics:
+            topics = ", ".join([f"'{t[0]}' ({t[1]:.0%})" for t in self.effective_topics[:5]])
+            lines.append(f"Prioritize these topics when assigning metadata: {topics}")
+
+        if self.ineffective_topics:
+            topics = ", ".join([f"'{t[0]}'" for t in self.ineffective_topics[:3]])
+            lines.append(f"Avoid these topics unless strongly relevant: {topics}")
+
+        if self.effective_categories:
+            cats = ", ".join([f"'{c[0]}'" for c in self.effective_categories[:5]])
+            lines.append(f"Prefer these categories: {cats}")
+
+        if self.recommendations:
+            for rec in self.recommendations[:2]:
+                lines.append(rec)
+
+        return "\n".join(lines) if lines else ""
+
+
+class ContextInjector:
+    """Injects feedback context via API-level mechanisms.
+
+    This class handles provider-specific context injection WITHOUT
+    modifying the user's prompt text.
+
+    Methods:
+    - get_openai_injection(): Returns instructions param and developer messages
+    - get_claude_injection(): Returns system prompt and meta messages
+    - get_gemini_injection(): Returns systemInstruction
+    - annotate_schema(): Adds hints to JSON Schema descriptions
+    """
+
+    def __init__(self, feedback: FeedbackInjection):
+        """Initialize with feedback to inject.
+
+        Args:
+            feedback: FeedbackInjection with topics/categories to boost/avoid
+        """
+        self.feedback = feedback
+
+    def get_openai_injection(self) -> dict[str, Any]:
+        """Get OpenAI-specific injection parameters.
+
+        Returns params for:
+        - instructions: High-priority guidance (Responses API)
+        - developer message: Higher authority than user (Chat API)
+
+        Example:
+            injector = ContextInjector(feedback)
+            injection = injector.get_openai_injection()
+
+            # For Responses API
+            response = client.responses.create(
+                model="gpt-5",
+                input=user_prompt,
+                instructions=injection["instructions"],
+            )
+
+            # For Chat Completions API
+            response = client.chat.completions.create(
+                model="gpt-5",
+                messages=injection["messages"] + [{"role": "user", "content": user_prompt}],
+            )
+        """
+        instruction_text = self.feedback.to_system_instruction()
+
+        return {
+            # For Responses API (high priority)
+            "instructions": instruction_text if instruction_text else None,
+
+            # For Chat Completions API (developer role = higher than user)
+            "messages": [
+                {
+                    "role": "developer",
+                    "content": f"[Metadata Quality Guidance]\n{instruction_text}",
+                }
+            ] if instruction_text else [],
+        }
+
+    def get_claude_injection(self) -> dict[str, Any]:
+        """Get Claude/Anthropic-specific injection parameters.
+
+        Returns:
+        - system: System prompt (separate from user turn)
+        - meta_messages: Hidden context messages (isMeta: true)
+
+        Example:
+            injector = ContextInjector(feedback)
+            injection = injector.get_claude_injection()
+
+            response = client.messages.create(
+                model="claude-sonnet-4-5",
+                system=base_system + injection["system_suffix"],
+                messages=injection["meta_messages"] + [{"role": "user", "content": user_prompt}],
+            )
+        """
+        instruction_text = self.feedback.to_system_instruction()
+
+        return {
+            # Append to system prompt
+            "system_suffix": f"\n\n[Quality Guidance]\n{instruction_text}" if instruction_text else "",
+
+            # Hidden meta messages (sent to API, not shown in UI)
+            "meta_messages": [
+                {
+                    "role": "user",
+                    "content": f"[INTERNAL GUIDANCE - NOT USER INPUT]\n{instruction_text}",
+                    # Note: isMeta handling is application-level, not API-level
+                    # Your wrapper should filter these from UI display
+                },
+            ] if instruction_text else [],
+        }
+
+    def get_gemini_injection(self) -> dict[str, Any]:
+        """Get Gemini-specific injection parameters.
+
+        Returns:
+        - systemInstruction: Separate system context
+
+        Example:
+            injector = ContextInjector(feedback)
+            injection = injector.get_gemini_injection()
+
+            response = model.generate_content(
+                contents=user_prompt,
+                generation_config=config,
+                system_instruction=base_system + injection["system_suffix"],
+            )
+        """
+        instruction_text = self.feedback.to_system_instruction()
+
+        return {
+            "system_suffix": f"\n\n[Quality Guidance]\n{instruction_text}" if instruction_text else "",
+        }
+
+    def annotate_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """Annotate JSON Schema with effectiveness hints.
+
+        This embeds feedback directly in schema descriptions,
+        which LLMs use for structured output generation.
+
+        Args:
+            schema: Original JSON Schema
+
+        Returns:
+            Schema with annotated descriptions
+
+        Example:
+            injector = ContextInjector(feedback)
+            annotated_schema = injector.annotate_schema(original_schema)
+
+            # The schema now has descriptions like:
+            # "topics": {
+            #     "description": "Topics from SVL. Prefer: 'refund' (85%), 'billing' (72%). Avoid: 'general'."
+            # }
+        """
+        schema = dict(schema)  # Copy
+
+        if "properties" not in schema:
+            return schema
+
+        # Annotate topics
+        if "topics" in schema["properties"]:
+            desc = schema["properties"]["topics"].get("description", "Topics from SVL vocabulary")
+            if self.feedback.effective_topics:
+                preferred = ", ".join([f"'{t[0]}' ({t[1]:.0%})" for t in self.feedback.effective_topics[:5]])
+                desc += f" Prefer: {preferred}."
+            if self.feedback.ineffective_topics:
+                avoid = ", ".join([f"'{t[0]}'" for t in self.feedback.ineffective_topics[:3]])
+                desc += f" Avoid: {avoid}."
+            schema["properties"]["topics"]["description"] = desc
+
+        # Annotate categories
+        if "categories" in schema["properties"]:
+            desc = schema["properties"]["categories"].get("description", "Categories from SVL vocabulary")
+            if self.feedback.effective_categories:
+                preferred = ", ".join([f"'{c[0]}'" for c in self.feedback.effective_categories[:5]])
+                desc += f" Prefer: {preferred}."
+            if self.feedback.ineffective_categories:
+                avoid = ", ".join([f"'{c[0]}'" for c in self.feedback.ineffective_categories[:3]])
+                desc += f" Avoid: {avoid}."
+            schema["properties"]["categories"]["description"] = desc
+
+        return schema
+
+    def get_injection_for_provider(self, provider: str) -> dict[str, Any]:
+        """Get injection for any supported provider.
+
+        Args:
+            provider: Provider name (openai, anthropic, google, etc.)
+
+        Returns:
+            Provider-specific injection parameters
+        """
+        provider = provider.lower()
+
+        if provider in ("openai", "gpt"):
+            return self.get_openai_injection()
+        elif provider in ("anthropic", "claude"):
+            return self.get_claude_injection()
+        elif provider in ("google", "gemini"):
+            return self.get_gemini_injection()
+        else:
+            # Fallback: return system text that can be prepended
+            return {
+                "system_suffix": self.feedback.to_system_instruction(),
+            }
+
+
+def create_injector_from_flr(flr_feedback: dict[str, Any]) -> ContextInjector:
+    """Create a ContextInjector from FLR feedback.
+
+    Args:
+        flr_feedback: Output from FLR.get_metadata_feedback_for_extractor()
+
+    Returns:
+        ContextInjector ready to use
+
+    Example:
+        feedback = flr.get_metadata_feedback_for_extractor()
+        injector = create_injector_from_flr(feedback)
+
+        # For OpenAI
+        injection = injector.get_openai_injection()
+        response = client.responses.create(
+            model="gpt-5",
+            input=user_prompt,
+            instructions=base_instructions + injection["instructions"],
+        )
+    """
+    return ContextInjector(FeedbackInjection.from_feedback(flr_feedback))
+
+
+def create_injector_from_optimizer(optimizer_recommendations: dict[str, Any]) -> ContextInjector:
+    """Create a ContextInjector from QueryOptimizer recommendations.
+
+    Args:
+        optimizer_recommendations: Output from QueryOptimizer.get_recommendations()
+
+    Returns:
+        ContextInjector ready to use
+    """
+    return ContextInjector(FeedbackInjection.from_optimizer(optimizer_recommendations))

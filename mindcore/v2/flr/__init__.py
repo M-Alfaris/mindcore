@@ -45,6 +45,18 @@ from .metadata_feedback import (
     MetadataEffectiveness,
 )
 
+from .usage_detector import (
+    UsageDetector,
+    UsageDetectionResult,
+    MemoryUsage,
+)
+
+from .query_optimizer import (
+    QueryOptimizer,
+    QueryOptimization,
+    TopicStats,
+)
+
 
 __all__ = [
     # Core FLR
@@ -65,4 +77,12 @@ __all__ = [
     "MetadataFeedbackTracker",
     "MetadataSignal",
     "MetadataEffectiveness",
+    # Usage Detection
+    "UsageDetector",
+    "UsageDetectionResult",
+    "MemoryUsage",
+    # Query Optimization
+    "QueryOptimizer",
+    "QueryOptimization",
+    "TopicStats",
 ]
