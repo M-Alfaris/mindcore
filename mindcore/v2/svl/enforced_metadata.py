@@ -32,13 +32,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
-
-logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mindcore.v2.svl import SharedVocabularyLayer
@@ -667,8 +668,6 @@ Respond with valid JSON only."""
 
     def _extract_json(self, text: str) -> dict[str, Any]:
         """Extract JSON from LLM response text."""
-        import re
-
         # Try direct parse first
         try:
             return json.loads(text)

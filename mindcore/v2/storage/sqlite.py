@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from mindcore.v2.exceptions import MemoryNotFoundError, StorageError
 from mindcore.v2.flr import Memory
@@ -150,8 +153,8 @@ class SQLiteStorage(BaseStorage):
             if conn:
                 try:
                     conn.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Error closing stale connection for thread %s: %s", thread_id, e)
                 self._connection_count -= 1
                 cleaned += 1
 
@@ -165,8 +168,8 @@ class SQLiteStorage(BaseStorage):
             if hasattr(self._local, "connection") and self._local.connection is not None:
                 try:
                     self._local.connection.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Error releasing connection for thread %s: %s", thread_id, e)
 
                 self._active_connections.pop(thread_id, None)
                 self._local.connection = None
@@ -663,8 +666,8 @@ class SQLiteStorage(BaseStorage):
             for thread_id, conn in list(self._active_connections.items()):
                 try:
                     conn.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Error closing connection for thread %s during shutdown: %s", thread_id, e)
 
             self._active_connections.clear()
             self._connection_count = 0
@@ -673,8 +676,8 @@ class SQLiteStorage(BaseStorage):
             if hasattr(self._local, "connection"):
                 try:
                     self._local.connection.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Error closing thread-local connection during shutdown: %s", e)
                 self._local.connection = None
 
     def store_batch(self, memories: list[Memory]) -> list[str]:

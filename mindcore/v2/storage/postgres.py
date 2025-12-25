@@ -345,7 +345,9 @@ class PostgresStorage(BaseStorage):
             "SELECT COALESCE(MAX(message_index), -1) + 1 FROM memories WHERE session_id = %s",
             (session_id,),
         )
-        return cur.fetchone()[0]
+        result = cur.fetchone()
+        # COALESCE guarantees a value, but add safety check
+        return result[0] if result else 0
 
     def _update_session_aggregate_internal(self, cur, session_id: str, memory: Memory) -> None:
         """Update session aggregate incrementally (internal, uses existing cursor)."""

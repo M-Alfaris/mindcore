@@ -65,6 +65,9 @@ if TYPE_CHECKING:
 REINFORCEMENT_SCORE_MIN = -1.0
 REINFORCEMENT_SCORE_MAX = 1.0
 
+# Scoring constants
+POPULARITY_NORMALIZATION_FACTOR = 100  # Access count at which popularity reaches 1.0
+
 
 @dataclass
 class Memory:
@@ -1040,7 +1043,7 @@ class FLR:
 
             # 6. Access count (popularity) - reduced weight in robust mode
             # as exploration bonus already accounts for this
-            popularity = min(1.0, memory.access_count / 100)
+            popularity = min(1.0, memory.access_count / POPULARITY_NORMALIZATION_FACTOR)
             if self.use_robust_reinforcement:
                 score += popularity * 0.05  # Lower weight, exploration handles it
             else:

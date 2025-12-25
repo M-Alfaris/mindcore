@@ -31,6 +31,17 @@ from typing import Any
 
 from .usage_detector import UsageDetectionResult
 
+# Query optimizer constants
+USAGE_HISTORY_WINDOW = 20  # Number of recent usage samples to consider
+LOW_USAGE_THRESHOLD = 0.3  # Below this, reduce retrieval limit
+HIGH_USAGE_THRESHOLD = 0.8  # Above this, increase retrieval limit
+LOW_USAGE_LIMIT_MULTIPLIER = 0.7  # Multiply limit by this when usage is low
+HIGH_USAGE_LIMIT_MULTIPLIER = 1.2  # Multiply limit by this when usage is high
+MIN_RETRIEVAL_LIMIT = 3  # Minimum retrieval limit
+MAX_RETRIEVAL_LIMIT = 20  # Maximum retrieval limit
+CONFIDENCE_SAMPLE_THRESHOLD = 50  # Samples needed for full confidence
+POOR_TOPIC_THRESHOLD = 0.3  # Topics below this are considered poor performers
+
 
 @dataclass
 class TopicStats:
@@ -276,19 +287,20 @@ class QueryOptimizer:
         # Optimize limit based on usage rate
         optimized_limit = original_limit
         if self.enable_limit_adjustment and self._usage_history:
-            avg_usage_rate = sum(r for _, r in self._usage_history[-20:]) / min(20, len(self._usage_history))
+            recent_history = self._usage_history[-USAGE_HISTORY_WINDOW:]
+            avg_usage_rate = sum(r for _, r in recent_history) / len(recent_history)
 
-            if avg_usage_rate < 0.3:
+            if avg_usage_rate < LOW_USAGE_THRESHOLD:
                 # Low usage - reduce limit to get fewer, more relevant results
-                optimized_limit = max(3, int(original_limit * 0.7))
+                optimized_limit = max(MIN_RETRIEVAL_LIMIT, int(original_limit * LOW_USAGE_LIMIT_MULTIPLIER))
                 reasoning_parts.append(f"Reduced limit to {optimized_limit} (low usage rate: {avg_usage_rate:.0%})")
-            elif avg_usage_rate > 0.8:
+            elif avg_usage_rate > HIGH_USAGE_THRESHOLD:
                 # High usage - can increase limit
-                optimized_limit = min(20, int(original_limit * 1.2))
+                optimized_limit = min(MAX_RETRIEVAL_LIMIT, int(original_limit * HIGH_USAGE_LIMIT_MULTIPLIER))
                 reasoning_parts.append(f"Increased limit to {optimized_limit} (high usage rate: {avg_usage_rate:.0%})")
 
         # Calculate confidence
-        confidence = min(1.0, total_samples / 50)  # More samples = more confidence
+        confidence = min(1.0, total_samples / CONFIDENCE_SAMPLE_THRESHOLD)  # More samples = more confidence
 
         return QueryOptimization(
             original_topics=original_topics,
@@ -364,12 +376,12 @@ class QueryOptimizer:
         """Generate actionable recommendations."""
         recs = []
 
-        if avg_usage < 0.3:
+        if avg_usage < LOW_USAGE_THRESHOLD:
             recs.append("Consider reducing retrieval limit - many memories go unused")
             recs.append("Review query formulation - attention hints may be too broad")
 
         if bottom_topics:
-            poor = [t for t, s in bottom_topics if s < 0.3]
+            poor = [t for t, s in bottom_topics if s < POOR_TOPIC_THRESHOLD]
             if poor:
                 recs.append(f"Consider removing these topics from SVL or refining their definitions: {', '.join(poor)}")
 

@@ -347,11 +347,22 @@ class APISource(DataSource):
             import urllib.parse
             import urllib.request
 
-            # Build URL with params
+            # Build URL with params - validate substitution values
             url = self.url
             for context_key, url_param in self.url_params.items():
                 if context_key in context:
-                    url = url.replace(f"{{{url_param}}}", str(context[context_key]))
+                    # Sanitize the substitution value to prevent URL injection
+                    value = str(context[context_key])
+                    # URL-encode the value to prevent path traversal or injection
+                    safe_value = urllib.parse.quote(value, safe='')
+                    url = url.replace(f"{{{url_param}}}", safe_value)
+
+            # Validate the final URL to prevent SSRF
+            parsed_url = urllib.parse.urlparse(url)
+            if not parsed_url.scheme in ('http', 'https'):
+                raise ValueError(f"Invalid URL scheme: {parsed_url.scheme}")
+            if not parsed_url.netloc:
+                raise ValueError("Invalid URL: missing host")
 
             # Add query params
             params = dict(self.query_params)
