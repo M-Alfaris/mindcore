@@ -79,6 +79,41 @@ class TopicStats:
 
 
 @dataclass
+class CategoryStats:
+    """Statistics for a single category."""
+
+    category: str
+    times_retrieved: int = 0
+    times_used: int = 0
+    total_signal: float = 0.0
+    last_used: datetime | None = None
+
+    @property
+    def usage_rate(self) -> float:
+        if self.times_retrieved == 0:
+            return 0.0
+        return self.times_used / self.times_retrieved
+
+    @property
+    def avg_signal(self) -> float:
+        if self.times_used == 0:
+            return 0.0
+        return self.total_signal / self.times_used
+
+    @property
+    def effectiveness_score(self) -> float:
+        """Combined effectiveness score (0-1)."""
+        if self.times_retrieved < 3:
+            return 0.5  # Neutral for insufficient data
+
+        # Combine usage rate and average signal
+        usage_component = self.usage_rate * 0.6
+        signal_component = (self.avg_signal + 1) / 2 * 0.4  # Normalize -1,1 to 0,1
+
+        return usage_component + signal_component
+
+
+@dataclass
 class QueryOptimization:
     """Result of query optimization."""
 
@@ -92,6 +127,8 @@ class QueryOptimization:
 
     original_categories: list[str] = field(default_factory=list)
     optimized_categories: list[str] = field(default_factory=list)
+    removed_categories: list[str] = field(default_factory=list)
+    boosted_categories: list[str] = field(default_factory=list)
 
     confidence: float = 0.5  # How confident we are in optimization
     reasoning: str = ""
@@ -102,6 +139,10 @@ class QueryOptimization:
             "optimized_topics": self.optimized_topics,
             "removed_topics": self.removed_topics,
             "boosted_topics": self.boosted_topics,
+            "original_categories": self.original_categories,
+            "optimized_categories": self.optimized_categories,
+            "removed_categories": self.removed_categories,
+            "boosted_categories": self.boosted_categories,
             "original_limit": self.original_limit,
             "optimized_limit": self.optimized_limit,
             "confidence": self.confidence,
@@ -162,6 +203,9 @@ class QueryOptimizer:
         # Topic statistics
         self._topic_stats: dict[str, TopicStats] = {}
 
+        # Category statistics
+        self._category_stats: dict[str, CategoryStats] = {}
+
         # Overall statistics
         self._total_retrieved: int = 0
         self._total_used: int = 0
@@ -175,7 +219,7 @@ class QueryOptimizer:
         """
         now = datetime.now(timezone.utc)
 
-        # Update topic stats for used memories
+        # Update topic and category stats for used memories
         for usage in usage_result.used_memories:
             for topic in usage.memory_topics:
                 self._ensure_topic(topic)
@@ -184,11 +228,27 @@ class QueryOptimizer:
                 self._topic_stats[topic].total_signal += usage.suggested_signal
                 self._topic_stats[topic].last_used = now
 
-        # Update topic stats for unused memories
+            # Track categories from memory metadata
+            categories = getattr(usage, 'memory_categories', []) or []
+            for category in categories:
+                self._ensure_category(category)
+                self._category_stats[category].times_retrieved += 1
+                self._category_stats[category].times_used += 1
+                self._category_stats[category].total_signal += usage.suggested_signal
+                self._category_stats[category].last_used = now
+
+        # Update topic and category stats for unused memories
         for usage in usage_result.unused_memories:
             for topic in usage.memory_topics:
                 self._ensure_topic(topic)
                 self._topic_stats[topic].times_retrieved += 1
+                # Don't increment times_used
+
+            # Track categories from memory metadata
+            categories = getattr(usage, 'memory_categories', []) or []
+            for category in categories:
+                self._ensure_category(category)
+                self._category_stats[category].times_retrieved += 1
                 # Don't increment times_used
 
         # Update overall stats
@@ -203,6 +263,11 @@ class QueryOptimizer:
         """Ensure topic exists in stats."""
         if topic not in self._topic_stats:
             self._topic_stats[topic] = TopicStats(topic=topic)
+
+    def _ensure_category(self, category: str) -> None:
+        """Ensure category exists in stats."""
+        if category not in self._category_stats:
+            self._category_stats[category] = CategoryStats(category=category)
 
     def _prune_old_data(self) -> None:
         """Remove data older than max_history_age."""
@@ -284,6 +349,42 @@ class QueryOptimizer:
         if len(optimized_topics) < min_topics:
             optimized_topics = original_topics[:min_topics]
 
+        # Optimize categories (same logic as topics)
+        removed_categories = []
+        boosted_categories = []
+        optimized_categories = []
+
+        if original_categories:
+            # Score and sort categories
+            category_scores = []
+            for category in original_categories:
+                if category in self._category_stats:
+                    stats = self._category_stats[category]
+                    if stats.times_retrieved >= 3:
+                        category_scores.append((category, stats.effectiveness_score, stats.usage_rate))
+                    else:
+                        category_scores.append((category, 0.5, 0.5))  # Neutral
+                else:
+                    category_scores.append((category, 0.5, 0.5))  # Unknown
+
+            # Sort by effectiveness
+            category_scores.sort(key=lambda x: x[1], reverse=True)
+
+            # Build optimized category list
+            for category, score, usage_rate in category_scores:
+                if usage_rate < self.removal_threshold and len(optimized_categories) >= 1:
+                    removed_categories.append(category)
+                    reasoning_parts.append(f"Removed category '{category}' (usage rate: {usage_rate:.0%})")
+                else:
+                    optimized_categories.append(category)
+                    if usage_rate >= self.boost_threshold:
+                        boosted_categories.append(category)
+                        reasoning_parts.append(f"Boosted category '{category}' (usage rate: {usage_rate:.0%})")
+
+            # Ensure at least one category if any were provided
+            if not optimized_categories and original_categories:
+                optimized_categories = original_categories[:1]
+
         # Optimize limit based on usage rate
         optimized_limit = original_limit
         if self.enable_limit_adjustment and self._usage_history:
@@ -310,7 +411,9 @@ class QueryOptimizer:
             original_limit=original_limit,
             optimized_limit=optimized_limit,
             original_categories=original_categories,
-            optimized_categories=original_categories,  # TODO: optimize categories too
+            optimized_categories=optimized_categories,
+            removed_categories=removed_categories,
+            boosted_categories=boosted_categories,
             confidence=confidence,
             reasoning="\n".join(reasoning_parts) if reasoning_parts else "No significant optimizations",
         )
@@ -390,10 +493,27 @@ class QueryOptimizer:
 
         return recs
 
+    def get_category_rankings(self, min_samples: int = 3) -> list[tuple[str, float]]:
+        """Get categories ranked by effectiveness.
+
+        Args:
+            min_samples: Minimum retrievals to include
+
+        Returns:
+            List of (category, effectiveness_score) tuples, sorted descending
+        """
+        rankings = [
+            (category, stats.effectiveness_score)
+            for category, stats in self._category_stats.items()
+            if stats.times_retrieved >= min_samples
+        ]
+        return sorted(rankings, key=lambda x: x[1], reverse=True)
+
     def get_stats(self) -> dict[str, Any]:
         """Get optimizer statistics."""
         return {
             "topics_tracked": len(self._topic_stats),
+            "categories_tracked": len(self._category_stats),
             "total_retrieved": self._total_retrieved,
             "total_used": self._total_used,
             "overall_usage_rate": self._total_used / self._total_retrieved if self._total_retrieved > 0 else 0,
@@ -408,11 +528,22 @@ class QueryOptimizer:
                 for t, s in self._topic_stats.items()
                 if s.times_retrieved >= 3
             },
+            "category_stats": {
+                c: {
+                    "retrieved": s.times_retrieved,
+                    "used": s.times_used,
+                    "usage_rate": s.usage_rate,
+                    "effectiveness": s.effectiveness_score,
+                }
+                for c, s in self._category_stats.items()
+                if s.times_retrieved >= 3
+            },
         }
 
     def reset(self) -> None:
         """Reset all statistics."""
         self._topic_stats.clear()
+        self._category_stats.clear()
         self._total_retrieved = 0
         self._total_used = 0
         self._usage_history.clear()

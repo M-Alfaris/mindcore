@@ -659,8 +659,8 @@ class CLST:
         removed = []
 
         for memory in memories:
-            # Simple content hash (not for security, just deduplication)
-            content_hash = hashlib.md5(memory.content.encode(), usedforsecurity=False).hexdigest()
+            # SHA256 for content deduplication (more robust than MD5)
+            content_hash = hashlib.sha256(memory.content.encode()).hexdigest()
 
             if content_hash in seen_content:
                 # Keep the one with higher importance/reinforcement

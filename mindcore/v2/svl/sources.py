@@ -40,8 +40,10 @@ Example:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -50,6 +52,98 @@ from typing import Any, Callable
 
 # Valid SQL identifier pattern (alphanumeric and underscore only)
 _VALID_SQL_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+# Cache configuration constants
+DEFAULT_CACHE_MAX_SIZE = 1000  # Maximum entries per source cache
+CACHE_CLEANUP_THRESHOLD = 0.9  # Clean up when cache reaches 90% capacity
+
+
+class SourceCache:
+    """Thread-safe cache for data source fetch results.
+
+    Uses LRU-style eviction when cache is full.
+    """
+
+    def __init__(self, max_size: int = DEFAULT_CACHE_MAX_SIZE):
+        self._cache: dict[str, tuple[Any, float, float]] = {}  # key -> (result, timestamp, last_access)
+        self._max_size = max_size
+
+    def _make_key(self, context: dict[str, Any]) -> str:
+        """Generate a cache key from context."""
+        # Use SHA256 for consistent, collision-resistant keys
+        context_str = json.dumps(context, sort_keys=True, default=str)
+        return hashlib.sha256(context_str.encode()).hexdigest()[:32]
+
+    def get(self, context: dict[str, Any], ttl_seconds: int) -> tuple[Any, bool]:
+        """Get cached result if valid.
+
+        Args:
+            context: The fetch context
+            ttl_seconds: TTL for cache entries
+
+        Returns:
+            Tuple of (result, hit) where hit is True if cache hit
+        """
+        if ttl_seconds <= 0:
+            return None, False
+
+        key = self._make_key(context)
+        if key not in self._cache:
+            return None, False
+
+        result, timestamp, _ = self._cache[key]
+        now = time.time()
+
+        # Check if expired
+        if now - timestamp > ttl_seconds:
+            del self._cache[key]
+            return None, False
+
+        # Update last access time
+        self._cache[key] = (result, timestamp, now)
+        return result, True
+
+    def set(self, context: dict[str, Any], result: Any) -> None:
+        """Store result in cache.
+
+        Args:
+            context: The fetch context
+            result: The result to cache
+        """
+        # Clean up if approaching capacity
+        if len(self._cache) >= self._max_size * CACHE_CLEANUP_THRESHOLD:
+            self._evict_oldest()
+
+        key = self._make_key(context)
+        now = time.time()
+        self._cache[key] = (result, now, now)
+
+    def _evict_oldest(self) -> None:
+        """Evict oldest entries to make room."""
+        if not self._cache:
+            return
+
+        # Sort by last access time and remove oldest 20%
+        entries = sorted(self._cache.items(), key=lambda x: x[1][2])
+        remove_count = max(1, len(entries) // 5)
+
+        for key, _ in entries[:remove_count]:
+            del self._cache[key]
+
+    def clear(self) -> int:
+        """Clear all cached entries.
+
+        Returns:
+            Number of entries cleared
+        """
+        count = len(self._cache)
+        self._cache.clear()
+        return count
+
+    @property
+    def size(self) -> int:
+        """Get current cache size."""
+        return len(self._cache)
 
 
 class SourceType(str, Enum):
@@ -107,9 +201,17 @@ class DataSource(ABC):
     cache_ttl_seconds: int = 0  # 0 = no caching
     trigger: TriggerCondition = TriggerCondition.ON_QUERY
 
-    @abstractmethod
+    # Shared cache instance per source (initialized lazily)
+    _cache: SourceCache | None = None
+
+    def _get_cache(self) -> SourceCache:
+        """Get or create the cache instance for this source."""
+        if self._cache is None:
+            self._cache = SourceCache()
+        return self._cache
+
     def fetch(self, context: dict[str, Any]) -> FetchResult:
-        """Fetch data from the source.
+        """Fetch data from the source with caching.
 
         Args:
             context: Context dict with user_id, query, etc.
@@ -117,6 +219,45 @@ class DataSource(ABC):
         Returns:
             FetchResult with data or error
         """
+        # Check cache first if caching is enabled
+        if self.cache_ttl_seconds > 0:
+            cache = self._get_cache()
+            cached_result, hit = cache.get(context, self.cache_ttl_seconds)
+            if hit and cached_result is not None:
+                # Return cached result with cached flag set
+                cached_result.cached = True
+                return cached_result
+
+        # Fetch fresh data
+        result = self._do_fetch(context)
+
+        # Cache successful results
+        if result.success and self.cache_ttl_seconds > 0:
+            cache = self._get_cache()
+            cache.set(context, result)
+
+        return result
+
+    @abstractmethod
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
+        """Actually fetch data from the source (override in subclasses).
+
+        Args:
+            context: Context dict with user_id, query, etc.
+
+        Returns:
+            FetchResult with data or error
+        """
+
+    def clear_cache(self) -> int:
+        """Clear this source's cache.
+
+        Returns:
+            Number of entries cleared
+        """
+        if self._cache is not None:
+            return self._cache.clear()
+        return 0
 
     @abstractmethod
     def to_dict(self) -> dict[str, Any]:
@@ -177,10 +318,8 @@ class TableSource(DataSource):
             )
         return identifier
 
-    def fetch(self, context: dict[str, Any]) -> FetchResult:
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
         """Execute SQL query and return results."""
-        import time
-
         start = time.time()
 
         try:
@@ -337,16 +476,14 @@ class APISource(DataSource):
     # Response handling
     response_path: str = ""  # JSON path to extract (e.g., "data.results")
 
-    def fetch(self, context: dict[str, Any]) -> FetchResult:
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
         """Make HTTP request and return response."""
-        import time
+        import urllib.parse
+        import urllib.request
 
         start = time.time()
 
         try:
-            import urllib.parse
-            import urllib.request
-
             # Build URL with params - validate substitution values
             url = self.url
             for context_key, url_param in self.url_params.items():
@@ -493,10 +630,8 @@ class MCPSource(DataSource):
         """Set the MCP client for making calls."""
         self._mcp_client = client
 
-    def fetch(self, context: dict[str, Any]) -> FetchResult:
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
         """Invoke MCP tool and return result."""
-        import time
-
         start = time.time()
 
         try:
@@ -592,10 +727,8 @@ class FunctionSource(DataSource):
     cache_ttl_seconds: int = 0
     trigger: TriggerCondition = TriggerCondition.ON_QUERY
 
-    def fetch(self, context: dict[str, Any]) -> FetchResult:
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
         """Call function and return result."""
-        import time
-
         start = time.time()
 
         try:
@@ -667,10 +800,8 @@ class GenericSource(DataSource):
     cache_ttl_seconds: int = 0
     trigger: TriggerCondition = TriggerCondition.ON_QUERY
 
-    def fetch(self, context: dict[str, Any]) -> FetchResult:
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
         """Return config as data."""
-        import time
-
         start = time.time()
         latency = (time.time() - start) * 1000
 
