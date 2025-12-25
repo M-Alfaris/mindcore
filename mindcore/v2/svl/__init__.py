@@ -133,8 +133,57 @@ from .sources import (
     create_source,
 )
 
+# Enforced Metadata - LLM metadata extraction
+from .enforced_metadata import (
+    ContextDecision,
+    EnforcedMetadata,
+    HistoricalContextNeeded,
+    MetadataExtractor,
+)
+
+# LLM Provider Configurations
+from .llm_providers import (
+    ClaudeConfig,
+    GeminiConfig,
+    GenericConfig,
+    LLMProviderConfig,
+    OpenAIConfig,
+    ReasoningEffort,
+    ThinkingLevel,  # Gemini 3 thinking levels
+    ThinkingMode,  # Gemini 2.5 thinking modes
+    get_provider_config,
+    get_recommended_config,
+    # API-Level Context Injection
+    ContextInjector,
+    FeedbackInjection,
+    create_injector_from_flr,
+    create_injector_from_optimizer,
+)
+
 
 __all__ = [
+    # Enforced Metadata
+    "ContextDecision",
+    "EnforcedMetadata",
+    "HistoricalContextNeeded",
+    "MetadataExtractor",
+    # LLM Provider Configurations
+    "ClaudeConfig",
+    "GeminiConfig",
+    "GenericConfig",
+    "LLMProviderConfig",
+    "OpenAIConfig",
+    "ReasoningEffort",
+    "ThinkingLevel",
+    "ThinkingMode",
+    "get_provider_config",
+    "get_recommended_config",
+    # API-Level Context Injection
+    "ContextInjector",
+    "FeedbackInjection",
+    "create_injector_from_flr",
+    "create_injector_from_optimizer",
+    # Domains
     "CUSTOMER_SERVICE_DOMAIN",
     "DEFAULT_SVL",
     "DOMAIN_REGISTRY",

@@ -2,8 +2,16 @@
 
 A protocol for moving, syncing, and compressing long-term memory between
 AI agents or between an agent and its external memory vault.
+
+Includes session aggregates for hierarchical memory retrieval with
+weighted metadata matching.
 """
 
+from .aggregates import (
+    HierarchicalQueryResult,
+    SessionAggregate,
+    WeightCalculator,
+)
 from .storage import (
     CLST,
     CompressionResult,
@@ -16,6 +24,7 @@ from .storage import (
 
 
 __all__ = [
+    # Core CLST
     "CLST",
     "CompressionResult",
     "CompressionStrategy",
@@ -23,4 +32,8 @@ __all__ = [
     "SyncDirection",
     "SyncResult",
     "TransferManifest",
+    # Session Aggregates
+    "SessionAggregate",
+    "HierarchicalQueryResult",
+    "WeightCalculator",
 ]

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from mindcore.v2.clst.aggregates import SessionAggregate
     from mindcore.v2.flr import Memory
 
 
@@ -183,3 +184,120 @@ class BaseStorage(ABC):
     @abstractmethod
     def close(self) -> None:
         """Close storage connection."""
+
+    # ==========================================================================
+    # Session Aggregate Methods (for hierarchical retrieval)
+    # ==========================================================================
+
+    def store_session_aggregate(self, aggregate: SessionAggregate) -> str:
+        """Store or update a session aggregate.
+
+        Args:
+            aggregate: SessionAggregate to store
+
+        Returns:
+            Session ID
+        """
+        raise NotImplementedError("Session aggregates not supported by this storage backend")
+
+    def get_session_aggregate(self, session_id: str) -> SessionAggregate | None:
+        """Retrieve a session aggregate by ID.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            SessionAggregate or None if not found
+        """
+        raise NotImplementedError("Session aggregates not supported by this storage backend")
+
+    def query_sessions(
+        self,
+        user_id: str,
+        topic_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        min_importance_avg: float | None = None,
+        min_topic_weight: float = 0.0,
+        agent_ids: list[str] | None = None,
+        access_levels: list[str] | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> list[SessionAggregate]:
+        """Query sessions by weighted metadata.
+
+        This is the primary method for hierarchical retrieval - find relevant
+        sessions first, then query memories from those sessions.
+
+        Args:
+            user_id: Filter by user
+            topic_hints: Topics to match (scored by weight)
+            category_hints: Categories to match (scored by weight)
+            min_importance_avg: Minimum average importance
+            min_topic_weight: Minimum weight for topic matches
+            agent_ids: Filter by agents
+            access_levels: Filter by access levels
+            start_date: Filter by session start date
+            end_date: Filter by session end date
+            limit: Max results
+            offset: Offset for pagination
+
+        Returns:
+            List of SessionAggregates ordered by relevance
+        """
+        raise NotImplementedError("Session aggregates not supported by this storage backend")
+
+    def query_memories_by_sessions(
+        self,
+        session_ids: list[str],
+        min_importance: float | None = None,
+        min_confidence: float | None = None,
+        memory_types: list[str] | None = None,
+        limit: int = 100,
+        order_by_message_index: bool = True,
+    ) -> list[Memory]:
+        """Query memories from specific sessions.
+
+        Used after query_sessions() to get actual memories from relevant sessions.
+
+        Args:
+            session_ids: Sessions to query from
+            min_importance: Minimum importance filter
+            min_confidence: Minimum confidence filter
+            memory_types: Filter by memory types
+            limit: Max results
+            order_by_message_index: Preserve event order within sessions
+
+        Returns:
+            List of memories ordered by session and message_index
+        """
+        raise NotImplementedError("Session aggregates not supported by this storage backend")
+
+    def get_next_message_index(self, session_id: str) -> int:
+        """Get the next message index for a session.
+
+        Used to maintain event ordering within sessions.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Next available message index
+        """
+        raise NotImplementedError("Session aggregates not supported by this storage backend")
+
+    def update_session_aggregate_from_memory(
+        self,
+        session_id: str,
+        memory: Memory,
+    ) -> None:
+        """Update session aggregate incrementally from a new memory.
+
+        Called automatically when storing memories with session_id.
+
+        Args:
+            session_id: Session to update
+            memory: New memory that was added
+        """
+        raise NotImplementedError("Session aggregates not supported by this storage backend")
