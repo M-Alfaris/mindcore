@@ -134,6 +134,8 @@ Hot path for inference-time memory access with robust reinforcement learning.
 | `metadata_feedback.py` | Track metadata effectiveness for LLM feedback |
 | `usage_detector.py` | Detect which memories were actually used in responses |
 | `query_optimizer.py` | Dynamic query optimization based on usage patterns |
+| `cache.py` | Smart write-through cache with pattern-based invalidation |
+| `preferences.py` | Temporal preference handling with versioning and conflict resolution |
 
 #### Robust Reinforcement System
 
@@ -171,6 +173,7 @@ breakdown = reinforcement.get_signal_breakdown()
 #### Signal Types and Sources
 
 **Signal Types** (what aspect of quality):
+
 - `RELEVANCE` - Was the memory relevant to the query?
 - `USEFULNESS` - Did it help solve the task?
 - `CORRECTNESS` - Was the information accurate?
@@ -178,6 +181,7 @@ breakdown = reinforcement.get_signal_breakdown()
 - `COMPLETENESS` - Did it provide sufficient detail?
 
 **Signal Sources** (reliability weights):
+
 - `USER_EXPLICIT` (1.0) - Direct user feedback (thumbs up/down)
 - `USER_IMPLICIT` (0.7) - Inferred from behavior
 - `LLM_EVALUATION` (0.5) - LLM self-assessment
@@ -256,6 +260,75 @@ recs = optimizer.get_recommendations()
 # }
 ```
 
+#### Smart Cache
+
+Write-through cache with pattern-based invalidation and cache warming:
+
+```python
+from mindcore.v2.flr.cache import SmartCache, CacheConfig
+
+# Create cache with configuration
+cache = SmartCache(
+    storage=storage,
+    max_size=10000,
+    ttl_seconds=3600,
+    warm_high_importance=True,  # Pre-warm important memories
+)
+
+# Pattern-based invalidation
+cache.invalidate_pattern("user:123:*")  # Invalidate all user memories
+cache.invalidate_pattern("*:preference:*")  # Invalidate all preferences
+
+# Get cache statistics
+stats = cache.get_stats()
+print(f"Hit rate: {stats.hit_rate:.1%}")
+print(f"Hits: {stats.hits}, Misses: {stats.misses}")
+
+# Cache warming for session
+cache.warm_for_user("user_123", importance_threshold=0.7)
+```
+
+#### Preference Manager
+
+Handles mutable preferences with versioning and temporal validity:
+
+```python
+from mindcore.v2.flr.preferences import (
+    PreferenceManager,
+    ConflictResolutionStrategy,
+)
+
+prefs = PreferenceManager(storage, flr)
+
+# Set initial preference
+pref = prefs.set_preference(
+    user_id="user_123",
+    key="theme",
+    value="User prefers light mode",
+    categories=["ui", "display"],
+)
+
+# Update preference (creates new version, supersedes old)
+new_pref = prefs.update_preference(
+    user_id="user_123",
+    key="theme",
+    value="User now prefers dark mode with purple accents",
+)
+
+# Get current preference
+current = prefs.get_preference("user_123", "theme")
+print(current.content)  # "User now prefers dark mode..."
+
+# View preference history
+history = prefs.get_preference_history("user_123", "theme")
+for version in history:
+    print(f"v{version.turn_index}: {version.content}")
+
+# Handle conflicts from multiple agents
+prefs.set_conflict_resolution(ConflictResolutionStrategy.NEWER_WINS)
+# Options: NEWER_WINS, HIGHER_CONFIDENCE, LLM_MERGE, HUMAN_REVIEW, AGENT_PRIORITY, KEEP_BOTH
+```
+
 ---
 
 ### 3.2 CLST (Cognitive Long-term Storage Transfer)
@@ -306,6 +379,7 @@ topic_weight = (frequency * 0.4) + (avg_importance * 0.4) + (recency * 0.2)
 ```
 
 Where:
+
 - `frequency`: How often the topic appears in the session
 - `avg_importance`: Average importance of memories with this topic
 - `recency`: Exponential decay based on last mention time
@@ -621,6 +695,7 @@ Production-ready features for enterprise deployments.
 | `encryption.py` | At-rest encryption for sensitive content |
 | `observability.py` | OpenTelemetry-based metrics and tracing |
 | `rate_limiting.py` | Configurable rate limits with multiple backends |
+| `compliance.py` | GDPR/CCPA compliance tools (data export, erasure, anonymization) |
 
 ```python
 from mindcore.v2.enterprise import (
@@ -651,6 +726,49 @@ mc.enable_observability(ObservabilityConfig(service_name="my-service"))
 mc.enable_rate_limiting(RateLimiter(limit="1000/hour"))
 mc.enable_audit_logging(AuditLogger(output="file", path="/var/log/mindcore"))
 mc.enable_encryption(EncryptionConfig(key_from_env="MINDCORE_ENCRYPTION_KEY"))
+```
+
+#### GDPR/CCPA Compliance
+
+```python
+from mindcore.v2.enterprise.compliance import (
+    ComplianceManager,
+    RetentionPolicy,
+    AnonymizationStrategy,
+)
+
+compliance = ComplianceManager(storage)
+
+# GDPR Article 15: Right of Access (data export)
+export = await compliance.export_user_data("user_123")
+with open("user_data.json", "w") as f:
+    f.write(export.to_json())
+
+# GDPR Article 17: Right to Erasure
+result = await compliance.delete_user_data("user_123")
+print(f"Deleted {result.memories_deleted} memories")
+
+# Anonymize user data for analytics
+result = compliance.anonymize_user_data(
+    "user_123",
+    strategy=AnonymizationStrategy.PSEUDONYMIZE,
+)
+# Strategies: PSEUDONYMIZE, HASH, REDACT, AGGREGATE
+
+# Configure retention policies
+retention = RetentionPolicy(
+    memory_type_policies={
+        "episodic": 730,      # 2 years
+        "preference": None,   # Forever
+        "working": 1,         # 1 day
+    },
+    default_max_age_days=365,
+)
+compliance.set_retention_policy(retention)
+
+# Enforce retention (run periodically via cron)
+result = compliance.enforce_retention()
+print(f"Deleted {result.deleted_count} expired memories")
 ```
 
 ---
@@ -747,6 +865,7 @@ memory = Mindcore(storage=storage)
 ```
 
 **Features:**
+
 - Connection pooling (psycopg v3)
 - Full-text search via `tsvector`
 - JSONB for topics, categories, entities
@@ -765,9 +884,47 @@ memory = Mindcore(storage="sqlite:///:memory:")  # In-memory
 ```
 
 **Features:**
+
 - Thread-safe with WAL mode
 - FTS5 full-text search
 - JSON arrays stored as TEXT
+
+### Time-Based Partitioning (PostgreSQL)
+
+**Location:** `mindcore/v2/storage/partitioning.py`
+
+For large-scale deployments, partition the memories table by time:
+
+```python
+from mindcore.v2.storage.partitioning import PartitionManager, PartitionInterval
+
+partitions = PartitionManager(postgres_storage)
+
+# Setup partitioning (one-time)
+partitions.setup_partitioning(interval=PartitionInterval.MONTHLY)
+
+# Create partitions for next 3 months
+partitions.create_future_partitions(months_ahead=3)
+
+# Get partitioning status
+status = partitions.get_status()
+print(f"Partitions: {status.total_partitions}")
+print(f"Total rows: {status.total_rows}")
+print(f"Total size: {status.total_size_pretty}")
+
+# Archive old partitions (move to cold storage)
+partitions.archive_partitions(older_than_months=12)
+
+# Drop old partitions (delete data)
+partitions.drop_partitions(older_than_months=24)
+```
+
+**Benefits:**
+
+- Faster queries when filtering by time
+- Parallel query execution across partitions
+- Easier data archival and cleanup
+- Smaller indexes per partition
 
 ---
 
@@ -792,6 +949,7 @@ memory.serve_rest(host="0.0.0.0", port=8000)
 ```
 
 **Endpoints:**
+
 ```
 POST   /memories              - Store memory
 GET    /memories/{id}         - Get memory
@@ -822,6 +980,8 @@ mindcore/
 │   │   ├── metadata_feedback.py    # Metadata effectiveness tracking
 │   │   ├── usage_detector.py       # Detect memory usage in responses
 │   │   ├── query_optimizer.py      # Dynamic query optimization
+│   │   ├── cache.py                # Smart write-through cache
+│   │   ├── preferences.py          # Temporal preference handling
 │   │   └── __init__.py
 │   │
 │   ├── clst/                       # Cognitive Long-term Storage
@@ -871,6 +1031,7 @@ mindcore/
 │   │   ├── base.py                 # BaseStorage interface
 │   │   ├── postgres.py             # PostgreSQL backend
 │   │   ├── sqlite.py               # SQLite backend
+│   │   ├── partitioning.py         # Time-based partitioning for PostgreSQL
 │   │   └── __init__.py
 │   │
 │   ├── server/                     # API servers
@@ -883,6 +1044,7 @@ mindcore/
 │   │   ├── encryption.py           # At-rest encryption
 │   │   ├── observability.py        # OpenTelemetry metrics/tracing
 │   │   ├── rate_limiting.py        # Rate limiting
+│   │   ├── compliance.py           # GDPR/CCPA compliance tools
 │   │   └── __init__.py
 │   │
 │   ├── patterns/                   # Usage patterns
@@ -893,7 +1055,7 @@ mindcore/
 │   │   ├── schema.py               # VocabularySchema
 │   │   └── __init__.py
 │   │
-│   └── tests/                      # Tests
+│   └── tests/                      # Tests (585 passing)
 │       ├── test_mindcore_v2.py
 │       ├── test_cross_agent.py
 │       ├── test_svl.py
@@ -901,6 +1063,13 @@ mindcore/
 │       ├── test_enterprise.py
 │       ├── test_federation.py
 │       ├── test_flr_reinforcement.py
+│       ├── test_reinforcement_enhanced.py
+│       ├── test_extraction_fallback.py
+│       ├── test_security_fixes.py
+│       ├── test_smart_cache.py
+│       ├── test_preferences.py
+│       ├── test_compliance.py
+│       ├── test_importance_decay.py
 │       └── __init__.py
 │
 ├── observability/                  # Optional observability
@@ -1031,13 +1200,19 @@ support_agent.reinforce("memory-id", signal=0.8)
 ## 8. Testing
 
 ```bash
-# All v2 tests
-pytest mindcore/v2/tests/ -v
+# All tests (585 passing, 61% coverage)
+pytest mindcore/v2/tests/ testing/tests/ -v
+
+# Run with coverage
+pytest mindcore/v2/tests/ testing/tests/ --cov=mindcore --cov-report=html
 
 # Specific test files
 pytest mindcore/v2/tests/test_flr_reinforcement.py -v
 pytest mindcore/v2/tests/test_federation.py -v
 pytest mindcore/v2/tests/test_enterprise.py -v
+pytest mindcore/v2/tests/test_smart_cache.py -v
+pytest mindcore/v2/tests/test_preferences.py -v
+pytest mindcore/v2/tests/test_compliance.py -v
 ```
 
 ---
@@ -1101,6 +1276,7 @@ User Feedback → Signal → Memory Reinforcement → Score Update
 ```
 
 Reinforcement signals flow:
+
 1. Into memory scores (better ranking)
 2. Into metadata effectiveness tracking (which topics work)
 3. Into query optimization (adjust limits, filter topics)
