@@ -95,6 +95,7 @@ class Mindcore:
         storage: str | BaseStorage = "sqlite:///mindcore.db",
         vocabulary: VocabularySchema | None = None,
         enable_multi_agent: bool = False,
+        retention_policy: dict[str, Any] | None = None,
     ):
         """Initialize Mindcore.
 
@@ -105,6 +106,13 @@ class Mindcore:
                 - BaseStorage instance for custom backends
             vocabulary: Vocabulary schema for metadata control
             enable_multi_agent: Enable multi-agent access control
+            retention_policy: Optional retention policy config:
+                {
+                    "episodic": {"max_age_days": 730},     # 2 years
+                    "preference": {"max_age_days": None},  # Forever
+                    "working": {"max_age_days": 1},        # 1 day
+                    "default_max_age_days": 365,           # Default
+                }
         """
         # Initialize storage
         if isinstance(storage, str):
@@ -131,6 +139,11 @@ class Mindcore:
         # Pass access_controller as agent_registry for team-based access control
         self._flr = FLR(storage=self._storage, agent_registry=self._access_controller)
         self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
+
+        # Initialize retention policy if provided
+        self._retention_policy = None
+        if retention_policy:
+            self._init_retention_policy(retention_policy)
 
     # === Core Memory Operations ===
 
@@ -536,6 +549,161 @@ class Mindcore:
             "clst": self._clst.get_stats(),
             "access": self._access_controller.get_stats() if self._access_controller else None,
         }
+
+    # === GDPR/CCPA Compliance ===
+
+    def gdpr_export(self, user_id: str) -> dict[str, Any]:
+        """Export all user data for GDPR compliance (Article 15 - Right of Access).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Dict containing all user data in exportable format
+        """
+        from .enterprise.compliance import ComplianceManager
+
+        compliance = ComplianceManager(self._storage)
+        result = compliance.export_user_data(user_id)
+        return result.to_dict()
+
+    def gdpr_delete(self, user_id: str) -> dict[str, Any]:
+        """Delete all user data for GDPR compliance (Article 17 - Right to Erasure).
+
+        WARNING: This operation is irreversible.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Dict with deletion confirmation and statistics
+        """
+        from .enterprise.compliance import ComplianceManager
+
+        compliance = ComplianceManager(self._storage)
+
+        # Also invalidate cache if using smart cache
+        if hasattr(self._flr, "invalidate_user_cache"):
+            try:
+                self._flr.invalidate_user_cache(user_id)
+            except Exception:
+                pass
+
+        result = compliance.delete_user_data(user_id, clear_cache=True)
+        return result.to_dict()
+
+    def gdpr_anonymize(
+        self,
+        user_id: str,
+        strategy: str = "pseudonymize",
+    ) -> dict[str, Any]:
+        """Anonymize user data while preserving analytics value.
+
+        Args:
+            user_id: User identifier
+            strategy: Anonymization strategy:
+                - "pseudonymize": Replace user_id with random ID
+                - "hash": Hash user_id deterministically
+                - "redact": Remove PII from content
+                - "aggregate": Keep only metadata
+
+        Returns:
+            Dict with anonymization result and new user ID
+        """
+        from .enterprise.compliance import AnonymizationStrategy, ComplianceManager
+
+        compliance = ComplianceManager(self._storage)
+
+        try:
+            strategy_enum = AnonymizationStrategy(strategy)
+        except ValueError:
+            strategy_enum = AnonymizationStrategy.PSEUDONYMIZE
+
+        result = compliance.anonymize_user_data(user_id, strategy=strategy_enum)
+        return result.to_dict()
+
+    def get_user_data_summary(self, user_id: str) -> dict[str, Any]:
+        """Get summary of data held for a user (for data access requests).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Summary dict with counts and date ranges
+        """
+        from .enterprise.compliance import ComplianceManager
+
+        compliance = ComplianceManager(self._storage)
+        return compliance.get_user_data_summary(user_id)
+
+    def _init_retention_policy(self, policy_config: dict[str, Any]) -> None:
+        """Initialize retention policy from config dict.
+
+        Args:
+            policy_config: Retention policy configuration
+        """
+        from .enterprise.compliance import RetentionPolicy
+
+        # Convert user-friendly format to RetentionPolicy
+        memory_type_policies = {}
+        default_max_age = policy_config.get("default_max_age_days", 365)
+
+        for key, value in policy_config.items():
+            if key == "default_max_age_days":
+                continue
+            if isinstance(value, dict):
+                memory_type_policies[key] = value.get("max_age_days")
+            elif isinstance(value, int):
+                memory_type_policies[key] = value
+            elif value is None:
+                memory_type_policies[key] = None
+
+        self._retention_policy = RetentionPolicy(
+            memory_type_policies=memory_type_policies,
+            default_max_age_days=default_max_age,
+        )
+
+    def enforce_retention(
+        self,
+        user_id: str | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Enforce retention policy by deleting expired memories.
+
+        Call this periodically (e.g., daily cron job) to clean up old data.
+
+        Args:
+            user_id: Optional user ID to limit enforcement to
+            dry_run: If True, only count without deleting
+
+        Returns:
+            Dict with enforcement results
+        """
+        from .enterprise.compliance import ComplianceManager
+
+        compliance = ComplianceManager(
+            self._storage,
+            retention_policy=self._retention_policy,
+        )
+        result = compliance.enforce_retention(user_id=user_id, dry_run=dry_run)
+        return result.to_dict()
+
+    def get_retention_status(self, user_id: str | None = None) -> dict[str, Any]:
+        """Check what would be affected by retention enforcement.
+
+        Args:
+            user_id: Optional user ID to check
+
+        Returns:
+            Dict with affected memory counts by type
+        """
+        from .enterprise.compliance import ComplianceManager
+
+        compliance = ComplianceManager(
+            self._storage,
+            retention_policy=self._retention_policy,
+        )
+        return compliance.check_retention_status(user_id=user_id)
 
     def close(self) -> None:
         """Close all connections."""
