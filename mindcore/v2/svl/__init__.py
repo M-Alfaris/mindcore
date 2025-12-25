@@ -149,7 +149,8 @@ from .llm_providers import (
     LLMProviderConfig,
     OpenAIConfig,
     ReasoningEffort,
-    ThinkingMode,
+    ThinkingLevel,  # Gemini 3 thinking levels
+    ThinkingMode,  # Gemini 2.5 thinking modes
     get_provider_config,
     get_recommended_config,
     # API-Level Context Injection
@@ -173,6 +174,7 @@ __all__ = [
     "LLMProviderConfig",
     "OpenAIConfig",
     "ReasoningEffort",
+    "ThinkingLevel",
     "ThinkingMode",
     "get_provider_config",
     "get_recommended_config",

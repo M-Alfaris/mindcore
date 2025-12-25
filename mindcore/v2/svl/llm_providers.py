@@ -59,11 +59,26 @@ class ReasoningEffort(str, Enum):
 
 
 class ThinkingMode(str, Enum):
-    """Gemini thinking mode settings."""
+    """Gemini 2.5 thinking mode settings (uses thinkingBudget)."""
 
     DISABLED = "disabled"  # thinkingBudget: 0
     DYNAMIC = "dynamic"  # thinkingBudget: -1 (auto-adjust)
     FIXED = "fixed"  # Custom thinkingBudget value
+
+
+class ThinkingLevel(str, Enum):
+    """Gemini 3 thinking level settings (uses thinkingLevel).
+
+    Reference: https://ai.google.dev/gemini-api/docs/thinking
+
+    Note: Gemini 3 Pro supports LOW and HIGH only.
+    Gemini 3 Flash supports MINIMAL, LOW, MEDIUM, and HIGH.
+    """
+
+    MINIMAL = "minimal"  # Flash only - minimal thinking (may still think)
+    LOW = "low"  # Minimizes latency and cost
+    MEDIUM = "medium"  # Flash only - balanced
+    HIGH = "high"  # Default - maximizes reasoning depth
 
 
 @dataclass
@@ -112,8 +127,18 @@ class OpenAIConfig(LLMProviderConfig):
     - reasoning_effort parameter (low/medium/high/xhigh)
     - Structured outputs with JSON Schema validation
     - text.format for structured output (not response_format)
+    - instructions parameter for high-priority guidance
+    - developer role for higher authority than user messages
 
     Reference: https://platform.openai.com/docs/guides/responses-vs-chat-completions
+
+    API Notes (2025):
+    - instructions parameter takes PRIORITY over prompts in input
+    - instructions only applies to current request (not preserved with
+      previous_response_id for conversation state)
+    - o1-preview and o1-mini do NOT support system or developer messages
+    - New reusable prompts available via prompt parameter (prompt id + version)
+    - Remote MCP servers supported as built-in tools
     """
 
     model: str = "gpt-5"  # gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro
@@ -212,26 +237,38 @@ class ClaudeConfig(LLMProviderConfig):
     """Claude configuration with Extended Thinking.
 
     Features:
-    - Extended thinking with budget_tokens
-    - Interleaved thinking for tool use
+    - Extended thinking with budget_tokens (min 1,024 tokens)
+    - Interleaved thinking for tool use (Claude 4+ only)
     - Structured outputs (strict: true)
-    - Summarized thinking in Claude 4
+    - Summarized thinking in Claude 4 (full thinking is encrypted)
 
     Reference: https://docs.claude.com/en/docs/build-with-claude/extended-thinking
 
+    Model Availability:
+    - Extended thinking: Sonnet 3.7+, Sonnet 4, Sonnet 4.5, Haiku 4.5,
+                        Opus 4, Opus 4.1, Opus 4.5
+
+    API Changes (2025):
+    - Default top_p changed from 0.999 to 0.99 for all models
+    - With extended thinking, top_p can be set to 0.95-1.0
+    - Claude 4 returns summarized thinking by default (full thinking encrypted
+      in signature field for security)
+    - Interleaved thinking requires beta header: interleaved-thinking-2025-05-14
+
     Note: When extended thinking is enabled:
-    - Temperature, top_p, top_k are NOT supported
+    - Temperature, top_p, top_k are NOT supported in same request
     - Forced tool use is NOT supported in Claude 3.7
     - Use Claude 4+ for best structured output + thinking
     """
 
     model: str = "claude-sonnet-4-5-20250514"  # Claude 4.5 Sonnet
-    thinking_budget: int = 16000  # Max tokens for internal reasoning
-    use_interleaved_thinking: bool = True  # Think between tool calls
+    thinking_budget: int = 16000  # Max tokens for internal reasoning (min 1,024)
+    use_interleaved_thinking: bool = True  # Think between tool calls (Claude 4+)
     use_extended_thinking: bool = True
 
     # Note: Temperature not supported with extended thinking
     temperature: float = 0.0  # Ignored when thinking enabled
+    top_p: float = 0.99  # New default as of 2025 (was 0.999)
 
     def get_provider_name(self) -> str:
         return "anthropic"
@@ -314,18 +351,31 @@ class GeminiConfig(LLMProviderConfig):
     """Gemini configuration with Thinking Mode.
 
     Features:
-    - Thinking mode with configurable budget
+    - Gemini 2.5: thinkingBudget for token-based thinking control
+    - Gemini 3: thinkingLevel for level-based thinking control
     - Structured outputs with JSON Schema
-    - propertyOrdering for Gemini 2.0
-    - Works with all Gemini tools
+    - propertyOrdering for Gemini 2.0+
+    - Thought signatures for Gemini 3 multi-turn conversations
 
     Reference: https://ai.google.dev/gemini-api/docs/thinking
+
+    IMPORTANT API Version Differences:
+    - Gemini 2.5 models use `thinkingBudget` (int: 0=off, -1=dynamic, N=fixed)
+    - Gemini 3 models use `thinkingLevel` (str: minimal/low/medium/high)
+    - You CANNOT mix these parameters - API will return an error
+    - Gemini 3 requires thought_signatures to maintain reasoning across turns
     """
 
-    model: str = "gemini-2.5-flash"  # gemini-2.5-pro, gemini-2.5-flash
+    model: str = "gemini-2.5-flash"  # gemini-2.5-pro, gemini-2.5-flash, gemini-3-pro, gemini-3-flash
+
+    # Gemini 2.5 settings (thinkingBudget-based)
     thinking_mode: ThinkingMode = ThinkingMode.DYNAMIC
     thinking_budget: int | None = None  # Only for FIXED mode
-    property_ordering: list[str] | None = None  # Required for Gemini 2.0
+
+    # Gemini 3 settings (thinkingLevel-based)
+    thinking_level: ThinkingLevel | None = None  # Set this for Gemini 3 models
+
+    property_ordering: list[str] | None = None  # Required for Gemini 2.0+
 
     def get_provider_name(self) -> str:
         return "google"
@@ -334,6 +384,10 @@ class GeminiConfig(LLMProviderConfig):
         """Gemini doesn't require special headers for current features."""
         return {}
 
+    def is_gemini_3(self) -> bool:
+        """Check if model is Gemini 3 (uses thinkingLevel instead of thinkingBudget)."""
+        return "gemini-3" in self.model.lower()
+
     def get_request_params(
         self,
         json_schema: dict[str, Any],
@@ -341,7 +395,9 @@ class GeminiConfig(LLMProviderConfig):
     ) -> dict[str, Any]:
         """Get Gemini request parameters.
 
-        Note: Gemini 2.0 requires propertyOrdering in the schema.
+        Note:
+        - Gemini 2.0+ requires propertyOrdering in the schema.
+        - Gemini 3 uses thinkingLevel, Gemini 2.5 uses thinkingBudget.
         """
         params: dict[str, Any] = {
             "model": self.model,
@@ -353,20 +409,78 @@ class GeminiConfig(LLMProviderConfig):
             },
         }
 
-        # Thinking configuration
+        # Thinking configuration - different for Gemini 3 vs 2.5
         if include_reasoning:
-            if self.thinking_mode == ThinkingMode.DISABLED:
+            if self.is_gemini_3():
+                # Gemini 3 uses thinkingLevel (string-based levels)
+                level = self.thinking_level or ThinkingLevel.HIGH
                 params["generation_config"]["thinking_config"] = {
-                    "thinking_budget": 0
+                    "thinking_level": level.value.upper()  # API expects uppercase
                 }
-            elif self.thinking_mode == ThinkingMode.DYNAMIC:
-                params["generation_config"]["thinking_config"] = {
-                    "thinking_budget": -1  # Auto-adjust based on complexity
+            else:
+                # Gemini 2.5 uses thinkingBudget (token-based)
+                if self.thinking_mode == ThinkingMode.DISABLED:
+                    params["generation_config"]["thinking_config"] = {
+                        "thinking_budget": 0
+                    }
+                elif self.thinking_mode == ThinkingMode.DYNAMIC:
+                    params["generation_config"]["thinking_config"] = {
+                        "thinking_budget": -1  # Auto-adjust based on complexity
+                    }
+                elif self.thinking_mode == ThinkingMode.FIXED and self.thinking_budget:
+                    params["generation_config"]["thinking_config"] = {
+                        "thinking_budget": self.thinking_budget
+                    }
+
+        return params
+
+    def get_gemini3_params(
+        self,
+        json_schema: dict[str, Any],
+        thinking_level: ThinkingLevel = ThinkingLevel.HIGH,
+        thought_signatures: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Get Gemini 3 specific parameters with thought signature support.
+
+        Gemini 3 requires thought signatures to maintain reasoning context
+        across API calls. Missing signatures will result in a 400 error.
+
+        Args:
+            json_schema: JSON Schema for structured output
+            thinking_level: Thinking level (LOW/HIGH for Pro, all for Flash)
+            thought_signatures: Previous thought signatures to include
+
+        Returns:
+            Request parameters with thinking_level and signature handling
+
+        Example:
+            # First call
+            params = config.get_gemini3_params(schema, ThinkingLevel.HIGH)
+            response = model.generate_content(**params)
+            signatures = extract_thought_signatures(response)  # Save these
+
+            # Subsequent call - must include signatures
+            params = config.get_gemini3_params(
+                schema, ThinkingLevel.HIGH,
+                thought_signatures=signatures
+            )
+        """
+        params: dict[str, Any] = {
+            "model": self.model,
+            "generation_config": {
+                "temperature": self.temperature,
+                "max_output_tokens": self.max_tokens,
+                "response_mime_type": "application/json",
+                "response_schema": self._prepare_schema(json_schema),
+                "thinking_config": {
+                    "thinking_level": thinking_level.value.upper()
                 }
-            elif self.thinking_mode == ThinkingMode.FIXED and self.thinking_budget:
-                params["generation_config"]["thinking_config"] = {
-                    "thinking_budget": self.thinking_budget
-                }
+            },
+        }
+
+        # Include thought signatures if provided (required for multi-turn)
+        if thought_signatures:
+            params["thought_signatures"] = thought_signatures
 
         return params
 
@@ -374,7 +488,7 @@ class GeminiConfig(LLMProviderConfig):
         """Prepare schema for Gemini, adding propertyOrdering if needed."""
         schema = dict(json_schema)
 
-        # Gemini 2.0 requires propertyOrdering
+        # Gemini 2.0+ requires propertyOrdering
         if self.property_ordering:
             schema["propertyOrdering"] = self.property_ordering
         elif "properties" in schema and "propertyOrdering" not in schema:
@@ -480,9 +594,16 @@ RECOMMENDED_CONFIGS = {
         use_extended_thinking=True,
         use_interleaved_thinking=True,
     ),
+    # Gemini 2.5 (thinkingBudget-based)
     "google": GeminiConfig(
         model="gemini-2.5-flash",
         thinking_mode=ThinkingMode.DYNAMIC,
+        temperature=0.0,
+    ),
+    # Gemini 3 (thinkingLevel-based)
+    "gemini3": GeminiConfig(
+        model="gemini-3-flash",
+        thinking_level=ThinkingLevel.HIGH,
         temperature=0.0,
     ),
 }
@@ -497,7 +618,9 @@ def get_recommended_config(provider: str) -> LLMProviderConfig:
     - Structured outputs for schema validation
 
     Args:
-        provider: Provider name
+        provider: Provider name. Special values:
+            - "gemini3" or "gemini-3": Gemini 3 with thinkingLevel
+            - "google" or "gemini": Gemini 2.5 with thinkingBudget
 
     Returns:
         Recommended configuration
@@ -507,6 +630,8 @@ def get_recommended_config(provider: str) -> LLMProviderConfig:
         return RECOMMENDED_CONFIGS[provider_lower]
     if provider_lower == "claude":
         return RECOMMENDED_CONFIGS["anthropic"]
+    if provider_lower in ("gemini-3", "gemini3-flash", "gemini3-pro"):
+        return RECOMMENDED_CONFIGS["gemini3"]
     if provider_lower == "gemini":
         return RECOMMENDED_CONFIGS["google"]
     return GenericConfig(provider=provider)

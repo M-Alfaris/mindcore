@@ -998,5 +998,147 @@ class TestBatchOperations:
         assert all(-1.0 <= s <= 1.0 for s in scores)
 
 
+# =============================================================================
+# Gemini 3 API Tests
+# =============================================================================
+
+
+class TestGemini3Support:
+    """Tests for Gemini 3 thinking level API support."""
+
+    def test_thinking_level_enum(self):
+        """Test ThinkingLevel enum values."""
+        from mindcore.v2.svl.llm_providers import ThinkingLevel
+
+        assert ThinkingLevel.MINIMAL.value == "minimal"
+        assert ThinkingLevel.LOW.value == "low"
+        assert ThinkingLevel.MEDIUM.value == "medium"
+        assert ThinkingLevel.HIGH.value == "high"
+
+    def test_gemini_config_is_gemini_3(self):
+        """Test is_gemini_3 detection."""
+        from mindcore.v2.svl.llm_providers import GeminiConfig
+
+        # Gemini 2.5 models
+        config_25 = GeminiConfig(model="gemini-2.5-flash")
+        assert config_25.is_gemini_3() is False
+
+        config_25_pro = GeminiConfig(model="gemini-2.5-pro")
+        assert config_25_pro.is_gemini_3() is False
+
+        # Gemini 3 models
+        config_3_flash = GeminiConfig(model="gemini-3-flash")
+        assert config_3_flash.is_gemini_3() is True
+
+        config_3_pro = GeminiConfig(model="gemini-3-pro")
+        assert config_3_pro.is_gemini_3() is True
+
+    def test_gemini_25_uses_thinking_budget(self):
+        """Test Gemini 2.5 uses thinkingBudget parameter."""
+        from mindcore.v2.svl.llm_providers import GeminiConfig, ThinkingMode
+
+        config = GeminiConfig(
+            model="gemini-2.5-flash",
+            thinking_mode=ThinkingMode.DYNAMIC,
+        )
+
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        params = config.get_request_params(schema)
+
+        # Should use thinking_budget, not thinking_level
+        thinking_config = params["generation_config"]["thinking_config"]
+        assert "thinking_budget" in thinking_config
+        assert "thinking_level" not in thinking_config
+        assert thinking_config["thinking_budget"] == -1  # Dynamic
+
+    def test_gemini_3_uses_thinking_level(self):
+        """Test Gemini 3 uses thinkingLevel parameter."""
+        from mindcore.v2.svl.llm_providers import GeminiConfig, ThinkingLevel
+
+        config = GeminiConfig(
+            model="gemini-3-flash",
+            thinking_level=ThinkingLevel.HIGH,
+        )
+
+        schema = {"type": "object", "properties": {"test": {"type": "string"}}}
+        params = config.get_request_params(schema)
+
+        # Should use thinking_level, not thinking_budget
+        thinking_config = params["generation_config"]["thinking_config"]
+        assert "thinking_level" in thinking_config
+        assert "thinking_budget" not in thinking_config
+        assert thinking_config["thinking_level"] == "HIGH"  # Uppercase for API
+
+    def test_gemini_3_default_thinking_level(self):
+        """Test Gemini 3 defaults to HIGH thinking level."""
+        from mindcore.v2.svl.llm_providers import GeminiConfig
+
+        config = GeminiConfig(model="gemini-3-pro")  # No thinking_level set
+
+        schema = {"type": "object"}
+        params = config.get_request_params(schema)
+
+        thinking_config = params["generation_config"]["thinking_config"]
+        assert thinking_config["thinking_level"] == "HIGH"  # Default
+
+    def test_get_gemini3_params_with_signatures(self):
+        """Test Gemini 3 params include thought signatures."""
+        from mindcore.v2.svl.llm_providers import GeminiConfig, ThinkingLevel
+
+        config = GeminiConfig(model="gemini-3-flash")
+        schema = {"type": "object"}
+
+        # First call - no signatures
+        params = config.get_gemini3_params(schema, ThinkingLevel.HIGH)
+        assert "thought_signatures" not in params
+
+        # Subsequent call - with signatures
+        signatures = ["sig1", "sig2"]
+        params = config.get_gemini3_params(
+            schema, ThinkingLevel.HIGH, thought_signatures=signatures
+        )
+        assert params["thought_signatures"] == signatures
+
+    def test_get_recommended_config_gemini3(self):
+        """Test recommended config for Gemini 3."""
+        from mindcore.v2.svl.llm_providers import get_recommended_config
+
+        config = get_recommended_config("gemini3")
+        assert config.model == "gemini-3-flash"
+        assert config.thinking_level is not None
+
+        # Also test with dash
+        config2 = get_recommended_config("gemini-3")
+        assert config2.model == "gemini-3-flash"
+
+    def test_thinking_mode_vs_level_separation(self):
+        """Test that ThinkingMode and ThinkingLevel are separate."""
+        from mindcore.v2.svl.llm_providers import (
+            GeminiConfig,
+            ThinkingLevel,
+            ThinkingMode,
+        )
+
+        # Gemini 2.5 with ThinkingMode
+        config_25 = GeminiConfig(
+            model="gemini-2.5-pro",
+            thinking_mode=ThinkingMode.FIXED,
+            thinking_budget=5000,
+        )
+        params_25 = config_25.get_request_params({"type": "object"})
+        assert params_25["generation_config"]["thinking_config"]["thinking_budget"] == 5000
+
+        # Gemini 3 with ThinkingLevel (should ignore thinking_mode)
+        config_3 = GeminiConfig(
+            model="gemini-3-flash",
+            thinking_mode=ThinkingMode.FIXED,  # Should be ignored
+            thinking_budget=5000,  # Should be ignored
+            thinking_level=ThinkingLevel.LOW,
+        )
+        params_3 = config_3.get_request_params({"type": "object"})
+        assert params_3["generation_config"]["thinking_config"]["thinking_level"] == "LOW"
+        assert "thinking_budget" not in params_3["generation_config"]["thinking_config"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
