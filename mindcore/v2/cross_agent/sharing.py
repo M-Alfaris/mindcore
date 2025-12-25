@@ -574,8 +574,8 @@ class CrossAgentMemory:
         """Generate a hash for content comparison."""
         import hashlib
 
-        # MD5 used for content comparison, not security
-        return hashlib.md5(content.lower().strip().encode(), usedforsecurity=False).hexdigest()
+        # SHA256 for content comparison (more robust than MD5)
+        return hashlib.sha256(content.lower().strip().encode()).hexdigest()
 
     def _resolve_conflict(
         self,

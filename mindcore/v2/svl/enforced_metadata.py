@@ -31,11 +31,15 @@ Example:
 from __future__ import annotations
 
 import json
+import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mindcore.v2.svl import SharedVocabularyLayer
@@ -667,17 +671,16 @@ Respond with valid JSON only."""
         # Try direct parse first
         try:
             return json.loads(text)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug("Direct JSON parse failed: %s", e)
 
         # Try to find JSON block
-        import re
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
             try:
                 return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as e:
+                logger.debug("JSON block parse failed: %s", e)
 
         raise ValueError(f"Could not extract JSON from response: {text[:200]}")
 

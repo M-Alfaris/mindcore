@@ -30,7 +30,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
 
@@ -178,13 +178,19 @@ class AccessPolicy:
         """Check if access has expired."""
         if self.expires_at is None:
             return False
-        return datetime.utcnow() > self.expires_at
+        # Ensure timezone-aware comparison
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=timezone.utc)
+        return now > expires
 
     def is_available(self) -> bool:
         """Check if access is currently available."""
         if self.available_from is None:
             return True
-        return datetime.utcnow() >= self.available_from
+        # Ensure timezone-aware comparison
+        now = datetime.now(timezone.utc)
+        available = self.available_from if self.available_from.tzinfo else self.available_from.replace(tzinfo=timezone.utc)
+        return now >= available
 
 
 @dataclass
@@ -215,7 +221,7 @@ class MemoryACL:
     policy: AccessPolicy = field(default_factory=AccessPolicy)
 
     # Audit trail
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_accessed_by: str | None = None
     last_accessed_at: datetime | None = None
     access_count: int = 0
@@ -309,7 +315,7 @@ class MemoryACL:
     def record_access(self, agent_id: str) -> None:
         """Record an access event for audit."""
         self.last_accessed_by = agent_id
-        self.last_accessed_at = datetime.utcnow()
+        self.last_accessed_at = datetime.now(timezone.utc)
         self.access_count += 1
 
     def to_dict(self) -> dict[str, Any]:

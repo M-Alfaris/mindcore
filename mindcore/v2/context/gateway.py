@@ -47,7 +47,10 @@ Example:
 
 from __future__ import annotations
 
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -938,8 +941,9 @@ class ContextGateway:
                         )
 
             return source_data
-        except Exception:
+        except Exception as e:
             # Don't fail context building on source fetch errors
+            logger.warning("Failed to fetch source data for topics %s: %s", topics, e)
             return {}
 
     def get_stats(self) -> dict[str, Any]:

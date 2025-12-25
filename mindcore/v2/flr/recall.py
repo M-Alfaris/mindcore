@@ -32,8 +32,11 @@ Example (robust reinforcement):
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import OrderedDict
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from collections.abc import Callable
@@ -61,6 +64,9 @@ if TYPE_CHECKING:
 # Constants for reinforcement score bounds
 REINFORCEMENT_SCORE_MIN = -1.0
 REINFORCEMENT_SCORE_MAX = 1.0
+
+# Scoring constants
+POPULARITY_NORMALIZATION_FACTOR = 100  # Access count at which popularity reaches 1.0
 
 
 @dataclass
@@ -907,8 +913,8 @@ class FLR:
             try:
                 self.storage.update_reinforcement(memory_id, signal)
                 count += 1
-            except Exception:
-                pass  # Log error in production
+            except Exception as e:
+                logger.warning("Failed to flush reinforcement for memory %s: %s", memory_id, e)
 
         self._reinforcement_buffer.clear()
         return count
@@ -1037,7 +1043,7 @@ class FLR:
 
             # 6. Access count (popularity) - reduced weight in robust mode
             # as exploration bonus already accounts for this
-            popularity = min(1.0, memory.access_count / 100)
+            popularity = min(1.0, memory.access_count / POPULARITY_NORMALIZATION_FACTOR)
             if self.use_robust_reinforcement:
                 score += popularity * 0.05  # Lower weight, exploration handles it
             else:
