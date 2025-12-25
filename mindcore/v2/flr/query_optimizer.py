@@ -113,15 +113,15 @@ class QueryOptimizer:
         optimizer.record_usage(usage_result)
 
         # Before next query
-        params = optimizer.optimize_query(
+        optimization = optimizer.optimize_query(
             original_topics=["billing", "support"],
             original_limit=10,
         )
 
         result = flr.query(
             query="...",
-            attention_hints=params["topics"],
-            limit=params["limit"],
+            attention_hints=optimization.optimized_topics,
+            limit=optimization.optimized_limit,
         )
     """
 

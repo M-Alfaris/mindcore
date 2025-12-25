@@ -36,6 +36,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from .reinforcement import (
@@ -355,7 +356,7 @@ class FLR:
         storage: BaseStorage,
         cache_size: int = 1000,
         cache_ttl_seconds: int = 300,
-        embedding_fn: callable | None = None,
+        embedding_fn: Callable | None = None,
         agent_registry: AgentRegistry | None = None,
         use_robust_reinforcement: bool = False,
         exploration_factor: float = 0.1,
