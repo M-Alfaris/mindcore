@@ -53,6 +53,25 @@ from .domains import (
     merge_domains,
 )
 
+# Enforced Metadata - LLM metadata extraction
+from .enforced_metadata import (
+    ContextDecision,
+    EnforcedMetadata,
+    HistoricalContextNeeded,
+    MetadataExtractor,
+)
+
+# Extraction Fallback Strategies
+from .extraction_fallback import (
+    BatchItem,
+    ExtractionAttempt,
+    ExtractionFailureType,
+    ExtractionResult,
+    ExtractionStrategy,
+    ResilientMetadataExtractor,
+    RuleBasedExtractor,
+)
+
 # Layer - Main interface (unified vocabulary)
 from .layer import (
     DEFAULT_SVL,
@@ -69,6 +88,25 @@ from .layer import (
     # Schema
     SVLSchema,
 )
+
+# LLM Provider Configurations
+from .llm_providers import (
+    ClaudeConfig,
+    # API-Level Context Injection
+    ContextInjector,
+    FeedbackInjection,
+    GeminiConfig,
+    GenericConfig,
+    LLMProviderConfig,
+    OpenAIConfig,
+    ReasoningEffort,
+    ThinkingLevel,  # Gemini 3 thinking levels
+    ThinkingMode,  # Gemini 2.5 thinking modes
+    create_injector_from_flr,
+    create_injector_from_optimizer,
+    get_provider_config,
+    get_recommended_config,
+)
 from .ontology import (
     Confidence,
     # Domain
@@ -76,6 +114,8 @@ from .ontology import (
     # Emotional
     EmotionalClassification,
     MessageIntent,
+    # Message roles (LLM conversation roles)
+    MessageRole,
     # Message types
     MessageType,
     PreferenceType,
@@ -92,6 +132,7 @@ from .ontology import (
     get_emotional_classifications,
     get_message_intents,
     # Helpers
+    get_message_roles,
     get_message_types,
     get_preference_types,
     get_temporal_qualifiers,
@@ -133,68 +174,8 @@ from .sources import (
     create_source,
 )
 
-# Enforced Metadata - LLM metadata extraction
-from .enforced_metadata import (
-    ContextDecision,
-    EnforcedMetadata,
-    HistoricalContextNeeded,
-    MetadataExtractor,
-)
-
-# LLM Provider Configurations
-from .llm_providers import (
-    ClaudeConfig,
-    GeminiConfig,
-    GenericConfig,
-    LLMProviderConfig,
-    OpenAIConfig,
-    ReasoningEffort,
-    ThinkingLevel,  # Gemini 3 thinking levels
-    ThinkingMode,  # Gemini 2.5 thinking modes
-    get_provider_config,
-    get_recommended_config,
-    # API-Level Context Injection
-    ContextInjector,
-    FeedbackInjection,
-    create_injector_from_flr,
-    create_injector_from_optimizer,
-)
-
-# Extraction Fallback Strategies
-from .extraction_fallback import (
-    BatchItem,
-    ExtractionAttempt,
-    ExtractionFailureType,
-    ExtractionResult,
-    ExtractionStrategy,
-    ResilientMetadataExtractor,
-    RuleBasedExtractor,
-)
-
 
 __all__ = [
-    # Enforced Metadata
-    "ContextDecision",
-    "EnforcedMetadata",
-    "HistoricalContextNeeded",
-    "MetadataExtractor",
-    # LLM Provider Configurations
-    "ClaudeConfig",
-    "GeminiConfig",
-    "GenericConfig",
-    "LLMProviderConfig",
-    "OpenAIConfig",
-    "ReasoningEffort",
-    "ThinkingLevel",
-    "ThinkingMode",
-    "get_provider_config",
-    "get_recommended_config",
-    # API-Level Context Injection
-    "ContextInjector",
-    "FeedbackInjection",
-    "create_injector_from_flr",
-    "create_injector_from_optimizer",
-    # Domains
     "CUSTOMER_SERVICE_DOMAIN",
     "DEFAULT_SVL",
     "DOMAIN_REGISTRY",
@@ -208,21 +189,41 @@ __all__ = [
     "AccessLevel",
     "AsyncFunctionSource",
     "AsyncSourceExecutor",
+    "BatchItem",
+    "ClaudeConfig",
     "Confidence",
+    "ContextDecision",
+    "ContextInjector",
     "DataSource",
     "DomainLabel",
     "DomainVocabulary",
     "EmotionalClassification",
+    "EnforcedMetadata",
+    "ExtractionAttempt",
+    "ExtractionFailureType",
+    "ExtractionResult",
+    "ExtractionStrategy",
+    "FeedbackInjection",
     "FetchResult",
     "FieldSchema",
     "FunctionSource",
+    "GeminiConfig",
+    "GenericConfig",
+    "HistoricalContextNeeded",
+    "LLMProviderConfig",
     "MCPSource",
     "MemoryType",
     "MessageIntent",
+    "MessageRole",
     "MessageType",
+    "MetadataExtractor",
     "Migration",
     "MigrationCheckpoint",
+    "OpenAIConfig",
     "PreferenceType",
+    "ReasoningEffort",
+    "ResilientMetadataExtractor",
+    "RuleBasedExtractor",
     "SVLSchema",
     "SemanticMetadata",
     "Sentiment",
@@ -234,11 +235,15 @@ __all__ = [
     "SourceType",
     "TableSource",
     "TemporalQualifier",
+    "ThinkingLevel",
+    "ThinkingMode",
     "TriggerCondition",
     "Urgency",
     "UserRole",
     "clear_registered_sources",
     "create_custom_domain",
+    "create_injector_from_flr",
+    "create_injector_from_optimizer",
     "create_source",
     "discover_and_register",
     "get_confidence_levels",
@@ -246,8 +251,11 @@ __all__ = [
     "get_domain_labels",
     "get_emotional_classifications",
     "get_message_intents",
+    "get_message_roles",
     "get_message_types",
     "get_preference_types",
+    "get_provider_config",
+    "get_recommended_config",
     "get_registered_sources",
     "get_temporal_qualifiers",
     "get_urgency_levels",
@@ -257,12 +265,4 @@ __all__ = [
     "load_sources_from_yaml",
     "merge_domains",
     "source",
-    # Extraction Fallback Strategies
-    "BatchItem",
-    "ExtractionAttempt",
-    "ExtractionFailureType",
-    "ExtractionResult",
-    "ExtractionStrategy",
-    "ResilientMetadataExtractor",
-    "RuleBasedExtractor",
 ]

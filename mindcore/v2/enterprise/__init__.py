@@ -5,6 +5,7 @@ This module provides production-ready features for enterprise deployments:
 - Rate Limiting: Configurable rate limits with multiple backends
 - Audit Trail: Structured audit logging for compliance
 - Encryption: At-rest encryption for sensitive memory content
+- Compliance: GDPR/CCPA compliance tools with data retention
 
 Requirements (install with `pip install mindcore[enterprise]`):
     - opentelemetry-api>=1.20.0
@@ -20,6 +21,8 @@ Example:
         RateLimiter,
         AuditLogger,
         EncryptionConfig,
+        ComplianceManager,
+        RetentionPolicy,
         create_enterprise_mindcore,
     )
 
@@ -37,6 +40,11 @@ Example:
     mc.enable_rate_limiting(RateLimiter(limit="1000/hour"))
     mc.enable_audit_logging(AuditLogger(output="file", path="/var/log/mindcore"))
     mc.enable_encryption(EncryptionConfig(key_from_env="MINDCORE_ENCRYPTION_KEY"))
+
+    # GDPR/CCPA compliance
+    compliance = mc.get_compliance_manager()
+    export = compliance.export_user_data("user_123")
+    compliance.delete_user_data("user_123")
 """
 
 from .audit import (
@@ -44,6 +52,16 @@ from .audit import (
     AuditEvent,
     AuditEventType,
     AuditLogger,
+)
+from .compliance import (
+    AnonymizationResult,
+    AnonymizationStrategy,
+    ComplianceEventType,
+    ComplianceManager,
+    GDPRDeleteResult,
+    GDPRExportResult,
+    RetentionEnforcementResult,
+    RetentionPolicy,
 )
 from .encryption import (
     EncryptionConfig,
@@ -71,15 +89,22 @@ RateLimitExceeded = RateLimitExceededError
 
 
 __all__ = [
+    # Compliance
+    "AnonymizationResult",
+    "AnonymizationStrategy",
     "AuditConfig",
     "AuditEvent",
     "AuditEventType",
     # Audit
     "AuditLogger",
+    "ComplianceEventType",
+    "ComplianceManager",
     # Encryption
     "EncryptionConfig",
     "EncryptionError",
     "FieldEncryptor",
+    "GDPRDeleteResult",
+    "GDPRExportResult",
     "KeyRotator",
     "MetricType",
     "MindcoreMetrics",
@@ -92,5 +117,7 @@ __all__ = [
     "RateLimitExceededError",
     # Rate Limiting
     "RateLimiter",
+    "RetentionEnforcementResult",
+    "RetentionPolicy",
     "SpanKind",
 ]

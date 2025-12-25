@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
 logger = logging.getLogger(__name__)
 
 from mindcore.v2.exceptions import MemoryNotFoundError, StorageError
@@ -183,28 +184,75 @@ class SQLiteStorage(BaseStorage):
         # Main memories table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS memories (
+                -- Primary identifiers
                 memory_id TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                memory_type TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 agent_id TEXT,
+
+                -- Conversation tracking
+                session_id TEXT,
+                thread_id TEXT,
+                parent_memory_id TEXT,
+                turn_index INTEGER,
+
+                -- Content and classification
+                content TEXT NOT NULL,
+                memory_type TEXT NOT NULL,
+                message_role TEXT,
+
+                -- Metadata (JSON arrays)
                 topics TEXT,
                 categories TEXT,
+                entities TEXT,
+
+                -- Sentiment and scores
                 sentiment TEXT DEFAULT 'neutral',
                 importance REAL DEFAULT 0.5,
-                entities TEXT,
+                importance_decay_rate REAL DEFAULT 0.1,
+                importance_boosts TEXT DEFAULT '[]',
+                confidence_score REAL,
+                reinforcement_score REAL DEFAULT 0.0,
+
+                -- Access control
                 access_level TEXT DEFAULT 'private',
+                access_count INTEGER DEFAULT 0,
+
+                -- Timestamps
                 created_at TEXT,
                 last_accessed TEXT,
                 expires_at TEXT,
-                reinforcement_score REAL DEFAULT 0.0,
-                access_count INTEGER DEFAULT 0,
+
+                -- Extended semantic metadata (JSON)
+                semantic_metadata TEXT DEFAULT '{}',
+
+                -- Versioning
                 vocabulary_version TEXT DEFAULT '1.0.0',
+
+                -- Embeddings
                 embedding BLOB
             )
         """)
 
-        # Indexes for common queries
+        # Add new columns to existing tables (for migration)
+        new_columns = [
+            ("session_id", "TEXT"),
+            ("thread_id", "TEXT"),
+            ("parent_memory_id", "TEXT"),
+            ("turn_index", "INTEGER"),
+            ("message_role", "TEXT"),
+            ("confidence_score", "REAL"),
+            ("semantic_metadata", "TEXT DEFAULT '{}'"),
+            ("importance_decay_rate", "REAL DEFAULT 0.1"),
+            ("importance_boosts", "TEXT DEFAULT '[]'"),
+        ]
+        for col_name, col_type in new_columns:
+            try:
+                cursor.execute(f"ALTER TABLE memories ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
+        # Indexes for primary identifiers
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_user_id
             ON memories(user_id)
@@ -213,14 +261,43 @@ class SQLiteStorage(BaseStorage):
             CREATE INDEX IF NOT EXISTS idx_memories_agent_id
             ON memories(agent_id)
         """)
+
+        # Indexes for conversation tracking
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_session_id
+            ON memories(session_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_thread_id
+            ON memories(thread_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_parent_id
+            ON memories(parent_memory_id)
+        """)
+        # Composite index for conversation queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_conversation
+            ON memories(user_id, session_id, thread_id, turn_index)
+        """)
+
+        # Indexes for content classification
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_type
             ON memories(memory_type)
         """)
         cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_message_role
+            ON memories(message_role)
+        """)
+
+        # Indexes for temporal queries
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_created
             ON memories(created_at)
         """)
+
+        # Indexes for versioning
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_version
             ON memories(vocabulary_version)
@@ -288,10 +365,14 @@ class SQLiteStorage(BaseStorage):
             """
             INSERT OR REPLACE INTO memories (
                 memory_id, content, memory_type, user_id, agent_id,
-                topics, categories, sentiment, importance, entities,
-                access_level, created_at, last_accessed, expires_at,
-                reinforcement_score, access_count, vocabulary_version, embedding
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                session_id, thread_id, parent_memory_id, turn_index,
+                message_role, topics, categories, sentiment, importance,
+                importance_decay_rate, importance_boosts,
+                entities, access_level, confidence_score,
+                created_at, last_accessed, expires_at,
+                reinforcement_score, access_count, semantic_metadata,
+                vocabulary_version, embedding
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 memory.memory_id,
@@ -299,17 +380,26 @@ class SQLiteStorage(BaseStorage):
                 memory.memory_type,
                 memory.user_id,
                 memory.agent_id,
+                memory.session_id,
+                memory.thread_id,
+                memory.parent_memory_id,
+                memory.turn_index,
+                memory.message_role,
                 json.dumps(memory.topics),
                 json.dumps(memory.categories),
                 memory.sentiment,
                 memory.importance,
+                memory.importance_decay_rate,
+                json.dumps(memory.importance_boosts),
                 json.dumps(memory.entities),
                 memory.access_level,
+                memory.confidence_score,
                 memory.created_at.isoformat() if memory.created_at else None,
                 memory.last_accessed.isoformat() if memory.last_accessed else None,
                 memory.expires_at.isoformat() if memory.expires_at else None,
                 memory.reinforcement_score,
                 memory.access_count,
+                json.dumps(memory.semantic_metadata) if memory.semantic_metadata else "{}",
                 memory.vocabulary_version,
                 json.dumps(memory.embedding) if memory.embedding else None,
             ),
@@ -348,15 +438,26 @@ class SQLiteStorage(BaseStorage):
             UPDATE memories SET
                 content = ?,
                 memory_type = ?,
+                user_id = ?,
+                agent_id = ?,
+                session_id = ?,
+                thread_id = ?,
+                parent_memory_id = ?,
+                turn_index = ?,
+                message_role = ?,
                 topics = ?,
                 categories = ?,
                 sentiment = ?,
                 importance = ?,
+                importance_decay_rate = ?,
+                importance_boosts = ?,
                 entities = ?,
                 access_level = ?,
+                confidence_score = ?,
                 last_accessed = ?,
                 reinforcement_score = ?,
                 access_count = ?,
+                semantic_metadata = ?,
                 vocabulary_version = ?,
                 embedding = ?
             WHERE memory_id = ?
@@ -364,15 +465,26 @@ class SQLiteStorage(BaseStorage):
             (
                 memory.content,
                 memory.memory_type,
+                memory.user_id,
+                memory.agent_id,
+                memory.session_id,
+                memory.thread_id,
+                memory.parent_memory_id,
+                memory.turn_index,
+                memory.message_role,
                 json.dumps(memory.topics),
                 json.dumps(memory.categories),
                 memory.sentiment,
                 memory.importance,
+                memory.importance_decay_rate,
+                json.dumps(memory.importance_boosts),
                 json.dumps(memory.entities),
                 memory.access_level,
+                memory.confidence_score,
                 memory.last_accessed.isoformat() if memory.last_accessed else None,
                 memory.reinforcement_score,
                 memory.access_count,
+                json.dumps(memory.semantic_metadata) if memory.semantic_metadata else "{}",
                 memory.vocabulary_version,
                 json.dumps(memory.embedding) if memory.embedding else None,
                 memory.memory_id,
@@ -667,7 +779,9 @@ class SQLiteStorage(BaseStorage):
                 try:
                     conn.close()
                 except Exception as e:
-                    logger.debug("Error closing connection for thread %s during shutdown: %s", thread_id, e)
+                    logger.debug(
+                        "Error closing connection for thread %s during shutdown: %s", thread_id, e
+                    )
 
             self._active_connections.clear()
             self._connection_count = 0
@@ -707,10 +821,14 @@ class SQLiteStorage(BaseStorage):
                     """
                     INSERT OR REPLACE INTO memories (
                         memory_id, content, memory_type, user_id, agent_id,
-                        topics, categories, sentiment, importance, entities,
-                        access_level, created_at, last_accessed, expires_at,
-                        reinforcement_score, access_count, vocabulary_version, embedding
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        session_id, thread_id, parent_memory_id, turn_index,
+                        message_role, topics, categories, sentiment, importance,
+                        importance_decay_rate, importance_boosts,
+                        entities, access_level, confidence_score,
+                        created_at, last_accessed, expires_at,
+                        reinforcement_score, access_count, semantic_metadata,
+                        vocabulary_version, embedding
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         memory.memory_id,
@@ -718,17 +836,26 @@ class SQLiteStorage(BaseStorage):
                         memory.memory_type,
                         memory.user_id,
                         memory.agent_id,
+                        memory.session_id,
+                        memory.thread_id,
+                        memory.parent_memory_id,
+                        memory.turn_index,
+                        memory.message_role,
                         json.dumps(memory.topics),
                         json.dumps(memory.categories),
                         memory.sentiment,
                         memory.importance,
+                        memory.importance_decay_rate,
+                        json.dumps(memory.importance_boosts),
                         json.dumps(memory.entities),
                         memory.access_level,
+                        memory.confidence_score,
                         memory.created_at.isoformat() if memory.created_at else None,
                         memory.last_accessed.isoformat() if memory.last_accessed else None,
                         memory.expires_at.isoformat() if memory.expires_at else None,
                         memory.reinforcement_score,
                         memory.access_count,
+                        json.dumps(memory.semantic_metadata) if memory.semantic_metadata else "{}",
                         memory.vocabulary_version,
                         json.dumps(memory.embedding) if memory.embedding else None,
                     ),
@@ -763,23 +890,61 @@ class SQLiteStorage(BaseStorage):
         entities = json.loads(row["entities"]) if row["entities"] else []
         embedding = json.loads(row["embedding"]) if row["embedding"] else None
 
+        # Parse semantic_metadata (may not exist in older databases)
+        semantic_metadata = {}
+        try:
+            if row["semantic_metadata"]:
+                semantic_metadata = json.loads(row["semantic_metadata"])
+        except (KeyError, IndexError):
+            pass
+
+        # Get column names for checking new columns (may not exist in older databases)
+        row_keys = row.keys()
+
+        # Parse importance_boosts (may not exist in older databases)
+        importance_boosts = []
+        if "importance_boosts" in row_keys and row["importance_boosts"]:
+            try:
+                importance_boosts = json.loads(row["importance_boosts"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         return Memory(
             memory_id=row["memory_id"],
             content=row["content"],
             memory_type=row["memory_type"],
             user_id=row["user_id"],
             agent_id=row["agent_id"],
+            # Conversation tracking (may not exist in older databases)
+            session_id=row["session_id"] if "session_id" in row_keys else None,
+            thread_id=row["thread_id"] if "thread_id" in row_keys else None,
+            parent_memory_id=row["parent_memory_id"] if "parent_memory_id" in row_keys else None,
+            turn_index=row["turn_index"] if "turn_index" in row_keys else None,
+            # Message context
+            message_role=row["message_role"] if "message_role" in row_keys else None,
+            # Metadata
             topics=topics,
             categories=categories,
             sentiment=row["sentiment"],
             importance=row["importance"],
+            importance_decay_rate=(
+                row["importance_decay_rate"]
+                if "importance_decay_rate" in row_keys and row["importance_decay_rate"] is not None
+                else 0.1
+            ),
+            importance_boosts=importance_boosts,
             entities=entities,
             access_level=row["access_level"],
+            # Scores
+            confidence_score=row["confidence_score"] if "confidence_score" in row_keys else None,
+            reinforcement_score=row["reinforcement_score"],
+            access_count=row["access_count"],
+            # Timestamps
             created_at=created_at,
             last_accessed=last_accessed,
             expires_at=expires_at,
-            reinforcement_score=row["reinforcement_score"],
-            access_count=row["access_count"],
+            # Extended metadata
+            semantic_metadata=semantic_metadata if isinstance(semantic_metadata, dict) else {},
             vocabulary_version=row["vocabulary_version"],
             embedding=embedding,
         )
