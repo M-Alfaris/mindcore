@@ -5,7 +5,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/M-Alfaris/mindcore)
-[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
+[![Tests](https://img.shields.io/badge/tests-585%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 **A modular memory layer framework built on three foundational protocols: FLR, CLST, and SVL.**
@@ -469,6 +469,58 @@ rotator = KeyRotator(old_key, new_key)
 rotated_data = rotator.rotate(encrypted_content)
 ```
 
+### GDPR/CCPA Compliance
+
+```python
+from mindcore.enterprise import ComplianceManager, RetentionPolicy, AnonymizationStrategy
+
+compliance = ComplianceManager(storage)
+
+# GDPR Article 15: Right of Access (data export)
+export = await compliance.export_user_data("user_123")
+
+# GDPR Article 17: Right to Erasure
+result = await compliance.delete_user_data("user_123")
+
+# Anonymize for analytics
+compliance.anonymize_user_data("user_123", strategy=AnonymizationStrategy.PSEUDONYMIZE)
+
+# Retention policies
+compliance.set_retention_policy(RetentionPolicy(
+    memory_type_policies={"episodic": 730, "working": 1},
+    default_max_age_days=365,
+))
+compliance.enforce_retention()  # Run periodically
+```
+
+### Smart Cache & Preferences
+
+```python
+from mindcore.v2.flr import SmartCache, PreferenceManager
+
+# Smart write-through cache with pattern invalidation
+cache = SmartCache(storage, max_size=10000, ttl_seconds=3600)
+cache.invalidate_pattern("user:123:*")
+print(f"Hit rate: {cache.get_stats().hit_rate:.1%}")
+
+# Temporal preference handling with versioning
+prefs = PreferenceManager(storage, flr)
+prefs.set_preference(user_id="user_123", key="theme", value="dark mode")
+prefs.update_preference(user_id="user_123", key="theme", value="light mode")
+history = prefs.get_preference_history("user_123", "theme")
+```
+
+### Time-Based Partitioning (PostgreSQL)
+
+```python
+from mindcore.v2.storage.partitioning import PartitionManager
+
+partitions = PartitionManager(postgres_storage)
+partitions.setup_partitioning(interval="monthly")
+partitions.create_future_partitions(months_ahead=3)
+partitions.archive_partitions(older_than_months=12)
+```
+
 ---
 
 ## Architecture
@@ -487,10 +539,10 @@ rotated_data = rotator.rotate(encrypted_content)
 │  │       FLR        │  │       CLST       │  │      SVL       │ │
 │  │   (Hot Path)     │  │   (Cold Path)    │  │  (Semantics)   │ │
 │  │                  │  │                  │  │                │ │
-│  │ • LRU Cache      │  │ • Compression    │  │ • Validation   │ │
-│  │ • Scoring        │  │ • Sync           │  │ • Migrations   │ │
+│  │ • Smart Cache    │  │ • Compression    │  │ • Validation   │ │
+│  │ • Preferences    │  │ • Sync           │  │ • Migrations   │ │
 │  │ • Reinforcement  │  │ • Transfer       │  │ • Data Sources │ │
-│  │ • Context        │  │ • Migration      │  │ • Domains      │ │
+│  │ • Context        │  │ • Partitioning   │  │ • Domains      │ │
 │  └──────────────────┘  └──────────────────┘  └────────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
 │                       Storage Abstraction                         │
@@ -584,7 +636,9 @@ mindcore/
 ├── v2/                         # Version 2 with ContextGateway
 │   ├── flr/                    # Fast Learning Recall protocol
 │   │   ├── __init__.py
-│   │   └── recall.py           # FLR, Memory (with session_id, thread_id)
+│   │   ├── recall.py           # FLR, Memory
+│   │   ├── cache.py            # Smart write-through cache
+│   │   └── preferences.py      # Temporal preference handling
 │   │
 │   ├── clst/                   # Cognitive Long-term Storage Transfer
 │   │   ├── __init__.py
@@ -607,7 +661,8 @@ mindcore/
 │   └── storage/                # Storage backends
 │       ├── base.py             # BaseStorage with session aggregate methods
 │       ├── sqlite.py           # SQLiteStorage
-│       └── postgres.py         # PostgresStorage with session_aggregates table
+│       ├── postgres.py         # PostgresStorage with session_aggregates table
+│       └── partitioning.py     # Time-based partitioning for PostgreSQL
 │
 ├── cross_agent/                # Multi-agent support
 │   ├── layer.py                # CrossAgentLayer
@@ -619,7 +674,8 @@ mindcore/
 │   ├── observability.py        # OpenTelemetry metrics/tracing
 │   ├── rate_limiting.py        # Rate limiter
 │   ├── audit.py                # Audit logging
-│   └── encryption.py           # Field encryption
+│   ├── encryption.py           # Field encryption
+│   └── compliance.py           # GDPR/CCPA compliance tools
 │
 ├── server/                     # API servers
 │   ├── mcp.py                  # MCP server
@@ -763,6 +819,7 @@ aggregate = SessionAggregate(
 ```
 
 **Weight Calculation:**
+
 ```python
 topic_weight = (frequency * 0.4) + (avg_importance * 0.4) + (recency * 0.2)
 ```
@@ -942,7 +999,7 @@ pytest mindcore/tests/ --cov=mindcore --cov-report=html
 pytest mindcore/tests/test_enterprise.py -v
 ```
 
-Current test status: **140 tests passing, 58% coverage**
+Current test status: **585 tests passing, 61% coverage**
 
 ---
 
