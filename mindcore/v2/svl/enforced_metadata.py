@@ -31,7 +31,10 @@ Example:
 from __future__ import annotations
 
 import json
+import logging
 import uuid
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -664,20 +667,21 @@ Respond with valid JSON only."""
 
     def _extract_json(self, text: str) -> dict[str, Any]:
         """Extract JSON from LLM response text."""
+        import re
+
         # Try direct parse first
         try:
             return json.loads(text)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug("Direct JSON parse failed: %s", e)
 
         # Try to find JSON block
-        import re
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
             try:
                 return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as e:
+                logger.debug("JSON block parse failed: %s", e)
 
         raise ValueError(f"Could not extract JSON from response: {text[:200]}")
 

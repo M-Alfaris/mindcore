@@ -48,7 +48,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ class UserMemoryHelper:
         full_metadata = {
             "user_id": user_id,
             "memory_type": memory_type,
-            "stored_at": datetime.utcnow().isoformat(),
+            "stored_at": datetime.now(timezone.utc).isoformat(),
             **(metadata or {}),
         }
 
@@ -169,7 +169,7 @@ class UserMemoryHelper:
         """
         context: dict[str, Any] = {
             "user_id": user_id,
-            "retrieved_at": datetime.utcnow().isoformat(),
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
         }
 
         if include_preferences:
@@ -207,7 +207,7 @@ class UserMemoryHelper:
 
         self._active_sessions[user_id] = {
             "session_id": session_id,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "channel": channel,
             "message_count": 0,
             **(metadata or {}),

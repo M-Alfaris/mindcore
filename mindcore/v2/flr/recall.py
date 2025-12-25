@@ -32,8 +32,11 @@ Example (robust reinforcement):
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import OrderedDict
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from collections.abc import Callable
@@ -907,8 +910,8 @@ class FLR:
             try:
                 self.storage.update_reinforcement(memory_id, signal)
                 count += 1
-            except Exception:
-                pass  # Log error in production
+            except Exception as e:
+                logger.warning("Failed to flush reinforcement for memory %s: %s", memory_id, e)
 
         self._reinforcement_buffer.clear()
         return count

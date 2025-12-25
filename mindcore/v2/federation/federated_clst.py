@@ -36,7 +36,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from .access_control import (
@@ -131,8 +131,8 @@ class FederatedMemory:
     reinforcement_sources: dict[str, float] = field(default_factory=dict)
 
     # Timestamps
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_storage_dict(self) -> dict[str, Any]:
         """Convert to storage format."""
@@ -394,7 +394,7 @@ class FederatedCLST:
             metadata={
                 "reinforcement_sources": sources,
                 "aggregated_reinforcement": aggregated,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -435,7 +435,7 @@ class FederatedCLST:
             memory_id=memory_id,
             metadata={
                 "acl": acl.to_dict(),
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 

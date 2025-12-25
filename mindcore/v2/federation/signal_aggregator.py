@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -88,7 +88,7 @@ class AgentSignal:
     agent_id: str
     agent_scope: AccessScope
     value: float
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     context: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -112,7 +112,7 @@ class AggregatedSignal:
     signals: dict[str, AgentSignal] = field(default_factory=dict)
     aggregated_value: float = 0.0
     confidence: float = 0.0
-    last_updated: datetime = field(default_factory=datetime.utcnow)
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def signal_count(self) -> int:
@@ -156,7 +156,7 @@ class AgentReputation:
         self.total_signals += 1
         if was_accurate:
             self.accurate_signals += 1
-        self.last_signal = datetime.utcnow()
+        self.last_signal = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -215,7 +215,7 @@ class CrossAgentSignalAggregator:
 
         # Store signal (overwrites previous from same agent)
         aggregated.signals[agent_id] = signal
-        aggregated.last_updated = datetime.utcnow()
+        aggregated.last_updated = datetime.now(timezone.utc)
 
         # Recompute aggregated value
         aggregated.aggregated_value = self._compute_aggregation(
@@ -418,7 +418,7 @@ class CrossAgentSignalAggregator:
         if not aggregated.signals:
             return 0.0
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         decay_constant = math.log(2) / (self.weight_config.decay_half_life_hours * 3600)
 
         weighted_sum = 0.0

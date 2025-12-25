@@ -47,7 +47,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .access_control import AccessScope
@@ -78,7 +78,7 @@ class TopicFeedback:
         self.total_uses += 1
         if was_effective:
             self.effective_uses += 1
-        self.last_used = datetime.utcnow()
+        self.last_used = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -96,22 +96,22 @@ class ScopedFeedback:
     topic_feedback: dict[str, TopicFeedback] = field(default_factory=dict)
     category_feedback: dict[str, TopicFeedback] = field(default_factory=dict)
     total_extractions: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def record_topic(self, topic: str, was_effective: bool) -> None:
         """Record topic feedback."""
         if topic not in self.topic_feedback:
             self.topic_feedback[topic] = TopicFeedback(topic=topic)
         self.topic_feedback[topic].record(was_effective)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def record_category(self, category: str, was_effective: bool) -> None:
         """Record category feedback."""
         if category not in self.category_feedback:
             self.category_feedback[category] = TopicFeedback(topic=category)
         self.category_feedback[category].record(was_effective)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def get_effective_topics(self, min_uses: int = 3) -> list[tuple[str, float]]:
         """Get topics with high effectiveness."""

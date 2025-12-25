@@ -245,9 +245,24 @@ class TableSource(DataSource):
     def _fetch_sqlite(self, query: str, params: dict) -> list[dict]:
         """Fetch from SQLite."""
         import sqlite3
+        from pathlib import Path
 
+        # Extract and validate the database path to prevent path traversal
         db_path = self.connection_string.replace("sqlite:///", "")
-        conn = sqlite3.connect(db_path)
+
+        # Resolve the path and check for path traversal attempts
+        resolved_path = Path(db_path).resolve()
+
+        # Ensure the path doesn't escape to sensitive system directories
+        sensitive_prefixes = ("/etc", "/proc", "/sys", "/dev", "/root", "/boot")
+        if any(str(resolved_path).startswith(prefix) for prefix in sensitive_prefixes):
+            raise ValueError(f"Access to system path is not allowed: {resolved_path}")
+
+        # Ensure it's a .db or .sqlite file (or allow in-memory :memory:)
+        if db_path != ":memory:" and not str(resolved_path).endswith((".db", ".sqlite", ".sqlite3")):
+            raise ValueError(f"Invalid SQLite database extension: {resolved_path}")
+
+        conn = sqlite3.connect(str(resolved_path))
         conn.row_factory = sqlite3.Row
         try:
             cur = conn.execute(query, params)

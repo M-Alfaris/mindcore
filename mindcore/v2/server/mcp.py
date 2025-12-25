@@ -9,8 +9,11 @@ Based on: https://modelcontextprotocol.io/
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
+
+logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
@@ -180,11 +183,12 @@ class MCPServer:
                 "isError": False,
             }
         except Exception as e:
+            logger.warning("Tool '%s' failed: %s", name, e)
             return {
                 "content": [
                     {
                         "type": "text",
-                        "text": str(e),
+                        "text": f"Tool execution failed: {name}. Please try again.",
                     }
                 ],
                 "isError": True,
@@ -597,4 +601,5 @@ class MCPServer:
             return self.to_json_rpc_response(request_id, result)
 
         except Exception as e:
-            return self.to_json_rpc_response(request_id, None, str(e))
+            logger.error("JSON-RPC request failed for method '%s': %s", method, e)
+            return self.to_json_rpc_response(request_id, None, "Internal server error")

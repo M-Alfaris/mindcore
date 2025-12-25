@@ -4,8 +4,10 @@ Provides HTTP endpoints for memory operations.
 Can be used standalone or alongside MCP.
 """
 
+import logging
 from typing import TYPE_CHECKING
 
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mindcore.v2.access import AccessController
@@ -19,6 +21,7 @@ def create_app(
     clst: "CLST | None" = None,
     vocabulary: "VocabularySchema | None" = None,
     access_controller: "AccessController | None" = None,
+    rate_limit: str | None = "100/minute",
 ):
     """Create FastAPI application for Mindcore REST API.
 
@@ -28,6 +31,7 @@ def create_app(
               If not provided, a default CLST will be created using FLR's storage.
         vocabulary: Optional vocabulary schema
         access_controller: Optional access controller
+        rate_limit: Rate limit string (e.g., "100/minute"). Set to None to disable.
 
     Returns:
         FastAPI application
@@ -54,13 +58,58 @@ def create_app(
     )
 
     # CORS middleware
+    # Note: When allow_credentials=True, allow_origins cannot be ["*"]
+    # Using allow_credentials=False for security with wildcard origins
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # Rate limiting middleware
+    rate_limiter = None
+    if rate_limit:
+        try:
+            from mindcore.v2.enterprise.rate_limiting import RateLimiter, RateLimitExceededError
+
+            rate_limiter = RateLimiter(limit=rate_limit)
+            logger.info("Rate limiting enabled: %s", rate_limit)
+        except ImportError:
+            logger.warning(
+                "Rate limiting requested but 'limits' library not installed. "
+                "Install with: pip install limits"
+            )
+
+    from fastapi import Request
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import JSONResponse
+
+    class RateLimitMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            if rate_limiter is None:
+                return await call_next(request)
+
+            # Use client IP or X-Forwarded-For as identifier
+            client_ip = request.client.host if request.client else "unknown"
+            forwarded = request.headers.get("X-Forwarded-For")
+            if forwarded:
+                client_ip = forwarded.split(",")[0].strip()
+
+            # Check rate limit
+            operation = request.url.path.split("/")[-1] or "default"
+            if not rate_limiter.is_allowed(client_ip, operation):
+                logger.warning("Rate limit exceeded for %s on %s", client_ip, operation)
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded. Please try again later."},
+                    headers={"Retry-After": "60"},
+                )
+
+            return await call_next(request)
+
+    app.add_middleware(RateLimitMiddleware)
 
     # Pydantic models
     class StoreMemoryRequest(BaseModel):
@@ -159,7 +208,8 @@ def create_app(
             memory_id = clst.store(memory)
             return {"memory_id": memory_id, "success": True}
         except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            logger.warning("Memory validation failed: %s", e)
+            raise HTTPException(status_code=422, detail="Invalid memory data. Check content and metadata.")
 
     @app.get("/memories/{memory_id}")
     async def get_memory(
@@ -283,7 +333,8 @@ def create_app(
             )
             return profile.to_dict()
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            logger.warning("Agent registration failed for %s: %s", data.agent_id, e)
+            raise HTTPException(status_code=400, detail="Agent registration failed. Check agent configuration.")
 
     @app.get("/agents")
     async def list_agents():
@@ -373,6 +424,7 @@ def run_server(
     access_controller: "AccessController | None" = None,
     host: str = "0.0.0.0",
     port: int = 8000,
+    rate_limit: str | None = "100/minute",
 ):
     """Run the REST API server.
 
@@ -383,11 +435,12 @@ def run_server(
         access_controller: Optional access controller
         host: Host to bind to
         port: Port to bind to
+        rate_limit: Rate limit string (e.g., "100/minute"). Set to None to disable.
     """
     try:
         import uvicorn
     except ImportError:
         raise ImportError("uvicorn required to run server. Install with: pip install uvicorn")
 
-    app = create_app(flr, clst, vocabulary, access_controller)
+    app = create_app(flr, clst, vocabulary, access_controller, rate_limit)
     uvicorn.run(app, host=host, port=port)
