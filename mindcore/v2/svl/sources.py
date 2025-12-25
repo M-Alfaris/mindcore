@@ -65,7 +65,9 @@ class SourceCache:
     """
 
     def __init__(self, max_size: int = DEFAULT_CACHE_MAX_SIZE):
-        self._cache: dict[str, tuple[Any, float, float]] = {}  # key -> (result, timestamp, last_access)
+        self._cache: dict[
+            str, tuple[Any, float, float]
+        ] = {}  # key -> (result, timestamp, last_access)
         self._max_size = max_size
 
     def _make_key(self, context: dict[str, Any]) -> str:
@@ -393,12 +395,24 @@ class TableSource(DataSource):
         resolved_path = Path(db_path).resolve()
 
         # Ensure the path doesn't escape to sensitive system directories
-        sensitive_prefixes = ("/etc", "/proc", "/sys", "/dev", "/root", "/boot")
+        # Include both Linux paths and macOS /private/* symlink targets
+        sensitive_prefixes = (
+            "/etc",
+            "/proc",
+            "/sys",
+            "/dev",
+            "/root",
+            "/boot",
+            "/private/etc",
+            "/private/var",
+        )
         if any(str(resolved_path).startswith(prefix) for prefix in sensitive_prefixes):
             raise ValueError(f"Access to system path is not allowed: {resolved_path}")
 
         # Ensure it's a .db or .sqlite file (or allow in-memory :memory:)
-        if db_path != ":memory:" and not str(resolved_path).endswith((".db", ".sqlite", ".sqlite3")):
+        if db_path != ":memory:" and not str(resolved_path).endswith(
+            (".db", ".sqlite", ".sqlite3")
+        ):
             raise ValueError(f"Invalid SQLite database extension: {resolved_path}")
 
         conn = sqlite3.connect(str(resolved_path))
@@ -491,12 +505,12 @@ class APISource(DataSource):
                     # Sanitize the substitution value to prevent URL injection
                     value = str(context[context_key])
                     # URL-encode the value to prevent path traversal or injection
-                    safe_value = urllib.parse.quote(value, safe='')
+                    safe_value = urllib.parse.quote(value, safe="")
                     url = url.replace(f"{{{url_param}}}", safe_value)
 
             # Validate the final URL to prevent SSRF
             parsed_url = urllib.parse.urlparse(url)
-            if not parsed_url.scheme in ('http', 'https'):
+            if parsed_url.scheme not in ("http", "https"):
                 raise ValueError(f"Invalid URL scheme: {parsed_url.scheme}")
             if not parsed_url.netloc:
                 raise ValueError("Invalid URL: missing host")

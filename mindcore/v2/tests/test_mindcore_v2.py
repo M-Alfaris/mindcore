@@ -385,9 +385,17 @@ class TestDirectStructuredOutput:
         llm_response = {
             "response": "Here's what I learned about you.",
             "memories_to_store": [
-                {"content": "Prefers dark mode", "memory_type": "preference", "topics": ["settings"]},
-                {"content": "Uses Python daily", "memory_type": "semantic", "topics": ["programming"]},
-                {"content": "Works at tech company", "memory_type": "entity", "topics": ["work"]},
+                {
+                    "content": "Prefers dark mode",
+                    "memory_type": "preference",
+                    "topics": ["settings"],
+                },
+                {"content": "Uses Python daily", "memory_type": "semantic", "topics": ["api"]},
+                {
+                    "content": "Works at tech company",
+                    "memory_type": "entity",
+                    "topics": ["account"],
+                },
             ],
         }
 

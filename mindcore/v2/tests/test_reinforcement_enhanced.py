@@ -1,20 +1,21 @@
 """Tests for enhanced reinforcement features (2025-12)."""
 
-import pytest
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from mindcore.v2.flr.reinforcement import (
-    RobustReinforcement,
-    ReinforcementSignal,
-    SignalType,
-    SignalSource,
+    BatchSignalResult,
+    CrossMemoryReinforcer,
     # Enhanced features
     ImportanceAdjuster,
     ImportanceAdjustment,
-    CrossMemoryReinforcer,
-    RelatedMemorySignal,
     NegativeSignalDecay,
-    BatchSignalResult,
+    ReinforcementSignal,
+    RelatedMemorySignal,
+    RobustReinforcement,
+    SignalSource,
+    SignalType,
     process_signal_batch,
 )
 
@@ -156,8 +157,16 @@ class TestCrossMemoryReinforcer:
             source=SignalSource.USER_EXPLICIT,
         )
 
+        # Need > 50% topic overlap for "topic_overlap" relationship
+        # source: ["billing", "orders"] (2 topics)
+        # target: ["billing", "orders"] (2 topics) -> overlap = 2/2 = 100% > 50%
         candidate_memories = [
-            {"memory_id": "mem_2", "topics": ["billing", "refund"], "session_id": "s2", "entities": []},
+            {
+                "memory_id": "mem_2",
+                "topics": ["billing", "orders"],
+                "session_id": "s2",
+                "entities": [],
+            },
             {"memory_id": "mem_3", "topics": ["unrelated"], "session_id": "s3", "entities": []},
         ]
 
@@ -218,6 +227,10 @@ class TestCrossMemoryReinforcer:
             source=SignalSource.USER_EXPLICIT,
         )
 
+        # Need > 50% entity overlap for "entity_overlap" relationship
+        # source_entities: ["Order #12345", "John Doe"] (2 entities)
+        # target_entities: ["Order #12345", "John Doe"] (2 entities)
+        # overlap = 2/2 = 100% > 50%
         candidate_memories = [
             {
                 "memory_id": "mem_2",
@@ -231,7 +244,7 @@ class TestCrossMemoryReinforcer:
             source_memory_id="mem_1",
             source_topics=["shipping"],
             source_session_id="s1",
-            source_entities=["Order #12345", "Jane Doe"],
+            source_entities=["Order #12345", "John Doe"],
             signal=signal,
             candidate_memories=candidate_memories,
         )
