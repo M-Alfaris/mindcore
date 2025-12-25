@@ -46,6 +46,11 @@ from .reinforcement import (
     create_feedback_signal,
 )
 
+from .metadata_feedback import (
+    MetadataFeedbackTracker,
+    MetadataSignal,
+)
+
 
 if TYPE_CHECKING:
     from mindcore.v2.cross_agent.registry import AgentRegistry
@@ -274,6 +279,10 @@ class RecallResult:
     attention_focus: list[str]  # Top topics to focus on
     suggested_memory_types: list[str]  # Relevant memory types
 
+    # Query context for feedback (used by metadata effectiveness tracking)
+    query_topics: list[str] = field(default_factory=list)
+    query_categories: list[str] = field(default_factory=list)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "memories": [m.to_dict() for m in self.memories],
@@ -282,6 +291,8 @@ class RecallResult:
             "sources": self.sources,
             "attention_focus": self.attention_focus,
             "suggested_memory_types": self.suggested_memory_types,
+            "query_topics": self.query_topics,
+            "query_categories": self.query_categories,
         }
 
 
@@ -388,6 +399,12 @@ class FLR:
         # Total retrieval count for UCB exploration calculation
         self._total_retrievals: int = 0
 
+        # Metadata effectiveness tracking (for improving LLM assignments)
+        self._metadata_tracker = MetadataFeedbackTracker()
+
+        # Last query context (for feedback correlation)
+        self._last_query_context: dict[str, list[str]] = {}
+
     def query(
         self,
         query: str,
@@ -483,6 +500,13 @@ class FLR:
 
         latency = (time.time() - start_time) * 1000
 
+        # Store query context for metadata feedback correlation
+        self._last_query_context = {
+            "topics": attention_hints or [],
+            "categories": [],  # Can be extended if categories are used in queries
+            "memory_ids": [m.memory_id for m, _ in filtered],
+        }
+
         return RecallResult(
             memories=[m for m, _ in filtered],
             scores=[s for _, s in filtered],
@@ -490,6 +514,8 @@ class FLR:
             sources=sources,
             attention_focus=attention_focus,
             suggested_memory_types=suggested_types,
+            query_topics=attention_hints or [],
+            query_categories=[],
         )
 
     def reinforce(self, memory_id: str, signal: float) -> float:
@@ -681,6 +707,107 @@ class FLR:
             query_id=query_id,
             session_id=session_id,
         )
+
+    def reinforce_with_metadata_feedback(
+        self,
+        memory_id: str,
+        signal: float,
+        is_user_feedback: bool = False,
+        session_id: str | None = None,
+    ) -> tuple[float, MetadataSignal | None]:
+        """Reinforce memory AND track metadata effectiveness.
+
+        This is the recommended method for providing feedback. It:
+        1. Updates the memory's reinforcement score (propagates to CLST)
+        2. Tracks which metadata assignments led to this outcome
+        3. Enables future improvement of LLM metadata assignments
+
+        Args:
+            memory_id: Memory to reinforce
+            signal: Feedback signal (-1 to +1)
+            is_user_feedback: True if this is explicit user feedback
+            session_id: Current session ID
+
+        Returns:
+            Tuple of (new_score, metadata_signal or None)
+
+        Example:
+            # User found the retrieved memory helpful
+            score, meta = flr.reinforce_with_metadata_feedback(
+                memory_id="mem_123",
+                signal=0.9,
+                is_user_feedback=True,
+            )
+            # This tells us: the LLM's topic/category assignments were good
+        """
+        # Get the memory to access its metadata
+        memory = None
+        if memory_id in self._cache:
+            memory, _ = self._cache[memory_id]
+        else:
+            try:
+                memory = self.storage.get(memory_id)
+            except Exception:
+                pass
+
+        # Apply reinforcement (propagates to CLST storage)
+        new_score = self.reinforce(memory_id, signal)
+
+        # Track metadata effectiveness if we have the memory
+        metadata_signal = None
+        if memory:
+            query_topics = self._last_query_context.get("topics", [])
+            query_categories = self._last_query_context.get("categories", [])
+
+            metadata_signal = self._metadata_tracker.record_retrieval_feedback(
+                memory_id=memory_id,
+                assigned_topics=memory.topics,
+                assigned_categories=memory.categories,
+                query_topics=query_topics,
+                query_categories=query_categories,
+                signal=signal,
+                assigned_intent=None,  # Could extract from memory if stored
+                assigned_type=memory.memory_type,
+                session_id=session_id,
+            )
+
+        return new_score, metadata_signal
+
+    def get_metadata_effectiveness_report(self) -> dict:
+        """Get report on metadata assignment effectiveness.
+
+        Use this to understand which LLM-assigned metadata values
+        lead to successful retrievals.
+
+        Returns:
+            Report with effectiveness scores by metadata type
+
+        Example:
+            report = flr.get_metadata_effectiveness_report()
+            # {
+            #     "topics": {"refund": {"effectiveness_score": 0.85}, ...},
+            #     "categories": {...},
+            #     "summary": {"total_signals": 150, ...}
+            # }
+        """
+        return self._metadata_tracker.get_effectiveness_report()
+
+    def get_metadata_feedback_for_extractor(self) -> dict:
+        """Get structured feedback for improving MetadataExtractor.
+
+        This returns data that can be injected into the LLM prompt
+        to improve future metadata assignments.
+
+        Returns:
+            Feedback structure for prompt injection
+
+        Example:
+            feedback = flr.get_metadata_feedback_for_extractor()
+            # Use in MetadataExtractor prompt:
+            # "High-quality topics: 'refund', 'billing'"
+            # "Low-quality topics: 'general', 'misc'"
+        """
+        return self._metadata_tracker.get_feedback_for_extractor()
 
     def promote(self, memory_id: str) -> bool:
         """Promote a working memory to long-term storage.

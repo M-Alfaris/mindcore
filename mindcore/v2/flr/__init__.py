@@ -39,6 +39,12 @@ from .reinforcement import (
     DEFAULT_TYPE_WEIGHTS,
 )
 
+from .metadata_feedback import (
+    MetadataFeedbackTracker,
+    MetadataSignal,
+    MetadataEffectiveness,
+)
+
 
 __all__ = [
     # Core FLR
@@ -55,4 +61,8 @@ __all__ = [
     "batch_reinforce",
     "DEFAULT_SOURCE_WEIGHTS",
     "DEFAULT_TYPE_WEIGHTS",
+    # Metadata Feedback
+    "MetadataFeedbackTracker",
+    "MetadataSignal",
+    "MetadataEffectiveness",
 ]

@@ -1024,3 +1024,149 @@ Respond with valid JSON only."""
 
         return params
 
+    # =========================================================================
+    # Feedback-Enhanced Metadata Extraction
+    # =========================================================================
+
+    def get_extraction_prompt_with_feedback(
+        self,
+        user_message: str,
+        feedback: dict[str, Any],
+        agent_response: str | None = None,
+        session_id: str = "",
+        user_id: str = "",
+    ) -> str:
+        """Get extraction prompt enhanced with effectiveness feedback.
+
+        This method injects feedback from previous retrievals to improve
+        metadata assignment quality. High-effectiveness topics/categories
+        are recommended, while low-effectiveness ones are flagged.
+
+        Args:
+            user_message: The user's message
+            feedback: Feedback from FLR.get_metadata_feedback_for_extractor()
+            agent_response: Optional agent response
+            session_id: Session ID
+            user_id: User ID
+
+        Returns:
+            Enhanced prompt with feedback guidance
+
+        Example:
+            feedback = flr.get_metadata_feedback_for_extractor()
+            prompt = extractor.get_extraction_prompt_with_feedback(
+                user_message="How do I get a refund?",
+                feedback=feedback,
+            )
+            # Prompt now includes:
+            # "Prefer high-quality topics: 'refund', 'billing'"
+            # "Avoid low-quality topics: 'general', 'misc'"
+        """
+        # Get base prompt
+        base_prompt = self.get_extraction_prompt(
+            user_message=user_message,
+            agent_response=agent_response,
+            session_id=session_id,
+            user_id=user_id,
+        )
+
+        # Build feedback guidance section
+        guidance_lines = []
+
+        # High-quality topics
+        high_topics = feedback.get("high_quality_topics", [])
+        if high_topics:
+            topics_str = ", ".join([f"'{t[0]}'" for t in high_topics[:10]])
+            guidance_lines.append(f"✓ PREFER these topics (proven effective): {topics_str}")
+
+        # Low-quality topics
+        low_topics = feedback.get("low_quality_topics", [])
+        if low_topics:
+            topics_str = ", ".join([f"'{t[0]}'" for t in low_topics[:5]])
+            guidance_lines.append(f"✗ AVOID these topics (low effectiveness): {topics_str}")
+
+        # High-quality categories
+        high_cats = feedback.get("high_quality_categories", [])
+        if high_cats:
+            cats_str = ", ".join([f"'{c[0]}'" for c in high_cats[:10]])
+            guidance_lines.append(f"✓ PREFER these categories (proven effective): {cats_str}")
+
+        # Low-quality categories
+        low_cats = feedback.get("low_quality_categories", [])
+        if low_cats:
+            cats_str = ", ".join([f"'{c[0]}'" for c in low_cats[:5]])
+            guidance_lines.append(f"✗ AVOID these categories (low effectiveness): {cats_str}")
+
+        # Natural language guidance
+        if feedback.get("guidance"):
+            guidance_lines.append(f"\nAdditional guidance:\n{feedback['guidance']}")
+
+        if not guidance_lines:
+            return base_prompt
+
+        feedback_section = """
+## Quality Feedback (from retrieval analytics)
+The following guidance is based on which metadata assignments led to
+successful retrievals. Use this to improve assignment quality.
+
+""" + "\n".join(guidance_lines)
+
+        # Insert before the response format section
+        insert_marker = "## Response Format"
+        if insert_marker in base_prompt:
+            parts = base_prompt.split(insert_marker)
+            return parts[0] + feedback_section + "\n\n" + insert_marker + parts[1]
+
+        # Fallback: append at end
+        return base_prompt + "\n" + feedback_section
+
+    def set_feedback_source(self, feedback_getter: callable) -> None:
+        """Set a callback to automatically get feedback for prompts.
+
+        This allows the MetadataExtractor to automatically enhance
+        prompts with effectiveness feedback without explicit calls.
+
+        Args:
+            feedback_getter: Callable that returns feedback dict
+
+        Example:
+            extractor.set_feedback_source(flr.get_metadata_feedback_for_extractor)
+
+            # Now all prompts automatically include feedback
+            prompt = extractor.get_extraction_prompt(...)
+        """
+        self._feedback_getter = feedback_getter
+
+    def get_effectiveness_enhanced_schema(
+        self,
+        feedback: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Get JSON schema with effectiveness annotations.
+
+        Modifies the schema to include effectiveness scores as descriptions,
+        helping LLMs make better choices.
+
+        Args:
+            feedback: Feedback from FLR.get_metadata_feedback_for_extractor()
+
+        Returns:
+            Enhanced JSON schema
+        """
+        schema = self.get_json_schema()
+
+        # Enhance topics with effectiveness info
+        high_topics = {t[0]: t[1] for t in feedback.get("high_quality_topics", [])}
+        low_topics = {t[0]: t[1] for t in feedback.get("low_quality_topics", [])}
+
+        if "properties" in schema and "topics" in schema["properties"]:
+            topic_desc = schema["properties"]["topics"].get("description", "")
+            if high_topics:
+                effective_list = ", ".join([f"{t} ({s:.0%})" for t, s in list(high_topics.items())[:5]])
+                topic_desc += f" Effective topics: {effective_list}."
+            if low_topics:
+                avoid_list = ", ".join([f"{t}" for t in list(low_topics.keys())[:3]])
+                topic_desc += f" Avoid: {avoid_list}."
+            schema["properties"]["topics"]["description"] = topic_desc
+
+        return schema
+
