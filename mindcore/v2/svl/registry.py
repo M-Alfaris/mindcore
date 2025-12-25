@@ -100,7 +100,11 @@ class AsyncFunctionSource(DataSource):
     trigger: TriggerCondition = TriggerCondition.ON_QUERY
     timeout_seconds: float = 30.0
 
-    def fetch(self, context: dict[str, Any]) -> FetchResult:
+    def _do_fetch(self, context: dict[str, Any]) -> FetchResult:
+        """Implementation of abstract method - delegates to fetch logic."""
+        return self._execute_fetch(context)
+
+    def _execute_fetch(self, context: dict[str, Any]) -> FetchResult:
         """Execute function (sync or async) and return result."""
         start = time.time()
 

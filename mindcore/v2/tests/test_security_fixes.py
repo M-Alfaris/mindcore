@@ -9,8 +9,9 @@ This module tests the fixes for:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
 
 
 class TestPathTraversalProtection:
@@ -34,8 +35,7 @@ class TestPathTraversalProtection:
         for path in sensitive_paths:
             source = TableSource(
                 connection_string=path,
-                table_name="test",
-                columns=["id"],
+                table="test",
             )
             with pytest.raises(ValueError, match="Access to system path is not allowed"):
                 source._fetch_sqlite("SELECT 1", {})
@@ -54,8 +54,7 @@ class TestPathTraversalProtection:
         for path in invalid_paths:
             source = TableSource(
                 connection_string=path,
-                table_name="test",
-                columns=["id"],
+                table="test",
             )
             with pytest.raises(ValueError, match="Invalid SQLite database extension"):
                 source._fetch_sqlite("SELECT 1", {})
@@ -70,8 +69,7 @@ class TestPathTraversalProtection:
         for ext in valid_extensions:
             source = TableSource(
                 connection_string=f"sqlite:////tmp/test{ext}",
-                table_name="test",
-                columns=["id"],
+                table="test",
             )
             # Should not raise ValueError for extension
             # (will raise sqlite3 error for non-existent file, which is expected)
@@ -89,8 +87,7 @@ class TestPathTraversalProtection:
 
         source = TableSource(
             connection_string="sqlite:///:memory:",
-            table_name="test",
-            columns=["id"],
+            table="test",
         )
         # Should not raise ValueError (may fail on query, but extension check passes)
         try:
@@ -173,7 +170,7 @@ class TestTimezoneComparison:
 
     def test_memory_acl_created_at_is_timezone_aware(self):
         """Test that MemoryACL created_at is timezone-aware."""
-        from mindcore.v2.federation.access_control import MemoryACL, AccessScope
+        from mindcore.v2.federation.access_control import AccessScope, MemoryACL
 
         scope = AccessScope(org_id="test-org")
         acl = MemoryACL(
@@ -187,7 +184,7 @@ class TestTimezoneComparison:
 
     def test_record_access_uses_timezone_aware_datetime(self):
         """Test that record_access uses timezone-aware datetime."""
-        from mindcore.v2.federation.access_control import MemoryACL, AccessScope
+        from mindcore.v2.federation.access_control import AccessScope, MemoryACL
 
         scope = AccessScope(org_id="test-org")
         acl = MemoryACL(
@@ -209,15 +206,15 @@ class TestQueryOptimizerConstants:
     def test_constants_are_defined(self):
         """Test that all query optimizer constants are defined."""
         from mindcore.v2.flr.query_optimizer import (
-            USAGE_HISTORY_WINDOW,
-            LOW_USAGE_THRESHOLD,
+            CONFIDENCE_SAMPLE_THRESHOLD,
+            HIGH_USAGE_LIMIT_MULTIPLIER,
             HIGH_USAGE_THRESHOLD,
             LOW_USAGE_LIMIT_MULTIPLIER,
-            HIGH_USAGE_LIMIT_MULTIPLIER,
-            MIN_RETRIEVAL_LIMIT,
+            LOW_USAGE_THRESHOLD,
             MAX_RETRIEVAL_LIMIT,
-            CONFIDENCE_SAMPLE_THRESHOLD,
+            MIN_RETRIEVAL_LIMIT,
             POOR_TOPIC_THRESHOLD,
+            USAGE_HISTORY_WINDOW,
         )
 
         # Verify constants have sensible values
@@ -251,4 +248,4 @@ class TestSafeQueryResults:
 
         # Verify the method signature and logic is correct
         # The actual test requires a database connection
-        assert hasattr(PostgresStorage, '_get_next_message_index_internal')
+        assert hasattr(PostgresStorage, "_get_next_message_index_internal")

@@ -370,11 +370,11 @@ class TestSharedVocabularyLayer:
         assert "healthcare" not in svl.get_active_domains()
 
     def test_add_invalid_domain(self):
-        """Test adding invalid domain raises error."""
+        """Test adding invalid domain raises error when strict=True."""
         svl = SharedVocabularyLayer()
 
         with pytest.raises(ValueError, match="not found"):
-            svl.add_domain("nonexistent_domain")
+            svl.add_domain("nonexistent_domain", strict=True)
 
     def test_add_topics_categories(self):
         """Test adding topics and categories."""
