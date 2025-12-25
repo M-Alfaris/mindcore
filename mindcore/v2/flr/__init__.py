@@ -37,6 +37,14 @@ from .reinforcement import (
     batch_reinforce,
     DEFAULT_SOURCE_WEIGHTS,
     DEFAULT_TYPE_WEIGHTS,
+    # Enhanced Reinforcement (2025-12)
+    ImportanceAdjuster,
+    ImportanceAdjustment,
+    CrossMemoryReinforcer,
+    RelatedMemorySignal,
+    NegativeSignalDecay,
+    BatchSignalResult,
+    process_signal_batch,
 )
 
 from .metadata_feedback import (
@@ -85,4 +93,12 @@ __all__ = [
     "QueryOptimizer",
     "QueryOptimization",
     "TopicStats",
+    # Enhanced Reinforcement (2025-12)
+    "ImportanceAdjuster",
+    "ImportanceAdjustment",
+    "CrossMemoryReinforcer",
+    "RelatedMemorySignal",
+    "NegativeSignalDecay",
+    "BatchSignalResult",
+    "process_signal_batch",
 ]

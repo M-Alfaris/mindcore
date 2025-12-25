@@ -39,6 +39,12 @@ Example:
     if reinforcement.is_trending_up():
         print("Memory is gaining relevance")
 
+Enhancements (2025-12):
+- Importance Adjustment: Reinforcement signals affect memory importance scores
+- Cross-Memory Signals: Related memories receive attenuated reinforcement
+- Negative Signal Decay: Negative signals decay faster to allow recovery
+- Signal Batching: Efficient batch processing of multiple signals
+
 References:
 - UCB1: https://en.wikipedia.org/wiki/Multi-armed_bandit#UCB1
 - Exponential Decay: Standard RL temporal discounting
@@ -585,3 +591,444 @@ def create_feedback_signal(
         query_id=query_id,
         session_id=session_id,
     )
+
+
+# =============================================================================
+# Enhanced Reinforcement Features (2025-12)
+# =============================================================================
+
+
+@dataclass
+class ImportanceAdjustment:
+    """Result of importance adjustment from reinforcement."""
+
+    original_importance: float
+    new_importance: float
+    adjustment: float
+    reason: str
+    reinforcement_score: float
+
+
+class ImportanceAdjuster:
+    """Adjusts memory importance based on reinforcement signals.
+
+    The key insight: reinforcement should affect not just retrieval ranking,
+    but also the underlying importance of the memory. A consistently
+    positively-reinforced memory becomes more important over time.
+
+    Example:
+        adjuster = ImportanceAdjuster()
+
+        # After reinforcement
+        result = adjuster.calculate_adjustment(
+            current_importance=0.5,
+            reinforcement=memory.reinforcement,
+        )
+
+        if result.adjustment != 0:
+            memory.importance = result.new_importance
+    """
+
+    def __init__(
+        self,
+        max_adjustment_per_signal: float = 0.05,
+        min_importance: float = 0.1,
+        max_importance: float = 0.95,
+        trend_weight: float = 0.3,
+        score_weight: float = 0.7,
+    ):
+        """Initialize adjuster.
+
+        Args:
+            max_adjustment_per_signal: Maximum importance change per signal
+            min_importance: Floor for importance (never goes below)
+            max_importance: Ceiling for importance (never exceeds)
+            trend_weight: Weight for trend direction in adjustment
+            score_weight: Weight for absolute score in adjustment
+        """
+        self.max_adjustment = max_adjustment_per_signal
+        self.min_importance = min_importance
+        self.max_importance = max_importance
+        self.trend_weight = trend_weight
+        self.score_weight = score_weight
+
+    def calculate_adjustment(
+        self,
+        current_importance: float,
+        reinforcement: RobustReinforcement,
+        min_signals: int = 3,
+    ) -> ImportanceAdjustment:
+        """Calculate importance adjustment from reinforcement.
+
+        Args:
+            current_importance: Current memory importance (0-1)
+            reinforcement: RobustReinforcement tracker for the memory
+            min_signals: Minimum signals before adjusting
+
+        Returns:
+            ImportanceAdjustment with new importance and reasoning
+        """
+        score = reinforcement.get_aggregated_score()
+
+        # Don't adjust with insufficient data
+        if reinforcement.reinforcement_count < min_signals:
+            return ImportanceAdjustment(
+                original_importance=current_importance,
+                new_importance=current_importance,
+                adjustment=0.0,
+                reason="Insufficient signals for adjustment",
+                reinforcement_score=score,
+            )
+
+        # Calculate trend component
+        trend_adj = 0.0
+        if reinforcement.is_trending_up():
+            trend_adj = 0.02  # Small boost for upward trend
+        elif reinforcement.is_trending_down():
+            trend_adj = -0.02  # Small penalty for downward trend
+
+        # Calculate score-based component
+        # Map score (-1 to 1) to adjustment (-max to +max)
+        score_adj = score * self.max_adjustment
+
+        # Weighted combination
+        adjustment = (
+            self.trend_weight * trend_adj +
+            self.score_weight * score_adj
+        )
+
+        # Apply bounds
+        new_importance = current_importance + adjustment
+        new_importance = max(self.min_importance, min(self.max_importance, new_importance))
+        actual_adjustment = new_importance - current_importance
+
+        # Generate reason
+        if actual_adjustment > 0.01:
+            reason = f"Increased due to positive reinforcement (score={score:.2f})"
+        elif actual_adjustment < -0.01:
+            reason = f"Decreased due to negative reinforcement (score={score:.2f})"
+        else:
+            reason = "No significant change"
+
+        return ImportanceAdjustment(
+            original_importance=current_importance,
+            new_importance=new_importance,
+            adjustment=actual_adjustment,
+            reason=reason,
+            reinforcement_score=score,
+        )
+
+
+@dataclass
+class RelatedMemorySignal:
+    """Signal to apply to a related memory."""
+
+    memory_id: str
+    signal: ReinforcementSignal
+    attenuation: float  # How much the signal was reduced
+    relationship: str  # Why these memories are related
+
+
+class CrossMemoryReinforcer:
+    """Propagates reinforcement signals to related memories.
+
+    When a memory receives a strong signal, related memories should
+    receive attenuated versions of that signal. This helps:
+    - Boost entire topic clusters when one memory is useful
+    - Demote related memories when one is found to be wrong
+
+    Relationships are determined by:
+    - Shared topics
+    - Same session
+    - Same user
+    - Entity overlap
+
+    Example:
+        reinforcer = CrossMemoryReinforcer()
+
+        # After primary memory gets reinforced
+        related_signals = reinforcer.propagate_signal(
+            source_memory=memory,
+            signal=signal,
+            candidate_memories=nearby_memories,
+        )
+
+        for rel_signal in related_signals:
+            apply_to_memory(rel_signal.memory_id, rel_signal.signal)
+    """
+
+    def __init__(
+        self,
+        min_signal_for_propagation: float = 0.5,
+        topic_attenuation: float = 0.3,
+        session_attenuation: float = 0.4,
+        entity_attenuation: float = 0.5,
+        max_propagation_depth: int = 1,
+    ):
+        """Initialize cross-memory reinforcer.
+
+        Args:
+            min_signal_for_propagation: Only propagate signals above this threshold
+            topic_attenuation: Signal multiplier for topic-related memories
+            session_attenuation: Signal multiplier for session-related memories
+            entity_attenuation: Signal multiplier for entity-related memories
+            max_propagation_depth: How many hops to propagate (1 = direct only)
+        """
+        self.min_signal = min_signal_for_propagation
+        self.topic_attenuation = topic_attenuation
+        self.session_attenuation = session_attenuation
+        self.entity_attenuation = entity_attenuation
+        self.max_depth = max_propagation_depth
+
+    def propagate_signal(
+        self,
+        source_memory_id: str,
+        source_topics: list[str],
+        source_session_id: str | None,
+        source_entities: list[str],
+        signal: ReinforcementSignal,
+        candidate_memories: list[dict[str, Any]],
+    ) -> list[RelatedMemorySignal]:
+        """Propagate a reinforcement signal to related memories.
+
+        Args:
+            source_memory_id: ID of the memory that received the signal
+            source_topics: Topics of the source memory
+            source_session_id: Session ID of source memory
+            source_entities: Entities in source memory
+            signal: The reinforcement signal received
+            candidate_memories: List of candidate memories to check
+                Each dict should have: memory_id, topics, session_id, entities
+
+        Returns:
+            List of RelatedMemorySignal for related memories
+        """
+        # Only propagate strong signals
+        if abs(signal.value) < self.min_signal:
+            return []
+
+        related_signals = []
+        source_topics_set = set(source_topics)
+        source_entities_set = set(e.lower() for e in source_entities)
+
+        for mem in candidate_memories:
+            if mem.get("memory_id") == source_memory_id:
+                continue  # Skip source memory
+
+            # Calculate relationship and attenuation
+            relationship, attenuation = self._calculate_relationship(
+                source_topics_set=source_topics_set,
+                source_session_id=source_session_id,
+                source_entities_set=source_entities_set,
+                target_topics=set(mem.get("topics", [])),
+                target_session_id=mem.get("session_id"),
+                target_entities=set(e.lower() for e in mem.get("entities", [])),
+            )
+
+            if relationship == "none":
+                continue
+
+            # Create attenuated signal
+            attenuated_signal = ReinforcementSignal(
+                signal_type=signal.signal_type,
+                value=signal.value * attenuation,
+                source=SignalSource.CROSS_AGENT,  # Mark as cross-memory
+                context_similarity=attenuation,  # Lower similarity for related
+                query_id=signal.query_id,
+                session_id=signal.session_id,
+                metadata={
+                    "propagated_from": source_memory_id,
+                    "relationship": relationship,
+                    "attenuation": attenuation,
+                },
+            )
+
+            related_signals.append(RelatedMemorySignal(
+                memory_id=mem["memory_id"],
+                signal=attenuated_signal,
+                attenuation=attenuation,
+                relationship=relationship,
+            ))
+
+        return related_signals
+
+    def _calculate_relationship(
+        self,
+        source_topics_set: set[str],
+        source_session_id: str | None,
+        source_entities_set: set[str],
+        target_topics: set[str],
+        target_session_id: str | None,
+        target_entities: set[str],
+    ) -> tuple[str, float]:
+        """Calculate relationship between source and target memory.
+
+        Returns:
+            Tuple of (relationship_type, attenuation_factor)
+        """
+        # Check topic overlap
+        topic_overlap = len(source_topics_set & target_topics)
+        topic_total = max(1, len(source_topics_set | target_topics))
+        topic_score = topic_overlap / topic_total
+
+        # Check session match
+        session_match = (
+            source_session_id is not None and
+            source_session_id == target_session_id
+        )
+
+        # Check entity overlap
+        entity_overlap = len(source_entities_set & target_entities)
+        entity_total = max(1, len(source_entities_set | target_entities))
+        entity_score = entity_overlap / entity_total if entity_total > 0 else 0
+
+        # Determine primary relationship
+        if entity_score > 0.5:
+            return "entity_overlap", self.entity_attenuation * entity_score
+        if session_match and topic_score > 0.3:
+            return "same_session", self.session_attenuation
+        if topic_score > 0.5:
+            return "topic_overlap", self.topic_attenuation * topic_score
+
+        return "none", 0.0
+
+
+class NegativeSignalDecay:
+    """Enhanced decay for negative signals.
+
+    Negative signals should decay faster than positive signals to allow
+    memories to "recover" from temporary negative feedback. This prevents
+    a single bad interaction from permanently demoting a memory.
+
+    Example:
+        decay = NegativeSignalDecay()
+
+        # Apply faster decay to negative signals in a reinforcement tracker
+        decay.apply_faster_decay(reinforcement)
+    """
+
+    def __init__(
+        self,
+        negative_decay_multiplier: float = 2.0,
+        recovery_threshold: float = -0.3,
+    ):
+        """Initialize negative signal decay.
+
+        Args:
+            negative_decay_multiplier: How much faster negatives decay
+            recovery_threshold: Signals below this decay faster
+        """
+        self.multiplier = negative_decay_multiplier
+        self.threshold = recovery_threshold
+
+    def apply_to_reinforcement(
+        self,
+        reinforcement: RobustReinforcement,
+    ) -> int:
+        """Apply faster decay to negative signals.
+
+        Modifies the reinforcement in place by removing old negative signals
+        that have effectively decayed to zero.
+
+        Args:
+            reinforcement: RobustReinforcement to modify
+
+        Returns:
+            Number of signals removed
+        """
+        now = datetime.now(timezone.utc)
+        original_count = len(reinforcement.signal_history)
+
+        # Calculate enhanced decay for negative signals
+        # Negative signals decay 2x faster than their normal half-life
+        negative_half_life = reinforcement.decay_half_life_hours / self.multiplier
+        negative_decay_constant = math.log(2) / (negative_half_life * 3600)
+
+        # Filter signals - remove very old negative signals
+        surviving_signals = []
+        for signal in reinforcement.signal_history:
+            if signal.value >= self.threshold:
+                # Positive/neutral signals: keep with normal decay
+                surviving_signals.append(signal)
+            else:
+                # Negative signals: check if they've decayed below threshold
+                age_seconds = (now - signal.timestamp).total_seconds()
+                remaining_value = signal.value * math.exp(-negative_decay_constant * age_seconds)
+
+                # Keep if still significant
+                if abs(remaining_value) > 0.05:
+                    surviving_signals.append(signal)
+
+        reinforcement.signal_history = surviving_signals
+        reinforcement._cached_score = None  # Invalidate cache
+
+        return original_count - len(surviving_signals)
+
+
+# =============================================================================
+# Batch Processing Utilities
+# =============================================================================
+
+
+@dataclass
+class BatchSignalResult:
+    """Result of batch signal processing."""
+
+    memory_id: str
+    new_score: float
+    importance_adjustment: ImportanceAdjustment | None
+    related_signals: list[RelatedMemorySignal]
+
+
+def process_signal_batch(
+    signals: list[tuple[str, RobustReinforcement, ReinforcementSignal, float, list[str], str | None, list[str]]],
+    importance_adjuster: ImportanceAdjuster | None = None,
+    cross_memory_reinforcer: CrossMemoryReinforcer | None = None,
+    all_memories: list[dict[str, Any]] | None = None,
+) -> list[BatchSignalResult]:
+    """Process a batch of reinforcement signals efficiently.
+
+    Args:
+        signals: List of tuples containing:
+            (memory_id, reinforcement, signal, current_importance, topics, session_id, entities)
+        importance_adjuster: Optional importance adjuster
+        cross_memory_reinforcer: Optional cross-memory reinforcer
+        all_memories: List of all memories for cross-memory propagation
+
+    Returns:
+        List of BatchSignalResult with outcomes
+    """
+    results = []
+
+    for memory_id, reinforcement, signal, importance, topics, session_id, entities in signals:
+        # Apply the signal
+        new_score = reinforcement.apply_signal(signal)
+
+        # Calculate importance adjustment if adjuster provided
+        importance_adj = None
+        if importance_adjuster:
+            importance_adj = importance_adjuster.calculate_adjustment(
+                current_importance=importance,
+                reinforcement=reinforcement,
+            )
+
+        # Calculate related signals if reinforcer provided
+        related = []
+        if cross_memory_reinforcer and all_memories:
+            related = cross_memory_reinforcer.propagate_signal(
+                source_memory_id=memory_id,
+                source_topics=topics,
+                source_session_id=session_id,
+                source_entities=entities,
+                signal=signal,
+                candidate_memories=all_memories,
+            )
+
+        results.append(BatchSignalResult(
+            memory_id=memory_id,
+            new_score=new_score,
+            importance_adjustment=importance_adj,
+            related_signals=related,
+        ))
+
+    return results
