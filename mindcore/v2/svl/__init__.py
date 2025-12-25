@@ -160,6 +160,17 @@ from .llm_providers import (
     create_injector_from_optimizer,
 )
 
+# Extraction Fallback Strategies
+from .extraction_fallback import (
+    BatchItem,
+    ExtractionAttempt,
+    ExtractionFailureType,
+    ExtractionResult,
+    ExtractionStrategy,
+    ResilientMetadataExtractor,
+    RuleBasedExtractor,
+)
+
 
 __all__ = [
     # Enforced Metadata
@@ -246,4 +257,12 @@ __all__ = [
     "load_sources_from_yaml",
     "merge_domains",
     "source",
+    # Extraction Fallback Strategies
+    "BatchItem",
+    "ExtractionAttempt",
+    "ExtractionFailureType",
+    "ExtractionResult",
+    "ExtractionStrategy",
+    "ResilientMetadataExtractor",
+    "RuleBasedExtractor",
 ]
