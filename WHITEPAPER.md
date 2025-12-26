@@ -4,6 +4,18 @@
 
 **Version 1.0 | December 2025**
 
+**Authors**: MindCore Project Contributors
+
+---
+
+## Abstract
+
+MindCore is an open-source memory protocol stack that solves the fundamental challenge of memory fragmentation in AI agent systems. As organizations deploy multiple AI agents across customer support, sales, and internal operations, each agent traditionally builds isolated, incompatible memory systems—leading to months of infrastructure work, inconsistent metadata schemas, and zero cross-agent learning.
+
+MindCore introduces three foundational protocols: **FLR** (Fast Learning Recall) for inference-time memory access with reinforcement learning, **CLST** (Cognitive Long-term Storage Transfer) for persistent hierarchical storage with session aggregation, and **SVL** (Shared Vocabulary Layer) for LLM-enforced metadata standardization. Together, these protocols enable organizations to "build once, deploy endlessly"—new agents inherit organizational knowledge from day one, benefiting from shared vocabulary, accumulated memories, and cross-agent reinforcement signals.
+
+The framework achieves <160ms context assembly without embeddings through hierarchical weighted metadata retrieval, provides deterministic and traceable operations via controlled vocabulary and structured outputs, and includes enterprise-grade features for audit logging, encryption, compliance, and multi-agent federation. MindCore works with any LLM provider (OpenAI, Anthropic, Google, local models) and is MIT licensed with no vendor lock-in.
+
 ---
 
 <div align="center">
@@ -13,6 +25,16 @@
 **The Open-Source Framework That Standardizes Memory for All AI Agents**
 
 </div>
+
+---
+
+## Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.0 | December 2025 | Initial release with FLR, CLST, SVL protocols |
+| 0.9.0 | November 2025 | Beta release, enterprise features |
+| 0.5.0 | October 2025 | Alpha release, core protocols |
 
 ---
 
@@ -28,10 +50,17 @@
 8. [Hierarchical Retrieval Architecture](#8-hierarchical-retrieval-architecture)
 9. [Multi-Agent Federation](#9-multi-agent-federation)
 10. [Enterprise-Grade Features](#10-enterprise-grade-features)
-11. [Performance, Reliability & Determinism](#11-performance-reliability--determinism)
-12. [Failure Handling Strategies](#12-failure-handling-strategies)
-13. [Real-World Examples & Use Cases](#13-real-world-examples--use-cases)
-14. [Conclusion](#14-conclusion)
+11. [Security Considerations](#11-security-considerations)
+12. [Performance, Reliability & Determinism](#12-performance-reliability--determinism)
+13. [Failure Handling Strategies](#13-failure-handling-strategies)
+14. [Real-World Examples & Use Cases](#14-real-world-examples--use-cases)
+15. [Conclusion](#15-conclusion)
+
+**Appendices**
+- [Appendix A: API Quick Reference](#appendix-a-api-quick-reference)
+- [Appendix B: Configuration Reference](#appendix-b-configuration-reference)
+- [Appendix C: Glossary](#appendix-c-glossary)
+- [Appendix D: References & Further Reading](#appendix-d-references--further-reading)
 
 ---
 
@@ -1576,7 +1605,145 @@ with tracer.start_span("recall_memories") as span:
 
 ---
 
-## 11. Performance, Reliability & Determinism
+## 11. Security Considerations
+
+### Defense in Depth
+
+MindCore implements multiple layers of security to protect memory data:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Security Layers                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 1: Transport Security                                                 │
+│  • TLS 1.3 for all network communication                                    │
+│  • Certificate pinning for LLM provider connections                         │
+│  • mTLS support for internal services                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 2: Authentication & Authorization                                     │
+│  • API key validation with rotation support                                 │
+│  • JWT-based session authentication                                         │
+│  • Role-based access control (RBAC)                                         │
+│  • Hierarchical access levels (private → team → org → global)               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 3: Data Protection                                                    │
+│  • AES-256-GCM encryption at rest                                           │
+│  • Field-level encryption for sensitive data                                │
+│  • Key rotation with zero-downtime migration                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 4: Input Validation                                                   │
+│  • SQL injection prevention (parameterized queries)                         │
+│  • Path traversal protection for file sources                               │
+│  • URL validation for API sources                                           │
+│  • JSON Schema validation for all LLM outputs                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Threat Model
+
+| Threat | Mitigation |
+|--------|------------|
+| **Prompt Injection** | Structured outputs with strict JSON Schema; no free-form parsing |
+| **Memory Poisoning** | Confidence scores, reinforcement decay, cross-agent validation |
+| **Data Exfiltration** | Access level enforcement, audit logging, rate limiting |
+| **Credential Theft** | Environment variable isolation, secret management integration |
+| **SQL Injection** | Parameterized queries only; no string interpolation |
+| **Unauthorized Access** | Hierarchical RBAC, namespace isolation, federation policies |
+
+### Secure Configuration Best Practices
+
+```python
+from mindcore.v2.security import SecurityConfig, SecretManager
+
+# Never hardcode secrets
+config = SecurityConfig(
+    # Use environment variables or secret managers
+    encryption_key=SecretManager.get("MINDCORE_ENCRYPTION_KEY"),
+
+    # Enable all security features
+    enable_audit_logging=True,
+    enable_rate_limiting=True,
+    enable_field_encryption=True,
+
+    # Strict access control
+    default_access_level="private",
+    require_explicit_sharing=True,
+
+    # Input validation
+    max_content_length=50_000,  # Characters
+    max_topics_per_memory=5,
+    max_entities_per_memory=10,
+
+    # Session security
+    session_timeout_minutes=60,
+    require_session_binding=True,
+)
+```
+
+### Memory Access Control
+
+```python
+# Fine-grained access control for multi-agent systems
+from mindcore.v2.security import AccessPolicy, MemoryFilter
+
+policy = AccessPolicy(
+    # Who can read
+    read_access={
+        "private": ["owner_agent"],
+        "team": ["owner_agent", "team_members"],
+        "department": ["owner_agent", "team_members", "dept_members"],
+        "organization": ["all_org_agents"],
+    },
+
+    # Who can write/modify
+    write_access={
+        "private": ["owner_agent"],
+        "team": ["owner_agent"],  # Only owner can modify team-visible
+        "shared": ["owner_agent", "with_explicit_grant"],
+    },
+
+    # Automatic filtering based on caller
+    apply_filter=MemoryFilter.BY_ACCESS_LEVEL,
+)
+
+# Memories are automatically filtered based on requesting agent
+memories = agent.recall(query="preferences", user_id="user_123")
+# Only returns memories the agent has access to
+```
+
+### Audit Trail Requirements
+
+All security-relevant events are logged:
+
+```python
+# Security events automatically captured
+SecurityEvent.AUTHENTICATION_SUCCESS
+SecurityEvent.AUTHENTICATION_FAILURE
+SecurityEvent.AUTHORIZATION_DENIED
+SecurityEvent.MEMORY_ACCESS_GRANTED
+SecurityEvent.MEMORY_ACCESS_DENIED
+SecurityEvent.ENCRYPTION_KEY_ROTATED
+SecurityEvent.RATE_LIMIT_EXCEEDED
+SecurityEvent.SUSPICIOUS_PATTERN_DETECTED
+SecurityEvent.DATA_EXPORT_REQUESTED
+SecurityEvent.DATA_DELETION_REQUESTED
+
+# Audit log format
+{
+    "timestamp": "2025-12-25T10:30:00Z",
+    "event_type": "MEMORY_ACCESS_GRANTED",
+    "agent_id": "support-001",
+    "user_id": "user_123",
+    "memory_id": "mem_abc123",
+    "access_level": "team",
+    "source_ip": "10.0.1.50",
+    "request_id": "req_xyz789"
+}
+```
+
+---
+
+## 12. Performance, Reliability & Determinism
 
 ### Performance Benchmarks
 
@@ -1629,7 +1796,7 @@ ResponseMetadata:
 
 ---
 
-## 12. Failure Handling Strategies
+## 13. Failure Handling Strategies
 
 ### Graceful Degradation Hierarchy
 
@@ -1732,7 +1899,7 @@ storage.configure_replicas([
 
 ---
 
-## 13. Real-World Examples & Use Cases
+## 14. Real-World Examples & Use Cases
 
 ### Use Case 1: Customer Support Bot
 
@@ -1892,7 +2059,7 @@ support_agent.recall(
 
 ---
 
-## 14. Conclusion
+## 15. Conclusion
 
 ### MindCore: The Universal Memory Standard
 
@@ -2076,6 +2243,68 @@ federation:
   trust_policy: namespace_weighted
   signal_propagation: true
 ```
+
+---
+
+## Appendix C: Glossary
+
+| Term | Definition |
+|------|------------|
+| **CLST** | Cognitive Long-term Storage Transfer. The persistent storage protocol for hierarchical memory organization with session aggregation and compression. |
+| **FLR** | Fast Learning Recall. The inference-time memory access protocol with reinforcement learning, caching, and 6-factor scoring. |
+| **SVL** | Shared Vocabulary Layer. The semantic foundation that enforces consistent metadata through controlled vocabulary and LLM structured outputs. |
+| **Session Aggregate** | A weighted summary of all memories in a session, containing topic/category weights, importance statistics, and dominant values for efficient hierarchical retrieval. |
+| **Reinforcement Signal** | Feedback applied to memories indicating relevance, usefulness, or correctness. Signals decay over time and influence future retrieval rankings. |
+| **Access Level** | Permission scope for memory visibility: private (agent only), team, department, organization, or global. |
+| **Memory Type** | Classification of memory content: episodic (events), semantic (facts), procedural (processes), preference (settings), entity (objects), or working (session-scoped). |
+| **Context Gateway** | The unified interface that assembles context from FLR cache, CLST storage, and SVL data sources for LLM consumption. |
+| **Attention Hints** | Topics or categories specified in a query to focus retrieval on specific areas of memory. |
+| **Data Source** | External resource (database, API, MCP server, function) mapped to SVL vocabulary terms for automatic data fetching. |
+| **Trigger Condition** | When a data source is fetched: ALWAYS, ON_QUERY, ON_STORE, ON_DEMAND, or CONDITIONAL. |
+| **Federation** | Multi-agent architecture where agents share vocabulary (SVL), storage (CLST), and reinforcement signals across an organization. |
+| **Namespace** | Organizational grouping for agents (e.g., department, team) that controls access and signal propagation. |
+| **Hierarchical Retrieval** | Two-stage query: first match sessions by weighted metadata, then retrieve memories only from relevant sessions. |
+| **Structured Output** | LLM response format enforced via JSON Schema to ensure consistent, validated metadata. |
+| **Temporal Decay** | Exponential reduction in reinforcement scores over time, prioritizing recent relevance. |
+| **Compression Strategy** | Method for reducing storage: DEDUPLICATE, MERGE, SUMMARIZE, or EXTRACT. |
+
+---
+
+## Appendix D: References & Further Reading
+
+### Academic & Industry Research
+
+1. **Memory-Augmented Neural Networks**
+   - Graves, A., et al. "Neural Turing Machines." arXiv:1410.5401 (2014)
+   - Weston, J., et al. "Memory Networks." arXiv:1410.3916 (2014)
+
+2. **Retrieval-Augmented Generation (RAG)**
+   - Lewis, P., et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." NeurIPS (2020)
+
+3. **Multi-Agent Systems**
+   - Wooldridge, M. "An Introduction to MultiAgent Systems." Wiley (2009)
+
+4. **Reinforcement Learning for Information Retrieval**
+   - Nogueira, R., et al. "Document Ranking with a Pretrained Sequence-to-Sequence Model." EMNLP (2020)
+
+### Related Projects & Standards
+
+- **Model Context Protocol (MCP)**: [modelcontextprotocol.io](https://modelcontextprotocol.io) - Tool connection standard for LLMs
+- **OpenTelemetry**: [opentelemetry.io](https://opentelemetry.io) - Observability framework
+- **JSON Schema**: [json-schema.org](https://json-schema.org) - Schema validation standard
+
+### LLM Provider Documentation
+
+- **OpenAI Responses API**: Structured outputs with reasoning
+- **Anthropic Claude**: Extended thinking and interleaved reasoning
+- **Google Gemini**: ThinkingLevel and response schemas
+
+### MindCore Resources
+
+- **GitHub Repository**: [github.com/M-Alfaris/mindcore](https://github.com/M-Alfaris/mindcore)
+- **Metadata Schema**: `mindcore/v2/svl/metadata_schema.yaml`
+- **API Documentation**: See Appendix A
+- **Configuration Guide**: See Appendix B
 
 ---
 
