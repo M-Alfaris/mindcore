@@ -8,36 +8,37 @@ Tests cover:
 - ContextInjector: API-level context injection
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from mindcore.v2.flr.reinforcement import (
-    RobustReinforcement,
-    ReinforcementSignal,
-    SignalType,
-    SignalSource,
-    create_feedback_signal,
-    batch_reinforce,
-    DEFAULT_SOURCE_WEIGHTS,
-    DEFAULT_TYPE_WEIGHTS,
-)
+import pytest
+
 from mindcore.v2.flr.metadata_feedback import (
+    MetadataEffectiveness,
     MetadataFeedbackTracker,
     MetadataSignal,
-    MetadataEffectiveness,
-)
-from mindcore.v2.flr.usage_detector import (
-    UsageDetector,
-    UsageDetectionResult,
-    MemoryUsage,
 )
 from mindcore.v2.flr.query_optimizer import (
-    QueryOptimizer,
     QueryOptimization,
+    QueryOptimizer,
     TopicStats,
 )
-from mindcore.v2.flr.recall import Memory, FLR, RecallResult
+from mindcore.v2.flr.recall import FLR, Memory, RecallResult
+from mindcore.v2.flr.reinforcement import (
+    DEFAULT_SOURCE_WEIGHTS,
+    DEFAULT_TYPE_WEIGHTS,
+    ReinforcementSignal,
+    RobustReinforcement,
+    SignalSource,
+    SignalType,
+    batch_reinforce,
+    create_feedback_signal,
+)
+from mindcore.v2.flr.usage_detector import (
+    MemoryUsage,
+    UsageDetectionResult,
+    UsageDetector,
+)
 
 
 # =============================================================================
@@ -291,7 +292,7 @@ class TestMetadataEffectiveness:
         eff.record_match(-0.5)  # negative
         eff.record_match(0.6)  # positive
 
-        assert eff.effectiveness_score == pytest.approx(2/3, rel=0.01)
+        assert eff.effectiveness_score == pytest.approx(2 / 3, rel=0.01)
         assert eff.positive_signals == 2
         assert eff.negative_signals == 1
 
@@ -992,7 +993,7 @@ class TestBatchOperations:
             ),
         ]
 
-        scores = batch_reinforce(list(zip(reinforcements, signals)))
+        scores = batch_reinforce(list(zip(reinforcements, signals, strict=False)))
 
         assert len(scores) == 2
         assert all(-1.0 <= s <= 1.0 for s in scores)

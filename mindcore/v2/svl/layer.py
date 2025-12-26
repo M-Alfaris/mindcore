@@ -784,16 +784,19 @@ class SharedVocabularyLayer:
 
     def validate_metadata(
         self,
-        metadata: dict[str, Any] | SemanticMetadata,
+        metadata: dict[str, Any] | SemanticMetadata | None,
     ) -> tuple[bool, list[str]]:
         """Validate semantic metadata.
 
         Args:
-            metadata: Metadata to validate
+            metadata: Metadata to validate (can be None)
 
         Returns:
             (is_valid, list of errors)
         """
+        if metadata is None:
+            return True, []
+
         if isinstance(metadata, SemanticMetadata):
             metadata = metadata.to_dict()
 

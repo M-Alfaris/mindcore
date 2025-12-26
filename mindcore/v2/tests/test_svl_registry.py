@@ -502,7 +502,7 @@ def fetchable_source(context: dict) -> dict:
             (sources_dir / "fetchable.py").write_text(module_content)
 
             svl = SharedVocabularyLayer()
-            count, errors = svl.discover_sources(str(sources_dir))
+            count, _errors = svl.discover_sources(str(sources_dir))
 
             assert count >= 1
             assert "fetchable" in svl.get_mapped_terms()
