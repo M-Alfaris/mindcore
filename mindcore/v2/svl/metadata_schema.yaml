@@ -1,0 +1,658 @@
+# =============================================================================
+# MindCore Metadata Schema - Single Source of Truth
+# =============================================================================
+#
+# This file defines the canonical metadata structure for all MindCore operations.
+# All LLM prompts, JSON schemas, and validation logic MUST reference this file.
+#
+# Version: 1.0.0
+# Last Updated: 2025-12-26
+# =============================================================================
+
+schema_version: "1.0.0"
+name: "MindCore Enforced Metadata Schema"
+description: >
+  Defines all metadata fields that LLMs must assign when processing messages.
+  This schema ensures consistent, queryable, and traceable memory metadata
+  across all agents and sessions.
+
+# =============================================================================
+# FIELD DEFINITIONS
+# =============================================================================
+
+fields:
+  # ---------------------------------------------------------------------------
+  # IDENTIFIERS (System-assigned or LLM-provided)
+  # ---------------------------------------------------------------------------
+  message_id:
+    type: string
+    required: true
+    description: "Unique identifier for this message"
+    format: "msg_{uuid12}"
+    example: "msg_a1b2c3d4e5f6"
+    auto_generated: true
+
+  user_id:
+    type: string
+    required: true
+    description: "User identifier"
+    example: "user_123"
+
+  session_id:
+    type: string
+    required: true
+    description: "Session identifier for grouping related messages"
+    example: "session_abc123"
+
+  agent_id:
+    type: string
+    required: false
+    description: "Agent identifier for multi-agent systems"
+    example: "support_agent_01"
+    default: null
+
+  thread_id:
+    type: string
+    required: false
+    description: "Thread identifier for multi-thread conversations within a session"
+    example: "thread_xyz789"
+    default: null
+
+  # ---------------------------------------------------------------------------
+  # SVL CLASSIFICATIONS (LLM MUST choose from vocabulary)
+  # ---------------------------------------------------------------------------
+  topics:
+    type: array
+    items: string
+    required: true
+    min_items: 1
+    max_items: 5
+    description: "Topics from SVL vocabulary (domain-specific)"
+    source: "svl.schema.get_all_topics()"
+    example: ["orders", "shipping", "refund"]
+    # Common topics across domains:
+    common_values:
+      - orders
+      - shipping
+      - billing
+      - refund
+      - account
+      - settings
+      - notifications
+      - products
+      - cart
+      - checkout
+      - payment
+      - delivery
+      - tracking
+      - support
+      - feedback
+
+  categories:
+    type: array
+    items: string
+    required: true
+    min_items: 1
+    max_items: 3
+    description: "Categories from SVL vocabulary (domain-specific)"
+    source: "svl.schema.get_all_categories()"
+    example: ["support", "order"]
+    # Common categories across domains:
+    common_values:
+      - support
+      - inquiry
+      - complaint
+      - feedback
+      - order
+      - payment
+      - shipping
+      - return
+      - account
+      - preferences
+
+  entities:
+    type: array
+    items: string
+    required: false
+    description: "Extracted entity names/values from the message"
+    example: ["Order #12345", "user@example.com", "Widget Pro"]
+    default: []
+
+  # ---------------------------------------------------------------------------
+  # MESSAGE CLASSIFICATION
+  # ---------------------------------------------------------------------------
+  message_type:
+    type: string
+    required: true
+    description: "Type of message"
+    enum:
+      - query           # User asking a question
+      - command         # User giving an instruction
+      - statement       # User providing information
+      - feedback        # User giving feedback/opinion
+      - response        # Agent answering a query
+      - clarification   # Asking for more information
+      - suggestion      # Suggesting an action
+      - confirmation    # Confirming understanding
+      - notification    # Proactive notification
+      - error           # Error message
+    default: "statement"
+
+  message_intent:
+    type: string
+    required: true
+    description: "Intent behind the message"
+    enum:
+      # Information seeking
+      - ask_question
+      - seek_clarification
+      - request_information
+      # Action oriented
+      - request_action
+      - give_command
+      - cancel_request
+      # Information sharing
+      - provide_info
+      - correct_info
+      - update_info
+      # Opinion/Feedback
+      - express_opinion
+      - give_feedback
+      - complaint
+      - compliment
+      # Social
+      - greeting
+      - farewell
+      - thanks
+      - apology
+      # Confirmation
+      - confirm
+      - deny
+      - accept
+      - reject
+    default: "provide_info"
+
+  # ---------------------------------------------------------------------------
+  # SCORES (LLM-assigned within bounds)
+  # ---------------------------------------------------------------------------
+  importance:
+    type: number
+    required: true
+    minimum: 0.0
+    maximum: 1.0
+    description: >
+      Importance score for memory prioritization.
+      0.0-0.2: Trivial (greetings, acknowledgments)
+      0.3-0.5: Normal (standard queries, info)
+      0.6-0.8: Important (key decisions, issues)
+      0.9-1.0: Critical (urgent issues, major events)
+    default: 0.5
+    example: 0.7
+
+  confidence:
+    type: number
+    required: true
+    minimum: 0.0
+    maximum: 1.0
+    description: >
+      Confidence in the metadata classification accuracy.
+      0.0-0.3: Low confidence
+      0.4-0.6: Medium confidence
+      0.7-0.8: High confidence
+      0.9-1.0: Very high confidence
+    default: 0.8
+    example: 0.85
+
+  urgency:
+    type: string
+    required: true
+    description: "Urgency level for response prioritization"
+    enum:
+      - critical       # Immediate action required
+      - high           # Action required soon
+      - medium         # Normal priority
+      - low            # No rush
+      - informational  # No action needed, just FYI
+    default: "medium"
+
+  # ---------------------------------------------------------------------------
+  # SENTIMENT & EMOTION
+  # ---------------------------------------------------------------------------
+  sentiment:
+    type: string
+    required: true
+    description: "Overall sentiment of the message"
+    enum:
+      - positive
+      - negative
+      - neutral
+      - mixed
+    default: "neutral"
+
+  emotional_classification:
+    type: string
+    required: false
+    description: "Emotional state detected in the message"
+    enum:
+      # Primary emotions
+      - joy
+      - sadness
+      - anger
+      - fear
+      - surprise
+      - disgust
+      # Secondary emotions
+      - frustration
+      - satisfaction
+      - confusion
+      - excitement
+      - disappointment
+      - relief
+      - anxiety
+      - trust
+      - anticipation
+      # Neutral
+      - neutral
+    default: "neutral"
+
+  # ---------------------------------------------------------------------------
+  # TEMPORAL
+  # ---------------------------------------------------------------------------
+  temporal_qualifier:
+    type: string
+    required: false
+    description: "Time-based context for the memory"
+    enum:
+      # Frequency
+      - daily
+      - weekly
+      - monthly
+      - yearly
+      - recurring
+      - one_time
+      # Reference
+      - past_event
+      - current
+      - future_plan
+      - deadline
+      # Duration
+      - short_term
+      - medium_term
+      - long_term
+      - permanent
+      # Session context
+      - this_session
+      - cross_session
+    default: null
+
+  # ---------------------------------------------------------------------------
+  # DOMAIN
+  # ---------------------------------------------------------------------------
+  domain_label:
+    type: string
+    required: false
+    description: "High-level domain classification"
+    enum:
+      - customer_service
+      - sales
+      - marketing
+      - finance
+      - operations
+      - hr
+      - engineering
+      - product
+      - security
+      - data
+      - infrastructure
+      - healthcare
+      - education
+      - retail
+      - legal
+      - media
+      - general
+      - personal
+    default: null
+
+  # ---------------------------------------------------------------------------
+  # MEMORY CLASSIFICATION
+  # ---------------------------------------------------------------------------
+  memory_type:
+    type: string
+    required: true
+    description: "Type of memory for storage classification"
+    enum:
+      - episodic     # Event-based, time-specific memories
+      - semantic     # Factual knowledge, concepts
+      - procedural   # How-to knowledge, processes
+      - preference   # User preferences, settings
+      - entity       # Entity-specific information
+      - working      # Short-term, session-specific
+    default: "episodic"
+
+  access_level:
+    type: string
+    required: true
+    description: "Access control level for multi-agent systems"
+    enum:
+      - private      # Only the owning agent
+      - team         # Agents in the same namespace
+      - shared       # Cross-namespace with permissions
+      - global       # All agents (public)
+    default: "private"
+
+  # ---------------------------------------------------------------------------
+  # MEMORIES TO STORE (Nested structure)
+  # ---------------------------------------------------------------------------
+  memories_to_store:
+    type: array
+    required: false
+    description: "Memories to extract and store from this message"
+    items:
+      type: object
+      properties:
+        content:
+          type: string
+          required: true
+          description: "The actual information to remember"
+        memory_type:
+          type: string
+          required: true
+          enum: [episodic, semantic, procedural, preference, entity, working]
+        importance:
+          type: number
+          required: true
+          minimum: 0.0
+          maximum: 1.0
+        topics:
+          type: array
+          items: string
+          required: false
+        categories:
+          type: array
+          items: string
+          required: false
+        entities:
+          type: array
+          items: string
+          required: false
+        access_level:
+          type: string
+          required: false
+          enum: [private, team, shared, global]
+          default: "private"
+    default: []
+
+# =============================================================================
+# CONTEXT DECISION SCHEMA (for historical context queries)
+# =============================================================================
+
+context_decision:
+  fields:
+    historical_context_needed:
+      type: string
+      required: true
+      enum: ["True", "False"]
+      description: "Whether to query CLST for historical context"
+
+    suggested_topics:
+      type: array
+      items: string
+      required: false
+      description: "Topics to query in CLST"
+      default: []
+
+    suggested_categories:
+      type: array
+      items: string
+      required: false
+      description: "Categories to query in CLST"
+      default: []
+
+    reasoning:
+      type: string
+      required: false
+      description: "Brief explanation for the decision"
+      default: ""
+
+    urgency:
+      type: string
+      required: false
+      enum: [critical, high, medium, low, informational]
+      default: "medium"
+
+    confidence:
+      type: string
+      required: false
+      enum: [high, medium, low]
+      default: "high"
+
+# =============================================================================
+# SESSION AGGREGATE WEIGHTS
+# =============================================================================
+
+session_aggregate:
+  weight_formula: "(frequency × 0.4) + (avg_importance × 0.4) + (recency × 0.2)"
+  weight_components:
+    frequency:
+      weight: 0.4
+      description: "How often the topic/category appears in the session"
+    avg_importance:
+      weight: 0.4
+      description: "Average importance of memories with this topic/category"
+    recency:
+      weight: 0.2
+      description: "Exponential decay based on last mention time"
+      decay_hours: 24.0  # Half-life for recency decay
+
+  fields:
+    topic_weights:
+      type: object
+      description: "Map of topic -> weight (0.0-1.0)"
+      example: {"orders": 0.9, "shipping": 0.7, "refund": 0.3}
+
+    category_weights:
+      type: object
+      description: "Map of category -> weight (0.0-1.0)"
+      example: {"support": 0.8, "order": 0.6}
+
+    entity_weights:
+      type: object
+      description: "Map of entity -> weight (0.0-1.0)"
+      example: {"Order #12345": 0.95}
+
+    intent_weights:
+      type: object
+      description: "Map of intent -> weight (0.0-1.0)"
+      example: {"request_action": 0.7, "ask_question": 0.5}
+
+    sentiment_weights:
+      type: object
+      description: "Map of sentiment -> weight (0.0-1.0)"
+      example: {"neutral": 0.6, "negative": 0.3, "positive": 0.1}
+
+    importance_stats:
+      min: 0.0
+      max: 1.0
+      avg: 0.5
+      sum: 0.0  # For incremental calculation
+
+    dominant_topic:
+      type: string
+      description: "Topic with highest weight"
+
+    dominant_category:
+      type: string
+      description: "Category with highest weight"
+
+    dominant_sentiment:
+      type: string
+      description: "Sentiment with highest weight"
+
+# =============================================================================
+# REINFORCEMENT SIGNALS
+# =============================================================================
+
+reinforcement:
+  signal_types:
+    - relevance      # How relevant the memory was to the query
+    - usefulness     # How useful the memory was for the response
+    - correctness    # How accurate the information was
+    - user_feedback  # Explicit user feedback (thumbs up/down)
+
+  signal_sources:
+    - user_explicit      # User clicked thumbs up/down
+    - user_implicit      # User behavior (continued conversation, etc.)
+    - llm_evaluation     # LLM evaluated the memory quality
+    - system_automatic   # System-generated signal
+    - cross_agent        # Signal from another agent
+
+  signal_value_range:
+    minimum: -1.0
+    maximum: 1.0
+
+  decay:
+    type: exponential
+    half_life_hours: 168  # 1 week
+
+# =============================================================================
+# EXAMPLES
+# =============================================================================
+
+examples:
+  # Example 1: Customer complaint about damaged order
+  damaged_order_complaint:
+    input: "I need a refund for order #12345, it arrived damaged"
+    output:
+      message_id: "msg_a1b2c3d4e5f6"
+      user_id: "user_123"
+      session_id: "session_abc123"
+      agent_id: null
+      thread_id: null
+      topics: ["refund", "orders", "shipping"]
+      categories: ["support", "order"]
+      entities: ["Order #12345"]
+      message_type: "command"
+      message_intent: "request_action"
+      importance: 0.85
+      confidence: 0.9
+      urgency: "high"
+      sentiment: "negative"
+      emotional_classification: "frustration"
+      temporal_qualifier: null
+      domain_label: "customer_service"
+      memory_type: "episodic"
+      access_level: "team"
+      memories_to_store:
+        - content: "Customer reported damaged order #12345 and requested refund"
+          memory_type: "episodic"
+          importance: 0.85
+          topics: ["refund", "orders"]
+          categories: ["support"]
+          entities: ["Order #12345"]
+          access_level: "team"
+        - content: "Order #12345 arrived damaged - product quality issue"
+          memory_type: "entity"
+          importance: 0.7
+          topics: ["orders", "shipping"]
+          entities: ["Order #12345"]
+          access_level: "team"
+
+  # Example 2: User preference update
+  notification_preference:
+    input: "I'd like to receive order updates via email only, not SMS"
+    output:
+      message_id: "msg_b2c3d4e5f6g7"
+      user_id: "user_456"
+      session_id: "session_def456"
+      agent_id: null
+      thread_id: null
+      topics: ["notifications", "settings"]
+      categories: ["preferences", "account"]
+      entities: []
+      message_type: "command"
+      message_intent: "request_action"
+      importance: 0.6
+      confidence: 0.95
+      urgency: "low"
+      sentiment: "neutral"
+      emotional_classification: "neutral"
+      temporal_qualifier: "permanent"
+      domain_label: null
+      memory_type: "preference"
+      access_level: "private"
+      memories_to_store:
+        - content: "User prefers email notifications only, no SMS"
+          memory_type: "preference"
+          importance: 0.8
+          topics: ["notifications", "settings"]
+          categories: ["preferences"]
+          access_level: "private"
+
+  # Example 3: Simple greeting
+  greeting:
+    input: "Hi there!"
+    output:
+      message_id: "msg_c3d4e5f6g7h8"
+      user_id: "user_789"
+      session_id: "session_ghi789"
+      agent_id: null
+      thread_id: null
+      topics: []
+      categories: []
+      entities: []
+      message_type: "statement"
+      message_intent: "greeting"
+      importance: 0.1
+      confidence: 0.99
+      urgency: "informational"
+      sentiment: "positive"
+      emotional_classification: "neutral"
+      temporal_qualifier: null
+      domain_label: null
+      memory_type: "working"
+      access_level: "private"
+      memories_to_store: []
+
+  # Example 4: Context decision - needs history
+  context_decision_needs_history:
+    input: "What was the resolution for my ticket from last week?"
+    output:
+      historical_context_needed: "True"
+      suggested_topics: ["ticket", "support", "resolution"]
+      suggested_categories: ["support"]
+      reasoning: "User references 'last week' indicating past interaction needs to be retrieved"
+      urgency: "medium"
+      confidence: "high"
+
+  # Example 5: Context decision - no history needed
+  context_decision_no_history:
+    input: "What's the weather like today?"
+    output:
+      historical_context_needed: "False"
+      suggested_topics: []
+      suggested_categories: []
+      reasoning: "Real-time information request, no historical context needed"
+      urgency: "low"
+      confidence: "high"
+
+# =============================================================================
+# JSON SCHEMA GENERATION
+# =============================================================================
+# Use this section to generate JSON Schema for LLM structured output
+
+json_schema:
+  $schema: "http://json-schema.org/draft-07/schema#"
+  title: "MindCore Enforced Metadata"
+  type: "object"
+  required:
+    - topics
+    - categories
+    - message_type
+    - message_intent
+    - importance
+    - confidence
+    - urgency
+    - sentiment
+    - memory_type
+    - access_level
+  additionalProperties: false
