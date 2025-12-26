@@ -783,6 +783,8 @@ MindCore uses different API mechanisms to inject metadata requirements:
 
 MindCore forces LLMs to assign metadata from the SVL vocabulary through structured outputs. This ensures deterministic, queryable, and traceable memories.
 
+> **📋 Canonical Schema Reference**: All metadata field definitions, valid values, and examples are defined in [`mindcore/v2/svl/metadata_schema.yaml`](./mindcore/v2/svl/metadata_schema.yaml). This file is the single source of truth for all LLM prompts, JSON schemas, and validation logic.
+
 #### The Enforced Metadata Schema
 
 ```python
@@ -804,9 +806,9 @@ class EnforcedMetadata:
     # Scores
     importance: float              # 0.0 - 1.0
     confidence: float              # 0.0 - 1.0
-    urgency: str                   # "low", "medium", "high", "critical"
-    sentiment: str                 # "positive", "negative", "neutral"
-    emotional_classification: str  # "neutral", "frustrated", "satisfied"
+    urgency: str                   # "critical", "high", "medium", "low", "informational"
+    sentiment: str                 # "positive", "negative", "neutral", "mixed"
+    emotional_classification: str  # "neutral", "frustration", "satisfaction", "joy", ...
 
     # Memory classification
     memory_type: str               # episodic, semantic, preference, ...
@@ -836,25 +838,42 @@ class EnforcedMetadata:
           },
           "categories": {
             "type": "array",
-            "items": {"type": "string", "enum": ["support", "inquiry", "complaint", "feedback"]}
+            "items": {"type": "string", "enum": ["support", "inquiry", "complaint", "feedback", "order", "payment", "account"]},
+            "minItems": 1,
+            "maxItems": 3
           },
-          "message_type": {"type": "string", "enum": ["query", "command", "statement", "feedback"]},
+          "entities": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Extracted entity names from the message"
+          },
+          "message_type": {"type": "string", "enum": ["query", "command", "statement", "feedback", "response", "clarification"]},
+          "message_intent": {"type": "string", "enum": ["ask_question", "request_action", "provide_info", "give_feedback", "complaint", "greeting"]},
           "importance": {"type": "number", "minimum": 0, "maximum": 1},
-          "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "urgency": {"type": "string", "enum": ["critical", "high", "medium", "low", "informational"]},
           "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral", "mixed"]},
+          "emotional_classification": {"type": "string", "enum": ["neutral", "joy", "frustration", "satisfaction", "confusion", "anger"]},
+          "memory_type": {"type": "string", "enum": ["episodic", "semantic", "procedural", "preference", "entity", "working"]},
+          "access_level": {"type": "string", "enum": ["private", "team", "shared", "global"]},
           "memories_to_store": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "content": {"type": "string"},
-                "memory_type": {"type": "string"},
-                "importance": {"type": "number"}
-              }
+                "content": {"type": "string", "description": "The actual information to remember"},
+                "memory_type": {"type": "string", "enum": ["episodic", "semantic", "procedural", "preference", "entity", "working"]},
+                "importance": {"type": "number", "minimum": 0, "maximum": 1},
+                "topics": {"type": "array", "items": {"type": "string"}},
+                "categories": {"type": "array", "items": {"type": "string"}},
+                "entities": {"type": "array", "items": {"type": "string"}},
+                "access_level": {"type": "string", "enum": ["private", "team", "shared", "global"]}
+              },
+              "required": ["content", "memory_type", "importance"]
             }
           }
         },
-        "required": ["topics", "categories", "message_type", "importance", "sentiment"]
+        "required": ["topics", "categories", "message_type", "message_intent", "importance", "confidence", "urgency", "sentiment", "memory_type", "access_level"]
       },
       "strict": true
     }
@@ -872,17 +891,19 @@ class EnforcedMetadata:
   "session_id": "session_abc",
 
   "topics": ["refund", "orders", "shipping"],
-  "categories": ["complaint", "support"],
+  "categories": ["support", "order"],
   "entities": ["Order #12345"],
 
   "message_type": "command",
   "message_intent": "request_action",
 
   "importance": 0.85,
-  "confidence": 0.95,
+  "confidence": 0.9,
   "urgency": "high",
   "sentiment": "negative",
-  "emotional_classification": "frustrated",
+  "emotional_classification": "frustration",
+  "temporal_qualifier": null,
+  "domain_label": "customer_service",
 
   "memory_type": "episodic",
   "access_level": "team",
@@ -893,14 +914,18 @@ class EnforcedMetadata:
       "memory_type": "episodic",
       "importance": 0.85,
       "topics": ["refund", "orders"],
-      "categories": ["complaint"]
+      "categories": ["support"],
+      "entities": ["Order #12345"],
+      "access_level": "team"
     },
     {
       "content": "Order #12345 arrived damaged - product quality issue",
       "memory_type": "entity",
       "importance": 0.7,
       "topics": ["orders", "shipping"],
-      "entities": ["Order #12345"]
+      "categories": ["order"],
+      "entities": ["Order #12345"],
+      "access_level": "team"
     }
   ]
 }
@@ -1841,19 +1866,25 @@ support_agent.recall(
   "agent_id": "support-001",
   "session_id": "session_abc",
 
-  "topics": ["settings", "notifications", "orders"],
-  "categories": ["account", "preferences"],
-  "entities": ["email", "SMS", "order updates"],
+  "topics": ["notifications", "settings"],
+  "categories": ["preferences", "account"],
+  "entities": ["email", "SMS"],
 
-  "importance": 0.85,
+  "message_type": "statement",
+  "message_intent": "provide_info",
+  "importance": 0.8,
   "confidence": 0.95,
+  "urgency": "low",
   "sentiment": "neutral",
-  "access_level": "team",
+  "emotional_classification": "neutral",
+  "temporal_qualifier": "permanent",
+  "domain_label": "customer_service",
+  "access_level": "private",
 
   "reinforcement_score": 0.72,
   "access_count": 15,
 
-  "vocabulary_version": "2.0.0",
+  "vocabulary_version": "1.0.0",
   "created_at": "2025-12-20T14:30:00Z",
   "last_accessed": "2025-12-25T09:15:00Z"
 }
