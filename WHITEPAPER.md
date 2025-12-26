@@ -322,30 +322,303 @@ MindCore includes pre-built vocabularies for common domains:
 - `hr` - hiring, training, performance
 - `education` - courses, assignments, grades
 
-#### Data Source Mapping
+#### Data Source Mapping: Connect Vocabulary to External Resources
 
-SVL can automatically fetch data from external sources based on detected topics:
+One of SVL's most powerful features is **automatic data fetching from external resources** based on detected topics. When a memory query involves a topic like "orders" or "billing", SVL can automatically fetch relevant data from databases, APIs, or MCP servers—eliminating the need to manually orchestrate data retrieval.
+
+##### The Four Source Types
+
+| Source Type | Description | Use Case |
+|-------------|-------------|----------|
+| **TableSource** | SQL database queries | Orders, user preferences, transaction history |
+| **APISource** | REST API endpoints | External services, internal microservices, third-party APIs |
+| **MCPSource** | MCP server tool calls | Brave Search, filesystem access, custom MCP tools |
+| **FunctionSource** | Custom Python functions | Complex logic, data transformations, aggregations |
+
+##### Trigger Conditions
+
+Data sources can be triggered under different conditions:
 
 ```python
-# Map topics to data sources
+TriggerCondition.ALWAYS      # Always fetch when topic is used
+TriggerCondition.ON_QUERY    # Only on memory queries (default)
+TriggerCondition.ON_STORE    # Only when storing memories
+TriggerCondition.ON_DEMAND   # Only when explicitly requested
+TriggerCondition.CONDITIONAL # Based on context conditions
+```
+
+##### Example: Orders from Database
+
+When a user asks "Where is my order?", the SVL detects the "orders" topic and automatically fetches relevant order data:
+
+```python
+from mindcore.v2.svl.sources import TableSource, TriggerCondition
+
+# Map "orders" topic to database table
 svl.map_source("orders", TableSource(
-    connection_string="postgresql://localhost/orders",
+    name="orders_db",
+    connection_string="postgresql://localhost/ecommerce",
     table="orders",
-    query_template="SELECT * FROM orders WHERE user_id = :user_id"
+    query_template="""
+        SELECT order_id, status, total, created_at, tracking_number
+        FROM orders
+        WHERE user_id = :user_id
+        AND created_at >= NOW() - INTERVAL '30 days'
+        ORDER BY created_at DESC
+        LIMIT 10
+    """,
+    param_mapping={"user_id": "user_id"},  # Context key -> SQL param
+    cache_ttl_seconds=60,
+    trigger=TriggerCondition.ON_QUERY,
 ))
 
-svl.map_source("weather", APISource(
-    url="https://api.weather.com/current",
+# When agent queries with topic "orders", data is auto-fetched
+context = gateway.build_context(
+    query="Where is my order?",
+    user_id="user_123",
+    topics=["orders"],  # Triggers TableSource fetch
+)
+# context now includes recent orders from database!
+```
+
+##### Example: Billing from Internal API
+
+```python
+from mindcore.v2.svl.sources import APISource
+
+# Map "billing" category to billing microservice
+svl.map_source("billing", APISource(
+    name="billing_service",
+    url="${BILLING_SERVICE_URL}/api/v1/customers/{user_id}/summary",
     method="GET",
-    headers={"Authorization": "Bearer {api_key}"}
-))
+    headers={
+        "Authorization": "Bearer ${INTERNAL_API_KEY}",
+        "X-Request-ID": "{request_id}",
+    },
+    url_params={"user_id": "user_id"},
+    header_params={"request_id": "request_id"},
+    response_path="data",  # Extract from response.data
+    cache_ttl_seconds=180,
+    trigger=TriggerCondition.ON_QUERY,
+), term_type="category")
+```
 
-svl.map_source("search", MCPSource(
-    server="brave-search",
-    tool="search",
-    argument_mapping={"query": "search_query"}
+##### Example: Refunds with Date Range
+
+```python
+# Map "refunds" to database with date range filtering
+svl.map_source("refunds", TableSource(
+    name="refunds_db",
+    connection_string="postgresql://localhost/ecommerce",
+    query_template="""
+        SELECT r.refund_id, r.order_id, r.amount, r.status, r.reason, r.created_at
+        FROM refunds r
+        JOIN orders o ON r.order_id = o.order_id
+        WHERE o.user_id = :user_id
+        AND r.created_at BETWEEN :start_date AND :end_date
+        ORDER BY r.created_at DESC
+    """,
+    param_mapping={
+        "user_id": "user_id",
+        "start_date": "start_date",
+        "end_date": "end_date",
+    },
+    cache_ttl_seconds=120,
 ))
 ```
+
+##### Example: MCP Server Integration
+
+```python
+from mindcore.v2.svl.sources import MCPSource
+
+# Map "web_search" to Brave Search MCP server
+svl.map_source("web_search", MCPSource(
+    name="brave_search",
+    server_name="brave-search",
+    tool_name="brave_web_search",
+    argument_mapping={"query": "search_query"},
+    static_arguments={"count": 5},
+    cache_ttl_seconds=300,
+    trigger=TriggerCondition.ON_DEMAND,
+))
+
+# Map "file_context" to filesystem MCP server
+svl.map_source("file_context", MCPSource(
+    name="filesystem",
+    server_name="filesystem",
+    tool_name="read_file",
+    argument_mapping={"path": "file_path"},
+    trigger=TriggerCondition.ON_DEMAND,
+))
+```
+
+##### Decorator-Based Source Registration
+
+For sources requiring custom logic, use the `@source` decorator:
+
+```python
+from mindcore.v2.svl.registry import source
+from mindcore.v2.svl import TriggerCondition
+
+@source(
+    term="orders",
+    term_type="topic",
+    description="Fetch user's recent orders from database",
+    trigger=TriggerCondition.ON_QUERY,
+    cache_ttl=60,
+    priority=10,
+    tags=["ecommerce", "database"],
+)
+async def get_user_orders(context: dict) -> list[dict]:
+    """Fetch recent orders for a user."""
+    user_id = context.get("user_id")
+    if not user_id:
+        return []
+
+    async with db.connection() as conn:
+        return await conn.fetch(
+            """
+            SELECT order_id, status, total, created_at, tracking_number
+            FROM orders
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 10
+            """,
+            user_id
+        )
+
+@source(
+    term="order_details",
+    term_type="topic",
+    description="Fetch detailed order with items and shipping",
+    trigger=TriggerCondition.ON_DEMAND,
+    cache_ttl=30,
+)
+async def get_order_details(context: dict) -> dict | None:
+    """Aggregate order data from multiple sources."""
+    order_id = context.get("order_id")
+    if not order_id:
+        return None
+
+    # Aggregate from multiple sources
+    order = await db.fetch_order(order_id)
+    items = await db.fetch_order_items(order_id)
+    shipping = await shipping_api.get_tracking(order["tracking_id"])
+
+    return {
+        "order": order,
+        "items": items,
+        "shipping": shipping,
+    }
+```
+
+##### YAML Configuration for Simple Sources
+
+For sources that don't require custom logic, use YAML configuration:
+
+```yaml
+# svl_sources.yaml
+sources:
+  # Database: User preferences
+  - term: "user_preferences"
+    term_type: "topic"
+    type: "table"
+    name: "user_prefs_db"
+    connection_string: "${DATABASE_URL}"
+    query_template: |
+      SELECT preference_key, preference_value, updated_at
+      FROM user_preferences
+      WHERE user_id = :user_id
+    param_mapping:
+      user_id: "user_id"
+    cache_ttl: 300
+    trigger: "on_query"
+
+  # API: Billing summary
+  - term: "billing"
+    term_type: "category"
+    type: "api"
+    name: "billing_service"
+    url: "${BILLING_SERVICE_URL}/api/v1/customers/{user_id}/summary"
+    method: "GET"
+    headers:
+      Authorization: "Bearer ${INTERNAL_API_KEY}"
+    url_params:
+      user_id: "user_id"
+    cache_ttl: 180
+    trigger: "on_query"
+
+  # MCP: Web search
+  - term: "web_search"
+    term_type: "topic"
+    type: "mcp"
+    name: "brave_search"
+    server_name: "brave-search"
+    tool_name: "brave_web_search"
+    argument_mapping:
+      query: "search_query"
+    static_arguments:
+      count: 5
+    trigger: "on_demand"
+    cache_ttl: 300
+```
+
+##### How It Works: The Complete Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          User Query: "Where is my order?"                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. SVL Topic Detection                                                      │
+│     Detected topics: ["orders", "shipping"]                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  2. Source Registry Lookup                                                   │
+│     "orders" → TableSource (orders_db)                                       │
+│     "shipping" → APISource (shipping_api)                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                      ▼
+┌───────────────────────────────┐    ┌───────────────────────────────────────┐
+│  3a. Database Query           │    │  3b. API Request                       │
+│  SELECT * FROM orders         │    │  GET /tracking/{tracking_id}          │
+│  WHERE user_id = 'user_123'   │    │  Authorization: Bearer ...            │
+└───────────────────────────────┘    └───────────────────────────────────────┘
+                    │                                      │
+                    └──────────────────┬──────────────────┘
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  4. FetchResult Aggregation                                                  │
+│  {                                                                           │
+│    "orders": [{"order_id": "ORD-123", "status": "shipped", ...}],           │
+│    "shipping": {"carrier": "UPS", "eta": "2024-01-20", ...}                 │
+│  }                                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  5. Context Assembly                                                         │
+│  Memory context + External data → Complete agent context                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Key Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Automatic Fetching** | No manual orchestration—data fetched when topics are detected |
+| **Unified Caching** | Built-in LRU cache with configurable TTL per source |
+| **Fail-Safe** | Failed fetches don't block memory retrieval |
+| **Traceable** | Every fetch logged with latency, source, and metadata |
+| **Flexible Triggers** | Control when data is fetched (query, store, on-demand) |
+| **Security** | SQL injection prevention, URL validation, path traversal protection |
 
 ---
 
