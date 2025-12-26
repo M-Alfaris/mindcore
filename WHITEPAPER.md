@@ -1073,6 +1073,247 @@ SELECT * FROM memories WHERE user_id = 'U-123';
 
 ---
 
+## 8.5 Controlled Context Generation
+
+### Priority-Based Context Assembly
+
+MindCore provides fine-grained control over what context is assembled and how it's prioritized. This enables agents to focus on the most relevant information without manual orchestration.
+
+#### Source Priority Levels
+
+Data sources can be assigned priority levels to control fetch order and importance:
+
+```python
+from mindcore.v2.svl.registry import source
+from mindcore.v2.svl import TriggerCondition
+
+# High priority sources are fetched first and given more weight
+@source(
+    term="orders",
+    term_type="topic",
+    priority=10,  # Higher = more important
+    cache_ttl=60,
+    trigger=TriggerCondition.ON_QUERY,
+    tags=["critical", "ecommerce"],
+)
+async def get_orders(context: dict) -> list[dict]:
+    return await db.fetch_orders(context["user_id"])
+
+@source(
+    term="recommendations",
+    term_type="topic",
+    priority=3,  # Lower priority - fetched after orders
+    cache_ttl=300,
+    trigger=TriggerCondition.ON_DEMAND,
+)
+async def get_recommendations(context: dict) -> list[dict]:
+    return await recommender.get_suggestions(context["user_id"])
+```
+
+#### Topic and Category Weights
+
+Sessions aggregate weighted metadata that controls retrieval priority:
+
+```python
+# Weight calculation formula:
+# weight = (frequency × 0.4) + (avg_importance × 0.4) + (recency × 0.2)
+
+@dataclass
+class SessionAggregate:
+    session_id: str
+    user_id: str
+
+    # Weighted distributions (term → weight 0-1)
+    topic_weights: dict[str, float]      # {"orders": 0.9, "shipping": 0.7}
+    category_weights: dict[str, float]   # {"support": 0.8, "billing": 0.3}
+    entity_weights: dict[str, float]     # {"Order #12345": 0.95}
+    intent_weights: dict[str, float]     # {"check_status": 0.85}
+    sentiment_weights: dict[str, float]  # {"neutral": 0.6, "frustrated": 0.4}
+
+    # Importance statistics for filtering
+    importance_min: float
+    importance_max: float
+    importance_avg: float
+
+    # Dominant values (highest weighted)
+    dominant_topic: str
+    dominant_category: str
+    dominant_sentiment: str
+```
+
+#### Importance Thresholds
+
+Control what gets retrieved based on importance scoring:
+
+```python
+# Query with importance threshold - only high-value memories
+context = gateway.build_context(
+    query="What's my order status?",
+    user_id="user_123",
+    min_importance=0.5,           # Filter out low-importance memories
+    min_topic_weight=0.3,         # Require significant topic match
+    session_limit=5,              # Limit sessions searched
+    memory_limit=20,              # Limit memories returned
+)
+
+# Fine-grained control for different scenarios
+high_stakes_context = gateway.build_context(
+    query="Cancel my subscription",
+    user_id="user_123",
+    min_importance=0.7,           # Only critical memories
+    attention_hints=["billing", "subscription", "cancellation"],
+    category_hints=["account_management"],
+)
+```
+
+#### Attention Hints for Focused Retrieval
+
+Direct the context gateway to prioritize specific topics:
+
+```python
+# Attention hints focus retrieval on specific topics
+context = gateway.build_context(
+    query="My package hasn't arrived",
+    user_id="user_123",
+
+    # These topics get priority in session matching
+    attention_hints=["shipping", "delivery", "orders"],
+
+    # Category-level filtering
+    category_hints=["logistics", "support"],
+
+    # Memory type filtering
+    memory_types=["episodic", "semantic"],  # Skip preferences
+)
+
+# Context result shows what matched
+print(f"Matched topics: {context.matched_topics}")
+print(f"Sessions searched: {context.sessions_searched}")
+print(f"Relevance scores: ...")
+```
+
+#### Preference Management with Priority Versioning
+
+MindCore handles mutable preferences with temporal versioning and conflict resolution:
+
+```python
+from mindcore.v2.flr import PreferenceManager, ConflictResolutionStrategy
+
+prefs = PreferenceManager(storage, flr)
+
+# Set preference with importance
+pref = prefs.set_preference(
+    user_id="user_123",
+    key="communication_style",
+    value="User prefers formal, professional communication",
+    importance=0.7,
+    categories=["preferences", "communication"],
+)
+
+# Update preference - old version is automatically deprecated
+new_pref = prefs.update_preference(
+    user_id="user_123",
+    key="communication_style",
+    value="User now prefers casual, friendly communication",
+)
+# Old preference gets negative reinforcement signal
+# New preference gets positive reinforcement
+# version=2, supersedes previous preference
+
+# Multi-agent conflict resolution with priority
+result = prefs.set_preference_with_conflict_check(
+    user_id="user_123",
+    key="product_preference",
+    value="User prefers budget options",
+    agent_id="sales_agent",
+    conflict_strategy=ConflictResolutionStrategy.AGENT_PRIORITY,
+    agent_priorities={
+        "sales_agent": 10,      # High trust
+        "support_agent": 8,     # Medium trust
+        "marketing_agent": 5,   # Lower trust
+    },
+)
+```
+
+#### Conflict Resolution Strategies
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| **NEWER_WINS** | Most recent timestamp wins | General updates |
+| **HIGHER_CONFIDENCE** | Higher confidence score wins | Quality-based |
+| **AGENT_PRIORITY** | Agent with higher priority wins | Trust hierarchy |
+| **LLM_MERGE** | Use LLM to intelligently merge | Nuanced conflicts |
+| **HUMAN_REVIEW** | Flag for manual review | Critical preferences |
+| **KEEP_BOTH** | Store both as separate preferences | When both are valid |
+
+#### Complete Controlled Context Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Query: "Check my order status"                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. Attention Hints Applied                                                  │
+│     attention_hints: ["orders", "shipping"]                                  │
+│     category_hints: ["support"]                                              │
+│     min_importance: 0.3                                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  2. Session Relevance Scoring                                                │
+│                                                                              │
+│  Session A: topic_weights={"orders": 0.9, "shipping": 0.7}                  │
+│             relevance_score = 0.85 ✓ (above threshold)                      │
+│                                                                              │
+│  Session B: topic_weights={"billing": 0.8, "refund": 0.5}                   │
+│             relevance_score = 0.25 ✗ (below threshold)                      │
+│                                                                              │
+│  Session C: topic_weights={"orders": 0.6, "account": 0.4}                   │
+│             relevance_score = 0.52 ✓ (above threshold)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  3. Source Priority Execution                                                │
+│                                                                              │
+│  Priority 10: orders_db → Fetch user orders from database                   │
+│  Priority 8:  shipping_api → Fetch tracking info from carrier               │
+│  Priority 3:  recommendations → Skip (ON_DEMAND trigger)                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  4. Memory Importance Filtering                                              │
+│                                                                              │
+│  Memories from Sessions A, C filtered by:                                   │
+│  - importance >= 0.3                                                         │
+│  - topic match with attention_hints                                          │
+│  - category match with category_hints                                        │
+│                                                                              │
+│  Result: 12 highly relevant memories (from 150+ in sessions)                │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  5. Assembled Context                                                        │
+│                                                                              │
+│  {                                                                           │
+│    "memories": [...12 relevant memories...],                                │
+│    "source_data": {                                                          │
+│      "orders": [{"order_id": "ORD-123", "status": "shipped"}],              │
+│      "shipping": [{"carrier": "UPS", "eta": "Tomorrow"}]                    │
+│    },                                                                        │
+│    "matched_topics": ["orders", "shipping"],                                │
+│    "query_metadata": {...traceability data...}                              │
+│  }                                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 9. Multi-Agent Federation
 
 ### Organization-Wide Memory Sharing
