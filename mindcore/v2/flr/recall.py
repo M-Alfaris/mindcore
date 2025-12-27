@@ -36,27 +36,28 @@ import logging
 import time
 from collections import OrderedDict
 
+
 logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
-
-from .reinforcement import (
-    RobustReinforcement,
-    ReinforcementSignal,
-    SignalType,
-    SignalSource,
-    create_feedback_signal,
-)
 
 from .metadata_feedback import (
     MetadataFeedbackTracker,
     MetadataSignal,
 )
+from .reinforcement import (
+    ReinforcementSignal,
+    RobustReinforcement,
+    SignalSource,
+    SignalType,
+    create_feedback_signal,
+)
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mindcore.v2.cross_agent.registry import AgentRegistry
     from mindcore.v2.storage.base import BaseStorage
 
@@ -90,7 +91,18 @@ class Memory:
     # Session/Thread context (for hierarchical retrieval)
     session_id: str | None = None
     thread_id: str | None = None  # For multi-thread conversations within a session
-    message_index: int = 0  # Order within session/thread for event series
+    parent_memory_id: str | None = None  # For memory chains/replies
+    turn_index: int = 0  # Order within session/thread for event series
+    message_index: int = 0  # Alias for turn_index (backwards compatibility)
+    message_role: str | None = None  # user, assistant, system, etc.
+
+    # Importance decay (for time-sensitive memories)
+    importance_decay_rate: float = 0.1  # How fast importance decays
+    importance_boosts: list[dict] = field(default_factory=list)  # Boosts applied
+
+    # Confidence and semantic metadata
+    confidence_score: float | None = None  # LLM confidence in extraction
+    semantic_metadata: dict | None = None  # Additional semantic context
 
     # Timestamps
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -107,6 +119,90 @@ class Memory:
 
     # Versioning
     vocabulary_version: str = "1.0.0"
+
+    @property
+    def effective_importance(self) -> float:
+        """Calculate effective importance with time-based decay and boosts.
+
+        Uses exponential decay: importance * (1 - decay_rate) ^ months_elapsed
+        Then adds any active (non-expired) boosts.
+
+        Returns:
+            Effective importance after decay and boosts, bounded to [0, 1]
+        """
+        now = datetime.now(timezone.utc)
+
+        # Start with base importance
+        base = self.importance
+
+        # Apply decay if configured
+        if self.importance_decay_rate > 0.0:
+            age = now - self.created_at
+            months_elapsed = age.total_seconds() / (30 * 24 * 60 * 60)  # Approximate months
+            decay_factor = (1 - self.importance_decay_rate) ** months_elapsed
+            base = base * decay_factor
+
+        # Add active boosts
+        boost_total = 0.0
+        for boost in self.importance_boosts:
+            # Check if boost has expired
+            if "expires_at" in boost:
+                expires_at = datetime.fromisoformat(boost["expires_at"])
+                if expires_at < now:
+                    continue  # Skip expired boost
+            boost_total += boost.get("amount", 0.0)
+
+        effective = base + boost_total
+
+        # Ensure bounded to [0, 2] (allows boosts to exceed base importance)
+        return max(0.0, min(2.0, effective))
+
+    def boost_importance(
+        self,
+        amount: float,
+        reason: str,
+        decay_after_days: int | None = None,
+    ) -> float:
+        """Add a temporary or permanent importance boost.
+
+        Args:
+            amount: Boost amount to add (can be negative)
+            reason: Reason for the boost (for audit trail)
+            decay_after_days: Days until boost expires (None = permanent)
+
+        Returns:
+            New effective importance after boost
+        """
+        now = datetime.now(timezone.utc)
+        boost = {
+            "amount": amount,
+            "reason": reason,
+            "applied_at": now.isoformat(),
+        }
+
+        if decay_after_days is not None:
+            expires_at = now + timedelta(days=decay_after_days)
+            boost["expires_at"] = expires_at.isoformat()
+
+        self.importance_boosts.append(boost)
+        return self.effective_importance
+
+    def clear_expired_boosts(self) -> int:
+        """Remove expired boosts from the list.
+
+        Returns:
+            Number of boosts removed
+        """
+        now = datetime.now(timezone.utc)
+        original_count = len(self.importance_boosts)
+
+        self.importance_boosts = [
+            boost
+            for boost in self.importance_boosts
+            if "expires_at" not in boost or datetime.fromisoformat(boost["expires_at"]) >= now
+        ]
+
+        return original_count - len(self.importance_boosts)
 
     def apply_reinforcement(self, signal: float, use_robust: bool = False) -> float:
         """Apply a reinforcement signal with bounds checking.
@@ -231,13 +327,21 @@ class Memory:
             "access_level": self.access_level,
             "session_id": self.session_id,
             "thread_id": self.thread_id,
+            "parent_memory_id": self.parent_memory_id,
+            "turn_index": self.turn_index,
             "message_index": self.message_index,
+            "message_role": self.message_role,
+            "importance_decay_rate": self.importance_decay_rate,
+            "importance_boosts": self.importance_boosts,
+            "confidence_score": self.confidence_score,
+            "semantic_metadata": self.semantic_metadata,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "reinforcement_score": self.reinforcement_score,
             "access_count": self.access_count,
             "vocabulary_version": self.vocabulary_version,
+            "effective_importance": self.effective_importance,
         }
 
         # Include robust reinforcement if present
@@ -367,6 +471,8 @@ class FLR:
         use_robust_reinforcement: bool = False,
         exploration_factor: float = 0.1,
         decay_half_life_hours: float = 168.0,
+        use_smart_cache: bool = False,
+        cache_warm_threshold: float = 0.7,
     ):
         """Initialize FLR.
 
@@ -379,6 +485,8 @@ class FLR:
             use_robust_reinforcement: Use robust reinforcement with temporal decay
             exploration_factor: Weight for exploration bonus (0-1, only for robust mode)
             decay_half_life_hours: Reinforcement half-life in hours (only for robust mode)
+            use_smart_cache: Use SmartCache for write-through caching with pattern invalidation
+            cache_warm_threshold: Importance threshold for auto-warming cache
         """
         self.storage = storage
         self.cache_size = cache_size
@@ -391,7 +499,20 @@ class FLR:
         self.exploration_factor = exploration_factor
         self.decay_half_life_hours = decay_half_life_hours
 
-        # Hot cache (LRU)
+        # Smart cache configuration
+        self.use_smart_cache = use_smart_cache
+        self._smart_cache: SmartCache | None = None
+        if use_smart_cache:
+            from .cache import SmartCache
+
+            self._smart_cache = SmartCache(
+                storage=storage,
+                max_size=cache_size,
+                ttl_seconds=cache_ttl_seconds,
+                warm_threshold=cache_warm_threshold,
+            )
+
+        # Hot cache (LRU) - legacy cache when smart cache disabled
         self._cache: OrderedDict[str, tuple[Memory, float]] = OrderedDict()
 
         # Active context windows by session
@@ -1230,11 +1351,119 @@ class FLR:
                 "exploration_factor": self.exploration_factor,
                 "decay_half_life_hours": self.decay_half_life_hours,
                 "pending_robust_signals": sum(
-                    len(signals)
-                    for signals in self._robust_reinforcement_buffer.values()
+                    len(signals) for signals in self._robust_reinforcement_buffer.values()
                 ),
             }
         else:
             stats["robust_reinforcement"] = {"enabled": False}
 
         return stats
+
+    # Smart cache methods
+
+    def invalidate_cache(self, memory_id: str) -> bool:
+        """Invalidate a single memory in the cache.
+
+        Args:
+            memory_id: ID of memory to invalidate
+
+        Returns:
+            True if memory was in cache and invalidated
+        """
+        if self._smart_cache is not None:
+            return self._smart_cache.invalidate(memory_id)
+
+        # Legacy cache
+        if memory_id in self._cache:
+            del self._cache[memory_id]
+            return True
+        return False
+
+    def invalidate_cache_pattern(self, pattern: str) -> int:
+        """Invalidate memories matching a pattern.
+
+        Args:
+            pattern: Pattern to match (e.g., "user:123:*", "*:preference:*")
+
+        Returns:
+            Number of memories invalidated
+
+        Raises:
+            RuntimeError: If smart cache is not enabled
+        """
+        if self._smart_cache is None:
+            raise RuntimeError(
+                "Pattern invalidation requires smart cache. "
+                "Initialize FLR with use_smart_cache=True"
+            )
+        return self._smart_cache.invalidate_pattern(pattern)
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Get cache statistics.
+
+        Returns:
+            Dictionary with cache stats (hits, misses, hit_rate, etc.)
+        """
+        if self._smart_cache is not None:
+            return self._smart_cache.get_stats()
+
+        # Legacy cache stats
+        return {
+            "hits": 0,
+            "misses": 0,
+            "hit_rate": 0.0,
+            "size": len(self._cache),
+            "type": "legacy",
+        }
+
+    def clear_cache(self) -> int:
+        """Clear the entire cache.
+
+        Returns:
+            Number of entries cleared
+        """
+        if self._smart_cache is not None:
+            count = len(self._smart_cache._cache)
+            self._smart_cache.clear()
+            return count
+
+        # Legacy cache
+        count = len(self._cache)
+        self._cache.clear()
+        return count
+
+    def warm_cache(self, memory: Memory) -> bool:
+        """Add a memory to the cache (warming).
+
+        Args:
+            memory: Memory to add to cache
+
+        Returns:
+            True if added to cache
+        """
+        if self._smart_cache is not None:
+            self._smart_cache.warm(memory)
+            return True
+
+        # Legacy cache
+        self._cache[memory.memory_id] = (memory, time.time())
+        return True
+
+    def warm_user_cache(self, user_id: str, importance_threshold: float = 0.7) -> int:
+        """Warm cache with high-importance memories for a user.
+
+        Args:
+            user_id: User to warm cache for
+            importance_threshold: Minimum importance to include
+
+        Returns:
+            Number of memories warmed
+
+        Raises:
+            RuntimeError: If smart cache is not enabled
+        """
+        if self._smart_cache is None:
+            raise RuntimeError(
+                "User cache warming requires smart cache. Initialize FLR with use_smart_cache=True"
+            )
+        return self._smart_cache.warm_for_user(user_id, importance_threshold)

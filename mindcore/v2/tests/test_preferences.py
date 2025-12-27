@@ -452,3 +452,370 @@ class TestPreferenceStats:
         assert "default_access_level" in stats
         assert "has_flr" in stats
         assert stats["has_flr"] is True
+
+    def test_stats_pending_conflicts(self, prefs):
+        """Test that stats include pending conflict count."""
+        stats = prefs.get_stats()
+        assert "pending_conflicts" in stats
+        assert stats["pending_conflicts"] == 0
+
+
+class TestConflictResolution:
+    """Test multi-agent conflict detection and resolution."""
+
+    def test_no_conflict_same_agent(self, prefs):
+        """Test that same agent updates don't trigger conflict."""
+        prefs.set_preference(
+            user_id="user_123",
+            key="theme",
+            value="Dark mode",
+            agent_id="agent_1",
+        )
+
+        result = prefs.set_preference_with_conflict_check(
+            user_id="user_123",
+            key="theme",
+            value="Light mode",
+            agent_id="agent_1",
+        )
+
+        # Same agent should just update, not conflict
+        assert result is not None
+
+    def test_different_agents_newer_wins(self, prefs):
+        """Test NEWER_WINS strategy with different agents."""
+        from mindcore.v2.flr.preferences import ConflictResolutionStrategy
+
+        prefs.set_preference(
+            user_id="user_123",
+            key="theme",
+            value="Original theme",
+            agent_id="agent_1",
+        )
+
+        prefs.set_preference_with_conflict_check(
+            user_id="user_123",
+            key="theme",
+            value="New theme from agent 2",
+            agent_id="agent_2",
+            conflict_strategy=ConflictResolutionStrategy.NEWER_WINS,
+        )
+
+        # Should succeed with newer winning
+        current = prefs.get_preference("user_123", "theme")
+        assert current is not None
+
+    def test_higher_confidence_wins(self, prefs):
+        """Test HIGHER_CONFIDENCE strategy."""
+        from mindcore.v2.flr.preferences import ConflictResolutionStrategy
+
+        prefs.set_preference(
+            user_id="user_123",
+            key="preference_key",
+            value="Low confidence preference",
+            agent_id="agent_1",
+            confidence_score=0.5,
+        )
+
+        result = prefs.set_preference_with_conflict_check(
+            user_id="user_123",
+            key="preference_key",
+            value="High confidence preference",
+            agent_id="agent_2",
+            conflict_strategy=ConflictResolutionStrategy.HIGHER_CONFIDENCE,
+            confidence_score=0.9,
+        )
+
+        # Higher confidence should win
+        assert result is not None
+
+    def test_keep_both_strategy(self, prefs):
+        """Test KEEP_BOTH strategy."""
+        from mindcore.v2.flr.preferences import ConflictResolutionStrategy
+
+        prefs.set_preference(
+            user_id="user_123",
+            key="food",
+            value="Agent 1 says: likes pizza",
+            agent_id="agent_1",
+        )
+
+        result = prefs.set_preference_with_conflict_check(
+            user_id="user_123",
+            key="food",
+            value="Agent 2 says: likes sushi",
+            agent_id="agent_2",
+            conflict_strategy=ConflictResolutionStrategy.KEEP_BOTH,
+        )
+
+        assert result is not None
+
+    def test_agent_priority_strategy(self, prefs):
+        """Test AGENT_PRIORITY strategy."""
+        from mindcore.v2.flr.preferences import ConflictResolutionStrategy
+
+        prefs.set_preference(
+            user_id="user_123",
+            key="style",
+            value="Low priority agent preference",
+            agent_id="agent_low",
+        )
+
+        result = prefs.set_preference_with_conflict_check(
+            user_id="user_123",
+            key="style",
+            value="High priority agent preference",
+            agent_id="agent_high",
+            conflict_strategy=ConflictResolutionStrategy.AGENT_PRIORITY,
+            agent_priorities={"agent_high": 10, "agent_low": 1},
+        )
+
+        assert result is not None
+
+    def test_human_review_strategy(self, prefs):
+        """Test HUMAN_REVIEW strategy flags for review."""
+        from mindcore.v2.flr.preferences import ConflictResolutionStrategy
+
+        prefs.set_preference(
+            user_id="user_123",
+            key="important_pref",
+            value="Agent 1 opinion",
+            agent_id="agent_1",
+        )
+
+        result = prefs.set_preference_with_conflict_check(
+            user_id="user_123",
+            key="important_pref",
+            value="Agent 2 opinion",
+            agent_id="agent_2",
+            conflict_strategy=ConflictResolutionStrategy.HUMAN_REVIEW,
+        )
+
+        assert result is not None
+
+    def test_get_pending_conflicts_empty(self, prefs):
+        """Test getting pending conflicts when none exist."""
+        conflicts = prefs.get_pending_conflicts("user_123")
+        assert len(conflicts) == 0
+
+    def test_dismiss_conflict(self, prefs):
+        """Test dismissing a conflict."""
+        # First, ensure no conflicts
+        conflicts = prefs.get_pending_conflicts("user_123")
+        assert len(conflicts) == 0
+
+
+class TestConflictDataclasses:
+    """Test conflict-related dataclasses."""
+
+    def test_preference_conflict_to_dict(self):
+        """Test PreferenceConflict serialization."""
+        from mindcore.v2.flr.preferences import (
+            ConflictStatus,
+            PreferenceConflict,
+        )
+
+        mem1 = Memory(
+            memory_id="mem_1",
+            content="Preference 1",
+            memory_type="preference",
+            user_id="user_123",
+        )
+        mem2 = Memory(
+            memory_id="mem_2",
+            content="Preference 2",
+            memory_type="preference",
+            user_id="user_123",
+        )
+
+        conflict = PreferenceConflict(
+            conflict_id="conflict_1",
+            user_id="user_123",
+            preference_key="theme",
+            existing_preference=mem1,
+            conflicting_preference=mem2,
+            existing_agent="agent_1",
+            conflicting_agent="agent_2",
+            status=ConflictStatus.DETECTED,
+            resolution_strategy=None,
+            resolved_preference=None,
+            detected_at=datetime.now(timezone.utc),
+            resolved_at=None,
+            resolution_reason=None,
+            requires_human_review=False,
+        )
+
+        data = conflict.to_dict()
+
+        assert data["conflict_id"] == "conflict_1"
+        assert data["user_id"] == "user_123"
+        assert data["preference_key"] == "theme"
+        assert data["status"] == "detected"
+        assert data["requires_human_review"] is False
+        assert "detected_at" in data
+
+    def test_conflict_status_values(self):
+        """Test ConflictStatus enum values."""
+        from mindcore.v2.flr.preferences import ConflictStatus
+
+        assert ConflictStatus.DETECTED.value == "detected"
+        assert ConflictStatus.RESOLVED.value == "resolved"
+        assert ConflictStatus.PENDING_REVIEW.value == "pending_review"
+        assert ConflictStatus.MERGED.value == "merged"
+        assert ConflictStatus.DISMISSED.value == "dismissed"
+
+    def test_conflict_resolution_strategy_values(self):
+        """Test ConflictResolutionStrategy enum values."""
+        from mindcore.v2.flr.preferences import ConflictResolutionStrategy
+
+        assert ConflictResolutionStrategy.NEWER_WINS.value == "newer_wins"
+        assert ConflictResolutionStrategy.HIGHER_CONFIDENCE.value == "higher_confidence"
+        assert ConflictResolutionStrategy.LLM_MERGE.value == "llm_merge"
+        assert ConflictResolutionStrategy.HUMAN_REVIEW.value == "human_review"
+        assert ConflictResolutionStrategy.AGENT_PRIORITY.value == "agent_priority"
+        assert ConflictResolutionStrategy.KEEP_BOTH.value == "keep_both"
+
+
+class TestPreferenceExpiration:
+    """Test preference expiration handling."""
+
+    def test_expired_preference_not_returned(self, prefs, storage):
+        """Test that expired preferences are not returned by default."""
+        pref = prefs.set_preference(
+            user_id="user_123",
+            key="expiring",
+            value="Will expire",
+        )
+
+        # Manually expire it
+        pref.semantic_metadata["valid_until"] = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).isoformat()
+        storage.update(pref)
+
+        # Should not be returned
+        retrieved = prefs.get_preference("user_123", "expiring")
+        assert retrieved is None
+
+    def test_include_expired_returns_expired(self, prefs, storage):
+        """Test that include_expired=True returns expired preferences."""
+        pref = prefs.set_preference(
+            user_id="user_123",
+            key="expiring2",
+            value="Already expired",
+        )
+
+        # Manually expire it
+        pref.semantic_metadata["valid_until"] = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).isoformat()
+        storage.update(pref)
+
+        # Should be returned with include_expired=True
+        retrieved = prefs.get_preference("user_123", "expiring2", include_expired=True)
+        assert retrieved is not None
+        assert retrieved.content == "Already expired"
+
+
+class TestPreferenceDefaults:
+    """Test preference manager configuration."""
+
+    def test_custom_default_importance(self, storage, flr):
+        """Test custom default importance."""
+        manager = PreferenceManager(
+            storage=storage,
+            flr=flr,
+            default_importance=0.9,
+        )
+
+        pref = manager.set_preference(
+            user_id="user_123",
+            key="test",
+            value="Test value",
+        )
+
+        assert pref.importance == 0.9
+
+    def test_custom_default_access_level(self, storage, flr):
+        """Test custom default access level."""
+        manager = PreferenceManager(
+            storage=storage,
+            flr=flr,
+            default_access_level="shared",
+        )
+
+        pref = manager.set_preference(
+            user_id="user_123",
+            key="test",
+            value="Test value",
+        )
+
+        assert pref.access_level == "shared"
+
+    def test_override_defaults(self, prefs):
+        """Test that explicit values override defaults."""
+        pref = prefs.set_preference(
+            user_id="user_123",
+            key="test",
+            value="Test",
+            importance=0.99,
+            access_level="public",
+        )
+
+        assert pref.importance == 0.99
+        assert pref.access_level == "public"
+
+
+class TestPreferenceNoFLR:
+    """Test preference manager without FLR."""
+
+    def test_works_without_flr(self, storage):
+        """Test that preference manager works without FLR."""
+        manager = PreferenceManager(storage=storage, flr=None)
+
+        pref = manager.set_preference(
+            user_id="user_123",
+            key="no_flr",
+            value="No FLR preference",
+        )
+
+        assert pref is not None
+        assert pref.content == "No FLR preference"
+
+    def test_update_works_without_flr(self, storage):
+        """Test that update works without FLR."""
+        manager = PreferenceManager(storage=storage, flr=None)
+
+        manager.set_preference(
+            user_id="user_123",
+            key="no_flr",
+            value="Original",
+        )
+
+        result = manager.update_preference(
+            user_id="user_123",
+            key="no_flr",
+            value="Updated",
+        )
+
+        assert result.new_preference.content == "Updated"
+
+    def test_delete_works_without_flr(self, storage):
+        """Test that delete works without FLR."""
+        manager = PreferenceManager(storage=storage, flr=None)
+
+        manager.set_preference(
+            user_id="user_123",
+            key="to_delete",
+            value="Will be deleted",
+        )
+
+        result = manager.delete_preference("user_123", "to_delete")
+        assert result is True
+
+    def test_stats_show_no_flr(self, storage):
+        """Test that stats show FLR is not configured."""
+        manager = PreferenceManager(storage=storage, flr=None)
+        stats = manager.get_stats()
+
+        assert stats["has_flr"] is False

@@ -1,17 +1,18 @@
 """Tests for SVL metadata extraction fallback strategies."""
 
 import json
-import pytest
 from datetime import datetime, timezone
 
+import pytest
+
 from mindcore.v2.svl.extraction_fallback import (
-    ExtractionStrategy,
+    BatchItem,
+    ExtractionAttempt,
     ExtractionFailureType,
     ExtractionResult,
-    ExtractionAttempt,
-    RuleBasedExtractor,
+    ExtractionStrategy,
     ResilientMetadataExtractor,
-    BatchItem,
+    RuleBasedExtractor,
 )
 
 
@@ -78,9 +79,7 @@ class TestRuleBasedExtractor:
         """Test entity extraction."""
         extractor = RuleBasedExtractor(svl=None)
 
-        result = extractor.extract(
-            "Contact me at john.doe@example.com about order #ABC123"
-        )
+        result = extractor.extract("Contact me at john.doe@example.com about order #ABC123")
         assert "john.doe@example.com" in result["entities"]
         assert "#ABC123" in result["entities"]
 
@@ -106,14 +105,16 @@ class TestResilientMetadataExtractor:
 
         # Mock LLM that returns valid JSON
         def mock_llm(prompt: str) -> str:
-            return json.dumps({
-                "topics": ["billing"],
-                "categories": ["inquiry"],
-                "message_type": "query",
-                "message_intent": "ask_question",
-                "importance": 0.5,
-                "sentiment": "neutral",
-            })
+            return json.dumps(
+                {
+                    "topics": ["billing"],
+                    "categories": ["inquiry"],
+                    "message_type": "query",
+                    "message_intent": "ask_question",
+                    "importance": 0.5,
+                    "sentiment": "neutral",
+                }
+            )
 
         result = extractor.extract_with_fallback(
             user_message="What's my balance?",
@@ -139,17 +140,18 @@ class TestResilientMetadataExtractor:
 
             if call_count == 1:
                 return "invalid json {"
-            elif call_count == 2:
+            if call_count == 2:
                 return "still invalid"
-            else:
-                return json.dumps({
+            return json.dumps(
+                {
                     "topics": ["billing"],
                     "categories": ["inquiry"],
                     "message_type": "query",
                     "message_intent": "ask_question",
                     "importance": 0.5,
                     "sentiment": "neutral",
-                })
+                }
+            )
 
         result = extractor.extract_with_fallback(
             user_message="What's my balance?",
@@ -166,7 +168,7 @@ class TestResilientMetadataExtractor:
 
         # Mock LLM that always fails
         def mock_llm(prompt: str) -> str:
-            raise Exception("LLM unavailable")
+            raise RuntimeError("LLM unavailable")
 
         result = extractor.extract_with_fallback(
             user_message="I want a refund",
@@ -190,7 +192,7 @@ class TestResilientMetadataExtractor:
         )
 
         def mock_llm(prompt: str) -> str:
-            raise Exception("Always fails")
+            raise RuntimeError("Always fails")
 
         result = extractor.extract_with_fallback(
             user_message="Test message",
@@ -225,19 +227,21 @@ class TestResilientMetadataExtractor:
 
             # Primary fails
             if "PREVIOUS ATTEMPT" not in prompt and "Context" not in prompt:
-                raise Exception("Primary fails")
+                raise RuntimeError("Primary fails")
 
             # Batch context succeeds
             if "Context" in prompt:
-                return json.dumps({
-                    "topics": ["orders"],
-                    "categories": ["inquiry"],
-                    "message_type": "query",
-                    "importance": 0.6,
-                    "sentiment": "neutral",
-                })
+                return json.dumps(
+                    {
+                        "topics": ["orders"],
+                        "categories": ["inquiry"],
+                        "message_type": "query",
+                        "importance": 0.6,
+                        "sentiment": "neutral",
+                    }
+                )
 
-            raise Exception("Other strategies fail")
+            raise RuntimeError("Other strategies fail")
 
         result = extractor.extract_with_fallback(
             user_message="What about the other one?",
@@ -259,15 +263,17 @@ class TestResilientMetadataExtractor:
 
         # Successful extraction
         def success_llm(prompt: str) -> str:
-            return json.dumps({
-                "topics": ["test"],
-                "categories": ["test"],
-                "message_type": "statement",
-                "importance": 0.5,
-                "sentiment": "neutral",
-            })
+            return json.dumps(
+                {
+                    "topics": ["test"],
+                    "categories": ["test"],
+                    "message_type": "statement",
+                    "importance": 0.5,
+                    "sentiment": "neutral",
+                }
+            )
 
-        result = extractor.extract_with_fallback(
+        extractor.extract_with_fallback(
             user_message="Test",
             llm_call=success_llm,
         )
@@ -289,7 +295,7 @@ class TestBatchQueue:
         )
 
         def fail_llm(prompt: str) -> str:
-            raise Exception("Fail")
+            raise RuntimeError("Fail")
 
         result = extractor.extract_with_fallback(
             user_message="Test message",
@@ -312,29 +318,35 @@ class TestBatchQueue:
         )
 
         # Queue some items manually
-        extractor._batch_queue.append(BatchItem(
-            message_id="msg_1",
-            user_message="First message",
-            agent_response=None,
-            session_id="session_1",
-            user_id="user_1",
-        ))
-        extractor._batch_queue.append(BatchItem(
-            message_id="msg_2",
-            user_message="Second message",
-            agent_response=None,
-            session_id="session_1",
-            user_id="user_1",
-        ))
+        extractor._batch_queue.append(
+            BatchItem(
+                message_id="msg_1",
+                user_message="First message",
+                agent_response=None,
+                session_id="session_1",
+                user_id="user_1",
+            )
+        )
+        extractor._batch_queue.append(
+            BatchItem(
+                message_id="msg_2",
+                user_message="Second message",
+                agent_response=None,
+                session_id="session_1",
+                user_id="user_1",
+            )
+        )
 
         def batch_llm(prompt: str) -> str:
-            return json.dumps({
-                "topics": ["batch_processed"],
-                "categories": ["test"],
-                "message_type": "statement",
-                "importance": 0.5,
-                "sentiment": "neutral",
-            })
+            return json.dumps(
+                {
+                    "topics": ["batch_processed"],
+                    "categories": ["test"],
+                    "message_type": "statement",
+                    "importance": 0.5,
+                    "sentiment": "neutral",
+                }
+            )
 
         results = extractor.process_batch_queue(batch_llm)
 
