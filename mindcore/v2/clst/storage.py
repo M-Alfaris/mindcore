@@ -865,6 +865,7 @@ class CLST:
     def process_signals(
         self,
         signals: list[dict[str, Any]],
+        signal_store: Any | None = None,
     ) -> SignalProcessingResult:
         """Process reinforcement signals from SimpleFLR.
 
@@ -875,6 +876,11 @@ class CLST:
         - Context similarity adjustments
         - Trend tracking
 
+        Optionally records signals to SignalStore for:
+        - Audit trail
+        - Trend analysis
+        - Signal source/type analytics
+
         Args:
             signals: List of signals from SimpleFLR.get_pending_signals()
                 Each signal contains:
@@ -884,16 +890,22 @@ class CLST:
                 - source: str (user, llm, automated)
                 - context: dict
                 - timestamp: str
+            signal_store: Optional SignalStore for persistent history
 
         Returns:
             SignalProcessingResult with processing details
 
         Example:
+            from mindcore.v2.clst import SignalStore
+
+            # With signal history
+            signal_store = SignalStore(db_path="signals.db")
+
             # Get signals from SimpleFLR
             pending = simple_flr.get_pending_signals()
 
-            # Process in CLST with complex scoring
-            result = clst.process_signals(pending)
+            # Process in CLST with complex scoring and history
+            result = clst.process_signals(pending, signal_store=signal_store)
 
             # Clear processed signals
             simple_flr.clear_pending_signals()
@@ -936,6 +948,26 @@ class CLST:
 
                 # Calculate final weighted signal
                 weighted_signal = signal_value * source_weight * type_weight * context_similarity
+
+                # Record to signal store for audit trail (if provided)
+                if signal_store is not None:
+                    try:
+                        signal_store.record_signal(
+                            memory_id=memory_id,
+                            signal_type=signal_type,
+                            signal_value=signal_value,
+                            source=source,
+                            source_weight=source_weight,
+                            type_weight=type_weight,
+                            context_similarity=context_similarity,
+                            session_id=signal.get("session_id") or context.get("session_id"),
+                            query_id=signal.get("query_id") or context.get("query_id"),
+                            user_id=signal.get("user_id") or context.get("user_id"),
+                            context=context,
+                        )
+                    except Exception as e:
+                        # Don't fail processing if history recording fails
+                        errors.append(f"Signal history recording failed: {e}")
 
                 # Apply to memory's reinforcement score
                 new_score = memory.apply_reinforcement(weighted_signal, use_robust=False)

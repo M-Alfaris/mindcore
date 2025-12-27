@@ -297,6 +297,17 @@ class SVLPipeline:
             vocabulary=self._vocabulary,
         )
 
+        # Initialize session manager for segmentation
+        from mindcore.v2.clst import SessionManager, SignalStore, SegmentationPolicy
+
+        self._session_manager = SessionManager(
+            storage=self._storage,
+            policy=SegmentationPolicy(),
+        )
+
+        # Initialize signal store for history tracking
+        self._signal_store: SignalStore | None = None
+
         # Initialize metadata extractor for context decisions
         self._metadata_extractor = MetadataExtractor(svl=self._vocabulary)
 
@@ -314,6 +325,7 @@ class SVLPipeline:
             "stores": 0,
             "store_failures": 0,
             "signals_processed": 0,
+            "session_segments_created": 0,
         }
 
     # =========================================================================
@@ -368,7 +380,36 @@ class SVLPipeline:
             from mindcore.v2.flr import Memory
 
             memory = Memory.from_dict(gate_result.memory)
+
+            # Check for session segmentation before storing
+            actual_session_id = session_id
+            if session_id and self._session_manager:
+                segment_decision = self._session_manager.should_segment(
+                    current_session_id=session_id,
+                    new_memory=memory,
+                    user_id=user_id,
+                )
+
+                if segment_decision.should_segment:
+                    # Create new segment
+                    new_segment = self._session_manager.create_segment(
+                        parent_session_id=session_id,
+                        user_id=user_id,
+                        reason=segment_decision.reason,
+                        first_memory=memory,
+                    )
+                    actual_session_id = new_segment.segment_id
+                    memory.session_id = actual_session_id
+                    self._stats["session_segments_created"] += 1
+                else:
+                    # Update session state with new memory
+                    self._session_manager.update_session_state(session_id, memory)
+
             memory_id = self._storage.store(memory)
+
+            # Cache the memory in SimpleFLR for hot path
+            if self._simple_flr:
+                self._simple_flr.cache_memory(memory.to_dict())
 
             return StoreResult(
                 success=True,
@@ -672,12 +713,15 @@ class SVLPipeline:
         result.memories = validated_memories
         result.gate_time_ms = (time.time() - gate_start) * 1000
 
-        # Step 4: Process pending signals in CLST
+        # Step 4: Process pending signals in CLST (with optional history)
         signal_start = time.time()
         pending_signals = self._simple_flr.get_pending_signals()
         if pending_signals:
             try:
-                signal_result = self._clst.process_signals(pending_signals)
+                signal_result = self._clst.process_signals(
+                    pending_signals,
+                    signal_store=self._signal_store,
+                )
                 result.signals_processed = signal_result.processed
                 self._stats["signals_processed"] += signal_result.processed
                 self._simple_flr.clear_pending_signals()
@@ -968,6 +1012,61 @@ class SVLPipeline:
     # STATISTICS & MANAGEMENT
     # =========================================================================
 
+    def enable_signal_history(
+        self,
+        db_path: str = "signal_history.db",
+        retention_days: int = 90,
+    ) -> None:
+        """Enable signal history tracking.
+
+        Args:
+            db_path: Path to SQLite database for signal history
+            retention_days: Days to retain signal history
+        """
+        from mindcore.v2.clst import SignalStore
+
+        self._signal_store = SignalStore(
+            db_path=db_path,
+            retention_days=retention_days,
+        )
+
+    def configure_session_segmentation(
+        self,
+        inactivity_gap_minutes: float = 30.0,
+        topic_divergence_threshold: float = 0.5,
+        max_session_memories: int = 500,
+    ) -> None:
+        """Configure session segmentation policy.
+
+        Args:
+            inactivity_gap_minutes: Minutes of inactivity before new session
+            topic_divergence_threshold: Topic change threshold (0-1)
+            max_session_memories: Maximum memories per session
+        """
+        from mindcore.v2.clst import SegmentationPolicy
+
+        self._session_manager._policy = SegmentationPolicy(
+            inactivity_gap_minutes=inactivity_gap_minutes,
+            topic_divergence_threshold=topic_divergence_threshold,
+            max_session_memories=max_session_memories,
+        )
+
+    def get_session_coherence(
+        self,
+        session_id: str,
+        user_id: str,
+    ) -> float:
+        """Get coherence score for a session.
+
+        Args:
+            session_id: Session to analyze
+            user_id: User ID
+
+        Returns:
+            Coherence score (0-1, higher is more coherent)
+        """
+        return self._session_manager.calculate_coherence(session_id, user_id)
+
     def get_stats(self) -> dict[str, Any]:
         """Get pipeline statistics."""
         total_queries = self._stats["total_queries"]
@@ -990,6 +1089,8 @@ class SVLPipeline:
                 else 0
             ),
             "signals_processed": self._stats["signals_processed"],
+            "session_segments_created": self._stats["session_segments_created"],
+            "signal_history_enabled": self._signal_store is not None,
             "gate_stats": self._gate.get_stats(),
             "clst_stats": self._clst.get_stats(),
         }
@@ -1014,15 +1115,22 @@ class SVLPipeline:
             "stores": 0,
             "store_failures": 0,
             "signals_processed": 0,
+            "session_segments_created": 0,
         }
         self._gate.reset_stats()
         if self._simple_flr:
             self._simple_flr.reset_stats()
+        if self._session_manager:
+            self._session_manager.clear_cache()
 
     def close(self) -> None:
         """Close all connections."""
         if self._flr:
             self._flr.flush_reinforcements()
+        if self._signal_store:
+            self._signal_store.close()
+        if self._session_manager:
+            self._session_manager.clear_cache()
         self._storage.close()
 
     def __enter__(self):
