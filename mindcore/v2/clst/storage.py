@@ -170,11 +170,30 @@ class CLST:
 
         Args:
             memory: Memory to store
-            validate: Validate against vocabulary
+            validate: Validate against vocabulary (DEPRECATED - always True)
+                      For mandatory validation, use GatedCLST from mindcore.v2.svl
 
         Returns:
             Memory ID
+
+        Note:
+            The validate parameter is deprecated. For production use with
+            mandatory SVL Gate validation, use GatedCLST:
+
+                from mindcore.v2.svl import GatedCLST, SVLGate
+                gate = SVLGate(svl=svl)
+                clst = GatedCLST(storage=storage, gate=gate)
         """
+        import warnings
+
+        if not validate:
+            warnings.warn(
+                "validate=False is deprecated and will be removed. "
+                "Use GatedCLST for mandatory SVL validation.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # Validate against vocabulary if provided
         if validate and self.vocabulary:
             is_valid, errors = self.vocabulary.validate_memory(memory.to_dict())
