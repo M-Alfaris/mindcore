@@ -569,6 +569,18 @@ class SharedVocabularyLayer:
         """Get all terms with source mappings."""
         return self._sources.get_mapped_terms()
 
+    def get_source_registry(self) -> SourceRegistry:
+        """Get the underlying source registry for advanced configuration.
+
+        Returns:
+            The SourceRegistry instance
+
+        Example:
+            registry = svl.get_source_registry()
+            registry.map("orders", TableSource(...))
+        """
+        return self._sources
+
     def fetch_for_topics(
         self,
         topics: list[str],

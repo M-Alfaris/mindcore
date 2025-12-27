@@ -202,6 +202,29 @@ from .sources import (
     create_source,
 )
 
+# Defaults - Auto-configuration with sensible defaults
+from .defaults import (
+    # Configuration
+    DefaultSourceConfig,
+    DEFAULT_CONFIG,
+    NamingConvention,
+    ParamPattern,
+    # Smart sources
+    SmartTableSource,
+    # Auto-configuration
+    create_smart_sources,
+    auto_configure_registry,
+    discover_tables,
+    # Presets
+    ECOMMERCE_TOPICS,
+    CRM_TOPICS,
+    SUPPORT_TOPICS,
+    get_preset_topics,
+    create_preset_sources,
+    # Quick setup
+    quick_setup_database,
+)
+
 
 __all__ = [
     "CUSTOMER_SERVICE_DOMAIN",
@@ -312,4 +335,19 @@ __all__ = [
     "load_sources_from_yaml",
     "merge_domains",
     "source",
+    # Defaults - Auto-configuration
+    "DefaultSourceConfig",
+    "DEFAULT_CONFIG",
+    "NamingConvention",
+    "ParamPattern",
+    "SmartTableSource",
+    "create_smart_sources",
+    "auto_configure_registry",
+    "discover_tables",
+    "ECOMMERCE_TOPICS",
+    "CRM_TOPICS",
+    "SUPPORT_TOPICS",
+    "get_preset_topics",
+    "create_preset_sources",
+    "quick_setup_database",
 ]

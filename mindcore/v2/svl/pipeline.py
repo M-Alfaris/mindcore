@@ -1067,6 +1067,156 @@ class SVLPipeline:
         """
         return self._session_manager.calculate_coherence(session_id, user_id)
 
+    # =========================================================================
+    # EXTERNAL SOURCE AUTO-CONFIGURATION
+    # =========================================================================
+
+    def auto_configure_database(
+        self,
+        connection_string: str,
+        topics: list[str] | None = None,
+        preset: str | None = None,
+        auto_discover: bool = False,
+        overrides: dict[str, dict[str, Any]] | None = None,
+    ) -> int:
+        """Auto-configure database tables as external sources with sensible defaults.
+
+        This is the simplest way to connect topics to database tables:
+        - Topic "orders" automatically maps to table "orders"
+        - Queries filter by user_id by default
+        - Caching and timeouts are pre-configured
+
+        Args:
+            connection_string: Database connection string
+                Examples: "postgresql://user:pass@host/db", "sqlite:///data.db"
+            topics: List of topic names (maps to same-named tables)
+            preset: Use a preset domain ("ecommerce", "crm", "support")
+            auto_discover: Auto-discover tables from database schema
+            overrides: Per-topic customization (table name, query, params)
+
+        Returns:
+            Number of sources configured
+
+        Example - Simple (maps topics to same-named tables):
+            pipeline.auto_configure_database(
+                "postgresql://localhost/mydb",
+                topics=["orders", "products", "users"],
+            )
+            # Now queries for "orders" topic auto-fetch from orders table
+
+        Example - With preset (predefined topic-to-table mappings):
+            pipeline.auto_configure_database(
+                "postgresql://localhost/mydb",
+                preset="ecommerce",  # Configures: orders, products, customers, cart, etc.
+            )
+
+        Example - With overrides (custom table names or queries):
+            pipeline.auto_configure_database(
+                "postgresql://localhost/mydb",
+                topics=["orders", "products"],
+                overrides={
+                    "orders": {
+                        "table": "customer_orders",  # Different table name
+                        "query_template": "SELECT * FROM customer_orders WHERE user_id = :user_id AND status = 'active'",
+                    },
+                },
+            )
+
+        Example - Auto-discover (scans database for tables):
+            pipeline.auto_configure_database(
+                "postgresql://localhost/mydb",
+                auto_discover=True,  # Auto-discovers all tables
+            )
+        """
+        from .defaults import (
+            auto_configure_registry,
+            create_preset_sources,
+            discover_tables,
+            create_smart_sources,
+        )
+
+        registry = self._vocabulary.get_source_registry()
+        count = 0
+
+        if preset:
+            # Use preset configuration
+            sources = create_preset_sources(connection_string, preset)
+            for topic, source in sources:
+                registry.map(term=topic, source=source, term_type="topic")
+            count = len(sources)
+            logger.info(f"Configured {count} sources from '{preset}' preset")
+
+        elif auto_discover:
+            # Discover tables from database
+            tables = discover_tables(connection_string)
+            sources = create_smart_sources(connection_string, tables, overrides=overrides)
+            for topic, source in sources:
+                registry.map(term=topic, source=source, term_type="topic")
+            count = len(sources)
+            logger.info(f"Auto-discovered and configured {count} sources")
+
+        elif topics:
+            # Explicit topics with convention-over-configuration
+            sources = create_smart_sources(
+                connection_string, topics, overrides=overrides
+            )
+            for topic, source in sources:
+                registry.map(term=topic, source=source, term_type="topic")
+            count = len(sources)
+            logger.info(f"Configured {count} sources for topics")
+
+        else:
+            raise ValueError(
+                "Must provide one of: topics, preset, or auto_discover=True"
+            )
+
+        return count
+
+    def auto_discover_tables(
+        self,
+        connection_string: str,
+        schema: str = "public",
+        exclude_patterns: list[str] | None = None,
+    ) -> list[str]:
+        """Discover available tables from database schema.
+
+        Use this to see what tables are available before auto-configuring.
+
+        Args:
+            connection_string: Database connection string
+            schema: Schema to query (default: public)
+            exclude_patterns: Patterns to exclude (e.g., ["_backup", "tmp_"])
+
+        Returns:
+            List of table names
+
+        Example:
+            tables = pipeline.auto_discover_tables("postgresql://localhost/mydb")
+            print(tables)  # ["orders", "products", "users", ...]
+
+            # Configure only the ones you need
+            pipeline.auto_configure_database(
+                "postgresql://localhost/mydb",
+                topics=["orders", "products"],
+            )
+        """
+        from .defaults import discover_tables
+
+        return discover_tables(connection_string, schema, exclude_patterns)
+
+    def get_configured_sources(self) -> dict[str, Any]:
+        """Get information about configured external sources.
+
+        Returns:
+            Dict with source statistics and mapped terms
+        """
+        registry = self._vocabulary.get_source_registry()
+        return registry.get_stats()
+
+    # =========================================================================
+    # STATISTICS & MANAGEMENT
+    # =========================================================================
+
     def get_stats(self) -> dict[str, Any]:
         """Get pipeline statistics."""
         total_queries = self._stats["total_queries"]
