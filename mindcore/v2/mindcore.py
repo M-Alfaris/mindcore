@@ -3,53 +3,56 @@
 A modern memory layer that provides:
 - FLR (Fast Learning Recall) for inference-time memory access
 - CLST (Cognitive Long-term Storage Transfer) for durable storage
+- SVL (Semantic Validation Layer) as mandatory kernel for all data flows
 - Structured output integration with LLM JSON schemas
 - Multi-agent support with access control
 - MCP and REST API interfaces
 
-IMPORTANT: Direct Structured Output Required
+RECOMMENDED: Use SVLPipeline for Production
 -------------------------------------------
-Your AI agent must output structured metadata directly. Mindcore does NOT
-extract memories from unstructured responses. Configure your LLM to return:
+For production use with mandatory SVL validation, hot-path optimization,
+and external data source integration, use the SVLPipeline:
 
-{
-    "response": "Your response to the user...",
-    "memories_to_store": [
-        {
-            "content": "Memory content",
-            "memory_type": "preference|episodic|semantic|...",
-            "topics": ["topic1", "topic2"],
-            "importance": 0.8
-        }
-    ]
-}
+    from mindcore.v2.svl import SVLPipeline
 
-Then store directly using mindcore.store() - no extraction layer needed.
+    # Create pipeline with full SVL enforcement
+    pipeline = SVLPipeline(
+        storage="sqlite:///memory.db",
+        llm_call=my_llm_function,
+        enable_hot_path=True,
+        enable_external_sources=True,
+    )
 
-Example:
-    from mindcore.v2 import Mindcore
-
-    # Initialize
-    memory = Mindcore(storage="sqlite:///memory.db")
-
-    # Store memory directly from LLM structured output
-    for mem in llm_response["memories_to_store"]:
-        memory.store(
-            content=mem["content"],
-            memory_type=mem["memory_type"],
-            user_id="user123",
-            topics=mem.get("topics", []),
-            importance=mem.get("importance", 0.5),
-        )
-
-    # Recall relevant memories
-    result = memory.recall(
-        query="How should I contact the user?",
+    # Store with mandatory validation + canonicalization
+    result = pipeline.store(
+        llm_output={"content": "...", "memory_type": "preference"},
         user_id="user123",
     )
 
-    # Get JSON schema for LLM structured output
-    schema = memory.get_json_schema()
+    # Query with automatic hot-path optimization
+    result = pipeline.query(
+        query="What are my preferences?",
+        user_id="user123",
+    )
+
+The SVLPipeline ensures:
+1. All data passes through SVL Gate (no bypass paths)
+2. Automatic canonicalization of LLM outputs
+3. Hot-path optimization (skip CLST for simple queries)
+4. External data source integration
+
+Legacy Usage (Direct Mindcore)
+------------------------------
+For backward compatibility, you can still use Mindcore directly:
+
+    from mindcore.v2 import Mindcore
+
+    memory = Mindcore(storage="sqlite:///memory.db")
+    memory.store("User likes Python", "preference", "user123", ["programming"])
+    result = memory.recall("programming preferences", "user123")
+
+Note: Direct usage bypasses SVL Gate validation. For production systems
+with strict data governance requirements, use SVLPipeline instead.
 """
 
 from __future__ import annotations
@@ -716,3 +719,65 @@ class Mindcore:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         return False
+
+
+# =============================================================================
+# Factory Functions for SVL-First Architecture
+# =============================================================================
+
+
+def create_pipeline(
+    storage: str = "sqlite:///mindcore.db",
+    llm_call: Any = None,
+    enable_hot_path: bool = True,
+    enable_external_sources: bool = True,
+    vocabulary: Any = None,
+) -> Any:
+    """Create an SVL Pipeline with full gate enforcement.
+
+    This is the RECOMMENDED way to create a MindCore instance for production.
+    The pipeline ensures:
+    1. All data passes through SVL Gate (no bypass paths)
+    2. Automatic canonicalization of LLM outputs
+    3. Hot-path optimization (skip CLST for simple queries)
+    4. External data source integration
+
+    Args:
+        storage: Storage connection string or backend
+        llm_call: LLM function for context decisions and retries
+        enable_hot_path: Enable hot-path optimization
+        enable_external_sources: Enable external data source fetching
+        vocabulary: Optional SharedVocabularyLayer
+
+    Returns:
+        SVLPipeline instance
+
+    Example:
+        from mindcore.v2 import create_pipeline
+
+        pipeline = create_pipeline(
+            storage="sqlite:///memory.db",
+            llm_call=my_llm_function,
+        )
+
+        # Store with mandatory validation
+        result = pipeline.store(
+            llm_output={"content": "...", "memory_type": "preference"},
+            user_id="user123",
+        )
+
+        # Query with hot-path optimization
+        result = pipeline.query(
+            query="What are my preferences?",
+            user_id="user123",
+        )
+    """
+    from .svl import SVLPipeline
+
+    return SVLPipeline(
+        storage=storage,
+        vocabulary=vocabulary,
+        llm_call=llm_call,
+        enable_hot_path=enable_hot_path,
+        enable_external_sources=enable_external_sources,
+    )

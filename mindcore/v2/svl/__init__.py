@@ -72,6 +72,34 @@ from .extraction_fallback import (
     RuleBasedExtractor,
 )
 
+# SVL Gate - The Kernel (mandatory choke point)
+from .gate import (
+    GateDecision,
+    GatePolicy,
+    GateResult,
+    PolicyViolation,
+    RetryConfig,
+    SVLGate,
+    ValidationError,
+)
+
+# Gated Storage - Mandatory gate enforcement wrappers
+from .gated_storage import (
+    GatedCLST,
+    GatedFLR,
+    GatedMindcore,
+    RecallResult as GatedRecallResult,
+    StoreResult,
+)
+
+# SVL Pipeline - Complete orchestrated data flow
+from .pipeline import (
+    QueryResult,
+    SVLPipeline,
+    StoreResult as PipelineStoreResult,
+    create_pipeline,
+)
+
 # Layer - Main interface (unified vocabulary)
 from .layer import (
     DEFAULT_SVL,
@@ -191,6 +219,25 @@ __all__ = [
     "AsyncSourceExecutor",
     "BatchItem",
     "ClaudeConfig",
+    # SVL Gate exports
+    "GateDecision",
+    "GatePolicy",
+    "GateResult",
+    "PolicyViolation",
+    "RetryConfig",
+    "SVLGate",
+    "ValidationError",
+    # Gated Storage exports
+    "GatedCLST",
+    "GatedFLR",
+    "GatedMindcore",
+    "GatedRecallResult",
+    "StoreResult",
+    # SVL Pipeline exports
+    "QueryResult",
+    "SVLPipeline",
+    "PipelineStoreResult",
+    "create_pipeline",
     "Confidence",
     "ContextDecision",
     "ContextInjector",
