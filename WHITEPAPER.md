@@ -57,6 +57,7 @@ The framework achieves <160ms context assembly without embeddings through hierar
 15. [Conclusion](#15-conclusion)
 
 **Appendices**
+
 - [Appendix A: API Quick Reference](#appendix-a-api-quick-reference)
 - [Appendix B: Configuration Reference](#appendix-b-configuration-reference)
 - [Appendix C: Glossary](#appendix-c-glossary)
@@ -246,6 +247,7 @@ SignalSource.AUTOMATED_METRIC  # 0.3 - System metrics
 ```
 
 **Temporal Decay Formula:**
+
 ```
 effective_score = base_score × e^(-λt) + exploration_bonus
 
@@ -283,6 +285,7 @@ SessionAggregate:
 ```
 
 **Weight Calculation Formula:**
+
 ```
 topic_weight = (frequency × 0.4) + (avg_importance × 0.4) + (recency × 0.2)
 ```
@@ -381,7 +384,7 @@ TriggerCondition.CONDITIONAL # Based on context conditions
 When a user asks "Where is my order?", the SVL detects the "orders" topic and automatically fetches relevant order data:
 
 ```python
-from mindcore.v2.svl.sources import TableSource, TriggerCondition
+from mindcore.svl.sources import TableSource, TriggerCondition
 
 # Map "orders" topic to database table
 svl.map_source("orders", TableSource(
@@ -413,7 +416,7 @@ context = gateway.build_context(
 ##### Example: Billing from Internal API
 
 ```python
-from mindcore.v2.svl.sources import APISource
+from mindcore.svl.sources import APISource
 
 # Map "billing" category to billing microservice
 svl.map_source("billing", APISource(
@@ -459,7 +462,7 @@ svl.map_source("refunds", TableSource(
 ##### Example: MCP Server Integration
 
 ```python
-from mindcore.v2.svl.sources import MCPSource
+from mindcore.svl.sources import MCPSource
 
 # Map "web_search" to Brave Search MCP server
 svl.map_source("web_search", MCPSource(
@@ -487,8 +490,8 @@ svl.map_source("file_context", MCPSource(
 For sources requiring custom logic, use the `@source` decorator:
 
 ```python
-from mindcore.v2.svl.registry import source
-from mindcore.v2.svl import TriggerCondition
+from mindcore.svl.registry import source
+from mindcore.svl import TriggerCondition
 
 @source(
     term="orders",
@@ -705,6 +708,7 @@ MindCore Approach:
 ### Adding a New Agent: Before vs After
 
 **Before MindCore:**
+
 ```
 Week 1: Build custom storage layer
 Week 2: Define metadata schema
@@ -715,9 +719,10 @@ Week 6+: Start accumulating context
 ```
 
 **With MindCore:**
+
 ```python
 # Day 1: New agent with full organizational context
-from mindcore.v2.federation import quick_setup
+from mindcore.federation import quick_setup
 
 federation = quick_setup(
     org_id="acme-corp",
@@ -761,7 +766,7 @@ MindCore is designed to work with any LLM through provider-agnostic protocols. T
 MindCore provides optimized configurations for each provider:
 
 ```python
-from mindcore.v2.svl.llm_providers import (
+from mindcore.svl.llm_providers import (
     OpenAIConfig,
     ClaudeConfig,
     GeminiConfig,
@@ -812,7 +817,7 @@ MindCore uses different API mechanisms to inject metadata requirements:
 
 MindCore forces LLMs to assign metadata from the SVL vocabulary through structured outputs. This ensures deterministic, queryable, and traceable memories.
 
-> **📋 Canonical Schema Reference**: All metadata field definitions, valid values, and examples are defined in [`mindcore/v2/svl/metadata_schema.yaml`](./mindcore/v2/svl/metadata_schema.yaml). This file is the single source of truth for all LLM prompts, JSON schemas, and validation logic.
+> **📋 Canonical Schema Reference**: All metadata field definitions, valid values, and examples are defined in [`mindcore/svl/metadata_schema.yaml`](./mindcore/svl/metadata_schema.yaml). This file is the single source of truth for all LLM prompts, JSON schemas, and validation logic.
 
 #### The Enforced Metadata Schema
 
@@ -1138,8 +1143,8 @@ MindCore provides fine-grained control over what context is assembled and how it
 Data sources can be assigned priority levels to control fetch order and importance:
 
 ```python
-from mindcore.v2.svl.registry import source
-from mindcore.v2.svl import TriggerCondition
+from mindcore.svl.registry import source
+from mindcore.svl import TriggerCondition
 
 # High priority sources are fetched first and given more weight
 @source(
@@ -1251,7 +1256,7 @@ print(f"Relevance scores: ...")
 MindCore handles mutable preferences with temporal versioning and conflict resolution:
 
 ```python
-from mindcore.v2.flr import PreferenceManager, ConflictResolutionStrategy
+from mindcore.flr import PreferenceManager, ConflictResolutionStrategy
 
 prefs = PreferenceManager(storage, flr)
 
@@ -1435,7 +1440,7 @@ TrustPolicy.HIERARCHICAL       # Organizational hierarchy weighting
 ### Example: Quick Federation Setup
 
 ```python
-from mindcore.v2.federation import quick_setup, AccessLevel
+from mindcore.federation import quick_setup, AccessLevel
 
 # Setup organization in minutes
 federation = quick_setup(
@@ -1484,7 +1489,7 @@ context = sales_agent.query(
 ### Audit Logging
 
 ```python
-from mindcore.v2.enterprise import AuditLogger, AuditEventType
+from mindcore.enterprise import AuditLogger, AuditEventType
 
 audit = AuditLogger(output="file", path="/var/log/mindcore")
 
@@ -1503,7 +1508,7 @@ AuditEventType.SECURITY_EVENT
 ### Encryption at Rest
 
 ```python
-from mindcore.v2.enterprise import FieldEncryptor, EncryptionConfig, KeyRotator
+from mindcore.enterprise import FieldEncryptor, EncryptionConfig, KeyRotator
 
 config = EncryptionConfig(
     key=os.environ["ENCRYPTION_KEY"],
@@ -1524,7 +1529,7 @@ rotated = rotator.rotate(encrypted)
 ### Rate Limiting
 
 ```python
-from mindcore.v2.enterprise import RateLimiter, RateLimitConfig
+from mindcore.enterprise import RateLimiter, RateLimitConfig
 
 config = RateLimitConfig(
     default_limit="100/minute",
@@ -1551,7 +1556,7 @@ else:
 ### GDPR/CCPA Compliance
 
 ```python
-from mindcore.v2.enterprise import ComplianceManager, RetentionPolicy, AnonymizationStrategy
+from mindcore.enterprise import ComplianceManager, RetentionPolicy, AnonymizationStrategy
 
 compliance = ComplianceManager(storage)
 
@@ -1582,7 +1587,7 @@ compliance.enforce_retention("user_123")
 ### OpenTelemetry Observability
 
 ```python
-from mindcore.v2.enterprise import MindcoreMetrics, MindcoreTracer, ObservabilityConfig
+from mindcore.enterprise import MindcoreMetrics, MindcoreTracer, ObservabilityConfig
 
 config = ObservabilityConfig(
     service_name="my-ai-agent",
@@ -1653,7 +1658,7 @@ MindCore implements multiple layers of security to protect memory data:
 ### Secure Configuration Best Practices
 
 ```python
-from mindcore.v2.security import SecurityConfig, SecretManager
+from mindcore.security import SecurityConfig, SecretManager
 
 # Never hardcode secrets
 config = SecurityConfig(
@@ -1684,7 +1689,7 @@ config = SecurityConfig(
 
 ```python
 # Fine-grained access control for multi-agent systems
-from mindcore.v2.security import AccessPolicy, MemoryFilter
+from mindcore.security import AccessPolicy, MemoryFilter
 
 policy = AccessPolicy(
     # Who can read
@@ -1905,7 +1910,7 @@ storage.configure_replicas([
 
 ```python
 from mindcore import Mindcore
-from mindcore.v2.federation import quick_setup
+from mindcore.federation import quick_setup
 
 # Setup
 federation = quick_setup(
@@ -1952,6 +1957,7 @@ async def handle_message(user_id: str, session_id: str, message: str):
 ```
 
 **Result**: Support bot with instant access to:
+
 - Customer preferences across all channels
 - Previous interaction history
 - Cross-agent learnings from tier-2 and escalation
@@ -2302,7 +2308,7 @@ federation:
 ### MindCore Resources
 
 - **GitHub Repository**: [github.com/M-Alfaris/mindcore](https://github.com/M-Alfaris/mindcore)
-- **Metadata Schema**: `mindcore/v2/svl/metadata_schema.yaml`
+- **Metadata Schema**: `mindcore/svl/metadata_schema.yaml`
 - **API Documentation**: See Appendix A
 - **Configuration Guide**: See Appendix B
 

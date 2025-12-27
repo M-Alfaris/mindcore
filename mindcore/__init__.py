@@ -50,71 +50,97 @@ __version__ = "2.0.0"
 __author__ = "Mindcore Contributors"
 __license__ = "MIT"
 
-# Main v2 exports
 # Utils
+# Access Control
+from .access import (
+    AccessController,
+    AccessDecision,
+    AgentProfile,
+    Permission,
+)
+
+# CLST Protocol
+from .clst import (
+    CLST,
+    CompressionResult,
+    CompressionStrategy,
+    SyncDirection,  # CLST sync direction (PUSH, PULL, BIDIRECTIONAL)
+    SyncResult,  # CLST sync result
+    TransferManifest,
+)
+
+# Cross-Agent
+from .cross_agent import (
+    AgentStatus,
+    AgentSyncDirection,  # Agent-to-agent sync direction
+    AgentSyncResult,  # Agent-to-agent sync result
+    CrossAgentLayer,
+    RoutingStrategy,
+)
+
+# Exceptions
+from .exceptions import (
+    AccessError,
+    AgentNotFoundError,
+    ConfigurationError,
+    MemoryNotFoundError,
+    MemoryValidationError,
+    MigrationError,
+    MigrationPathError,
+    MindcoreError,
+    MultiAgentNotEnabledError,
+    PermissionDeniedError,
+    RollbackError,
+    StorageConnectionError,
+    StorageError,
+    ValidationError,
+    VocabularyValidationError,
+)
+
+# FLR Protocol
+from .flr import (
+    FLR,
+    ContextWindow,
+    Memory,
+    RecallResult,
+)
+
+# Main class
+from .mindcore import Mindcore
+
+# Server
+from .server import (
+    MCPServer,
+    create_app,
+    run_server,
+)
+
+# Storage
+from .storage import (
+    BaseStorage,
+    PostgresStorage,
+    SQLiteStorage,
+)
+
+# SVL (Shared Vocabulary Layer)
+from .svl import (
+    DEFAULT_SVL,
+    AccessLevel,
+    FieldSchema,
+    MemoryType,
+    Migration,
+    MigrationCheckpoint,
+    Sentiment,
+    SharedVocabularyLayer,
+)
+
+# Legacy alias
+from .svl import DEFAULT_SVL as DEFAULT_VOCABULARY
+from .svl import SharedVocabularyLayer as VocabularySchema
 from .utils import (
     LogCategory,
     configure_logging,
     get_logger,
-)
-from .v2 import (
-    # CLST Protocol
-    CLST,
-    DEFAULT_SVL,
-    DEFAULT_VOCABULARY,
-    # FLR Protocol
-    FLR,
-    # Access Control
-    AccessController,
-    AccessDecision,
-    AccessError,
-    AccessLevel,
-    AgentNotFoundError,
-    AgentProfile,
-    # Cross-Agent Sync (different from CLST sync)
-    AgentSyncDirection,  # Agent-to-agent sync direction
-    AgentSyncResult,  # Agent-to-agent sync result
-    # Storage
-    BaseStorage,
-    CompressionResult,
-    CompressionStrategy,
-    ConfigurationError,
-    ContextWindow,
-    FieldSchema,
-    # Server
-    MCPServer,
-    Memory,
-    MemoryNotFoundError,
-    MemoryType,
-    MemoryValidationError,
-    Migration,
-    MigrationCheckpoint,
-    MigrationError,
-    MigrationPathError,
-    # Main class
-    Mindcore,
-    # Exceptions
-    MindcoreError,
-    MultiAgentNotEnabledError,
-    Permission,
-    PermissionDeniedError,
-    PostgresStorage,
-    RecallResult,
-    RollbackError,
-    Sentiment,
-    SharedVocabularyLayer,
-    SQLiteStorage,
-    StorageConnectionError,
-    StorageError,
-    SyncDirection,  # CLST sync direction (PUSH, PULL, BIDIRECTIONAL)
-    SyncResult,  # CLST sync result
-    TransferManifest,
-    ValidationError,
-    # Vocabulary (VocabularySchema is now an alias for SharedVocabularyLayer)
-    VocabularySchema,
-    VocabularyValidationError,
-    create_app,
-    run_server,
 )
 
 
@@ -129,6 +155,7 @@ __all__ = [
     "AccessLevel",
     "AgentNotFoundError",
     "AgentProfile",
+    "AgentStatus",
     "AgentSyncDirection",
     "AgentSyncResult",
     "BaseStorage",
@@ -136,6 +163,7 @@ __all__ = [
     "CompressionStrategy",
     "ConfigurationError",
     "ContextWindow",
+    "CrossAgentLayer",
     "FieldSchema",
     "LogCategory",
     "MCPServer",
@@ -155,6 +183,7 @@ __all__ = [
     "PostgresStorage",
     "RecallResult",
     "RollbackError",
+    "RoutingStrategy",
     "SQLiteStorage",
     "Sentiment",
     "SharedVocabularyLayer",

@@ -50,7 +50,7 @@ def mock_mindcore_for_mcp():
 def mcp_server(flr, clst):
     """Create MCP server instance with real FLR/CLST."""
     try:
-        from mindcore.v2.server.mcp import MCPServer
+        from mindcore.server.mcp import MCPServer
 
         return MCPServer(flr=flr, clst=clst)
     except ImportError:
@@ -189,7 +189,7 @@ class TestMCPToolExecution:
         # First store a memory
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -216,7 +216,7 @@ class TestMCPToolExecution:
         # First store a memory
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -242,7 +242,7 @@ class TestMCPToolExecution:
         # First store a memory
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",

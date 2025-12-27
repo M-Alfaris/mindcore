@@ -111,7 +111,7 @@ def load_agents(mc, data: dict) -> int:
 def setup_vocabulary(data: dict):
     """Setup custom vocabulary from domain configs."""
     try:
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         vocab = SharedVocabularyLayer()
 
@@ -178,7 +178,7 @@ def main():
     print_status(f"Loading demo data into {args.storage}", "info")
 
     try:
-        from mindcore.v2 import Mindcore
+        from mindcore import Mindcore
     except ImportError:
         print_status("mindcore not installed. Run: pip install mindcore", "error")
         sys.exit(1)

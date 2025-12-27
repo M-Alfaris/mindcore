@@ -147,7 +147,7 @@ class TestTopicExtraction:
 
     def test_extract_topics_from_api_response(self):
         """Test extracting topics from API response data."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -176,7 +176,7 @@ class TestTopicExtraction:
 
     def test_extract_categories_from_db(self):
         """Test extracting categories from database data."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -262,7 +262,7 @@ class TestSourceCaching:
 
     def test_cache_api_response(self):
         """Test that API responses are cached."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -292,7 +292,7 @@ class TestSVLvsETL:
 
     def test_svl_simpler_configuration(self):
         """Demonstrate SVL's simpler configuration vs ETL."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         # SVL approach - declarative mapping
         svl = SharedVocabularyLayer()

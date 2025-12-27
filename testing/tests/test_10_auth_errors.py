@@ -21,7 +21,7 @@ import pytest
 def exception_classes():
     """Import all exception classes."""
     try:
-        from mindcore.v2.exceptions import (
+        from mindcore.exceptions import (
             AccessError,
             AgentNotFoundError,
             ConfigurationError,
@@ -115,7 +115,7 @@ class TestStorageErrors:
 
     def test_memory_not_found_error(self, mindcore):
         """Test MemoryNotFoundError is raised for missing memory."""
-        from mindcore.v2.exceptions import MemoryNotFoundError
+        from mindcore.exceptions import MemoryNotFoundError
 
         with pytest.raises(MemoryNotFoundError) as exc_info:
             mindcore.delete("nonexistent_memory_id_12345")
@@ -224,7 +224,7 @@ class TestConfigurationErrors:
 
     def test_multi_agent_not_enabled_error(self, mindcore):
         """Test MultiAgentNotEnabledError when multi-agent is disabled."""
-        from mindcore.v2.exceptions import MultiAgentNotEnabledError
+        from mindcore.exceptions import MultiAgentNotEnabledError
 
         with pytest.raises(MultiAgentNotEnabledError):
             mindcore.register_agent(agent_id="test", name="Test", teams=[])

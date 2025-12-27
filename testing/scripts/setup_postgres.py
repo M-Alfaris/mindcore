@@ -138,7 +138,7 @@ def create_schema() -> bool:
     # The schema will be created automatically by mindcore storage
     # We just validate connectivity here
     try:
-        from mindcore.v2.storage.postgres import PostgresStorage
+        from mindcore.storage.postgres import PostgresStorage
 
         storage = PostgresStorage(CONNECTION_STRING)
         stats = storage.get_stats()
@@ -160,7 +160,7 @@ def validate_connection() -> bool:
     print_status("Validating mindcore connection...", "info")
 
     try:
-        from mindcore.v2 import Mindcore
+        from mindcore import Mindcore
 
         mc = Mindcore(storage=CONNECTION_STRING)
 

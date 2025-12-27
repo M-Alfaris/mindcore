@@ -20,7 +20,7 @@ import pytest
 def access_controller():
     """Create an AccessController instance."""
     try:
-        from mindcore.v2.access.permissions import AccessController
+        from mindcore.access.permissions import AccessController
 
         return AccessController()
     except ImportError:
@@ -311,7 +311,7 @@ class TestMemoryFiltering:
         """Test filtering list of memories by access."""
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memories = [
             Memory(
