@@ -22,8 +22,8 @@ from mindcore.v2.federation import (
     AgentMemoryBridge,
     AggregatedFeedback,
     CrossAgentSignalAggregator,
-    Federation,
     FederatedSVL,
+    Federation,
     FederationConfig,
     LocalMemory,
     MemoryACL,
@@ -267,7 +267,7 @@ class TestMemoryNamespace:
 
     def test_namespace_validation(self):
         """Test namespace validation."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="department"):
             # Team without department is invalid
             MemoryNamespace(org_id="acme", team="tier-1")
 
@@ -326,9 +326,7 @@ class TestCrossAgentSignalAggregator:
 
     def test_equal_aggregation(self):
         """Test equal weight aggregation."""
-        aggregator = CrossAgentSignalAggregator(
-            trust_policy=TrustPolicy.EQUAL
-        )
+        aggregator = CrossAgentSignalAggregator(trust_policy=TrustPolicy.EQUAL)
 
         scope = AccessScope(org_id="acme")
 
@@ -470,13 +468,9 @@ class TestFederatedSVL:
 
         # Record enough data
         for _ in range(5):
-            svl.record_feedback(
-                topic="billing", was_effective=True, namespace=namespace
-            )
+            svl.record_feedback(topic="billing", was_effective=True, namespace=namespace)
         for _ in range(5):
-            svl.record_feedback(
-                topic="general", was_effective=False, namespace=namespace
-            )
+            svl.record_feedback(topic="general", was_effective=False, namespace=namespace)
 
         aggregated = svl.get_aggregated_feedback(namespace=namespace)
 
@@ -743,7 +737,7 @@ class TestMultiAgentIntegration:
         agent1.reinforce(memory_id, signal=0.8, was_effective=True)
 
         # Agent 2 should see the feedback
-        feedback = agent2.get_feedback_for_extraction()
+        agent2.get_feedback_for_extraction()
         # Note: Need enough samples for recommendations
         # This is a structural test
 

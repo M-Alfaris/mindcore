@@ -62,40 +62,27 @@ from .simple_recall import (
 )
 
 from .reinforcement import (
-    RobustReinforcement,
-    ReinforcementSignal,
-    SignalType,
-    SignalSource,
-    create_feedback_signal,
-    batch_reinforce,
     DEFAULT_SOURCE_WEIGHTS,
     DEFAULT_TYPE_WEIGHTS,
+    BatchSignalResult,
+    CrossMemoryReinforcer,
     # Enhanced Reinforcement (2025-12)
     ImportanceAdjuster,
     ImportanceAdjustment,
-    CrossMemoryReinforcer,
-    RelatedMemorySignal,
     NegativeSignalDecay,
-    BatchSignalResult,
+    ReinforcementSignal,
+    RelatedMemorySignal,
+    RobustReinforcement,
+    SignalSource,
+    SignalType,
+    batch_reinforce,
+    create_feedback_signal,
     process_signal_batch,
 )
-
-from .metadata_feedback import (
-    MetadataFeedbackTracker,
-    MetadataSignal,
-    MetadataEffectiveness,
-)
-
 from .usage_detector import (
-    UsageDetector,
-    UsageDetectionResult,
     MemoryUsage,
-)
-
-from .query_optimizer import (
-    QueryOptimizer,
-    QueryOptimization,
-    TopicStats,
+    UsageDetectionResult,
+    UsageDetector,
 )
 
 
@@ -110,36 +97,48 @@ __all__ = [
     "make_clst_decision",
     # Legacy FLR
     "FLR",
+    "BatchSignalResult",
+    "CacheEntry",
+    "CacheEventType",
+    "CacheStats",
+    "ConflictResolutionResult",
+    "ConflictResolutionStrategy",
+    "ConflictStatus",
     "ContextWindow",
-    "Memory",
-    "RecallResult",
-    # Robust Reinforcement
-    "RobustReinforcement",
-    "ReinforcementSignal",
-    "SignalType",
-    "SignalSource",
-    "create_feedback_signal",
-    "batch_reinforce",
-    "DEFAULT_SOURCE_WEIGHTS",
-    "DEFAULT_TYPE_WEIGHTS",
-    # Metadata Feedback
-    "MetadataFeedbackTracker",
-    "MetadataSignal",
-    "MetadataEffectiveness",
-    # Usage Detection
-    "UsageDetector",
-    "UsageDetectionResult",
-    "MemoryUsage",
-    # Query Optimization
-    "QueryOptimizer",
-    "QueryOptimization",
-    "TopicStats",
+    "CrossMemoryReinforcer",
     # Enhanced Reinforcement (2025-12)
     "ImportanceAdjuster",
     "ImportanceAdjustment",
-    "CrossMemoryReinforcer",
-    "RelatedMemorySignal",
+    "Memory",
+    "MemoryUsage",
+    "MetadataEffectiveness",
+    # Metadata Feedback
+    "MetadataFeedbackTracker",
+    "MetadataSignal",
     "NegativeSignalDecay",
-    "BatchSignalResult",
+    "PreferenceConflict",
+    "PreferenceHistory",
+    # Preferences
+    "PreferenceManager",
+    "PreferenceSummary",
+    "PreferenceUpdate",
+    "QueryOptimization",
+    # Query Optimization
+    "QueryOptimizer",
+    "RecallResult",
+    "ReinforcementSignal",
+    "RelatedMemorySignal",
+    # Robust Reinforcement
+    "RobustReinforcement",
+    "SignalSource",
+    "SignalType",
+    # Smart Cache
+    "SmartCache",
+    "TopicStats",
+    "UsageDetectionResult",
+    # Usage Detection
+    "UsageDetector",
+    "batch_reinforce",
+    "create_feedback_signal",
     "process_signal_batch",
 ]
