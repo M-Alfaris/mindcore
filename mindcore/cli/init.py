@@ -1,13 +1,16 @@
 """Interactive onboarding wizard for Mindcore.
 
-Guides users through:
-1. Persona selection (developer, startup, enterprise, etc.)
-2. Integration mode (new project, existing agent, partial integration)
-3. Storage setup (SQLite, PostgreSQL) with connection testing
-4. LLM provider configuration with API validation
-5. SVL vocabulary selection
-6. Policy configuration (presets and custom)
-7. Optional integrations and features
+Streamlined 4-step setup (~2 minutes):
+1. What are you building? (determines all defaults)
+2. Storage setup (SQLite/PostgreSQL with testing)
+3. Rules & governance (safe presets)
+4. Confirmation (what was created, where configs live, how to undo)
+
+Design principles:
+- Prove safety (nothing scary happens)
+- Prove usefulness (memory actually works)
+- Prove reversibility (can undo everything)
+- Avoid architectural overwhelm
 """
 
 import os
@@ -60,56 +63,100 @@ def print_step(step: int, total: int, title: str):
     click.echo(styled("  " + "─" * 50, Colors.DIM))
 
 
-PERSONAS = {
+# What are you building? (Primary determinant of all defaults)
+PROJECT_TYPES = {
     "1": {
-        "name": "Solo Developer",
-        "desc": "Personal projects, experimentation, learning",
+        "name": "Single AI Agent",
+        "desc": "Dev/prototype, personal assistant, chatbot",
         "storage": "sqlite",
-        "features": ["basic"],
+        "clst": False,  # No cold storage needed
+        "audit": False,
+        "strict": False,
         "complexity": "minimal",
     },
     "2": {
-        "name": "Freelancer / Consultant",
-        "desc": "Building AI solutions for clients",
+        "name": "Multi-Agent System",
+        "desc": "Multiple agents sharing memory",
         "storage": "sqlite",
-        "features": ["basic", "multi_agent"],
-        "complexity": "simple",
-    },
-    "3": {
-        "name": "Startup",
-        "desc": "Fast iteration, scale later",
-        "storage": "postgresql",
-        "features": ["basic", "multi_agent", "api"],
+        "clst": True,  # Cross-agent needs CLST
+        "audit": False,
+        "strict": False,
         "complexity": "standard",
     },
+    "3": {
+        "name": "Enterprise AI Platform",
+        "desc": "Production system, team collaboration",
+        "storage": "postgresql",
+        "clst": True,
+        "audit": True,
+        "strict": True,
+        "complexity": "advanced",
+    },
     "4": {
-        "name": "AI Research Team / Lab",
-        "desc": "Experimentation, flexible architecture",
+        "name": "Regulated / Gov / Healthcare",
+        "desc": "Compliance required, full audit trail",
         "storage": "postgresql",
-        "features": ["basic", "multi_agent", "federation", "observability"],
-        "complexity": "advanced",
-    },
-    "5": {
-        "name": "AI Team (Mid-size Business)",
-        "desc": "Production AI systems, existing infrastructure",
-        "storage": "postgresql",
-        "features": ["basic", "multi_agent", "api", "enterprise"],
-        "complexity": "advanced",
-    },
-    "6": {
-        "name": "Enterprise AI Team",
-        "desc": "Compliance, security, scale, governance",
-        "storage": "postgresql",
-        "features": ["all"],
+        "clst": True,
+        "audit": True,
+        "strict": True,
+        "compliance": True,
         "complexity": "full",
     },
-    "7": {
-        "name": "C-Suite Evaluation",
-        "desc": "Quick demo for technical evaluation",
-        "storage": "sqlite",
-        "features": ["demo"],
-        "complexity": "demo",
+}
+
+# Sector selection (optional, for pre-configured rules)
+SECTORS = {
+    "1": {"name": "General", "domains": [], "default": True},
+    "2": {"name": "Finance / Banking", "domains": ["finance"], "retention_days": 2555},
+    "3": {"name": "Healthcare", "domains": ["healthcare"], "hipaa": True},
+    "4": {"name": "Government", "domains": ["government"], "audit_required": True},
+    "5": {"name": "E-commerce", "domains": ["ecommerce"]},
+    "6": {"name": "Customer Service", "domains": ["customer_service"]},
+}
+
+# Governance presets (keep it simple)
+GOVERNANCE_PRESETS = {
+    "1": {
+        "name": "Safe defaults",
+        "desc": "Recommended - sensible settings for most cases",
+        "config": {
+            "strict_mode": False,
+            "require_user_id": True,
+            "long_term_memory": True,
+            "preference_promotion": "conservative",
+            "audit_level": "minimal",
+        },
     },
+    "2": {
+        "name": "Strict mode",
+        "desc": "Production-ready with full validation",
+        "config": {
+            "strict_mode": True,
+            "require_user_id": True,
+            "long_term_memory": True,
+            "preference_promotion": "strict",
+            "audit_level": "standard",
+        },
+    },
+    "3": {
+        "name": "Compliance mode",
+        "desc": "Full audit trail, regulatory ready",
+        "config": {
+            "strict_mode": True,
+            "require_user_id": True,
+            "long_term_memory": True,
+            "preference_promotion": "strict",
+            "audit_level": "full",
+            "retention_policy": True,
+        },
+    },
+}
+
+# Legacy compatibility - map old structures to new
+PERSONAS = {
+    "1": {"name": "Solo Developer", "storage": "sqlite", "complexity": "minimal"},
+    "2": {"name": "Startup", "storage": "sqlite", "complexity": "simple"},
+    "3": {"name": "Enterprise", "storage": "postgresql", "complexity": "full"},
 }
 
 DOMAINS = {
@@ -124,29 +171,10 @@ DOMAINS = {
 }
 
 INTEGRATION_MODES = {
-    "1": {
-        "name": "New Project",
-        "desc": "Starting fresh, no existing AI agent",
-        "full_setup": True,
-    },
-    "2": {
-        "name": "Existing AI Agent",
-        "desc": "Add memory to my existing LLM-based agent",
-        "full_setup": False,
-        "show_integration_guide": True,
-    },
-    "3": {
-        "name": "Partial Integration",
-        "desc": "Just storage/recall, I'll handle the rest",
-        "full_setup": False,
-        "minimal": True,
-    },
-    "4": {
-        "name": "Evaluation / Demo",
-        "desc": "Quick setup to evaluate Mindcore",
-        "full_setup": False,
-        "demo": True,
-    },
+    "1": {"name": "New Project", "full_setup": True},
+    "2": {"name": "Existing AI Agent", "show_integration_guide": True},
+    "3": {"name": "Partial Integration", "minimal": True},
+    "4": {"name": "Evaluation / Demo", "demo": True},
 }
 
 
