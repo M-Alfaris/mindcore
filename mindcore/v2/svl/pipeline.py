@@ -5,26 +5,30 @@ the mandatory kernel for ALL data flows in MindCore.
 
 The pipeline implements:
 1. INBOUND: Query validation and context decision
-2. HOT PATH: FLR-only for simple queries (no CLST needed)
-3. FULL PATH: FLR + CLST + External Sources for complex queries
+2. HOT PATH: SimpleFLR cache only (deterministic, no CLST)
+3. FULL PATH: SimpleFLR + CLST + External Sources (complex scoring in CLST)
 4. OUTBOUND: Response validation and sanitization
+5. SIGNAL PROCESSING: SimpleFLR collects, CLST processes
 
-Architecture:
+Architecture (with SimpleFLR):
     User Query
         ↓
     SVL Gate (inbound) → Validate query structure
         ↓
-    Context Decision → Does this query need historical context?
+    SimpleFLR (deterministic cache) + Metadata Hints
+        ↓
+    CLSTDecision → Is CLST needed based on metadata?
         ↓
     ┌─────────────────────────────────────────────────────────┐
-    │ HOT PATH (needs_clst=False)  │  FULL PATH (needs_clst=True)  │
-    │   - FLR cache only           │   - FLR cache               │
-    │   - Fast response            │   - CLST storage            │
-    │                              │   - External sources         │
-    │                              │     (fetch_for_topics)       │
+    │ HOT PATH (needs_clst=False)    │  FULL PATH (needs_clst=True)   │
+    │   - SimpleFLR cache only       │   - CLST.search() + scoring  │
+    │   - O(1) lookup, deterministic │   - Complex probabilistic     │
+    │   - Signals collected          │   - External sources          │
     └─────────────────────────────────────────────────────────┘
         ↓
     SVL Gate (outbound) → Validate + sanitize response
+        ↓
+    CLST.process_signals() → Apply collected signals
         ↓
     Return to LLM
 
@@ -63,8 +67,9 @@ from .enforced_metadata import ContextDecision, HistoricalContextNeeded, Metadat
 from .gate import GateDecision, GatePolicy, GateResult, RetryConfig, SVLGate
 
 if TYPE_CHECKING:
-    from mindcore.v2.flr import Memory
+    from mindcore.v2.flr import Memory, SimpleFLR, CLSTDecision
     from mindcore.v2.storage.base import BaseStorage
+    from mindcore.v2.clst import CLST
 
 logger = logging.getLogger(__name__)
 
@@ -86,17 +91,27 @@ class QueryResult:
     # Flow information
     path_used: str = "full"  # "hot" or "full"
     context_decision: ContextDecision | None = None
+    clst_decision: dict | None = None  # CLSTDecision from SimpleFLR
 
     # Timing
     total_time_ms: float = 0.0
     gate_time_ms: float = 0.0
-    flr_time_ms: float = 0.0
-    clst_time_ms: float = 0.0
+    simple_flr_time_ms: float = 0.0  # SimpleFLR cache lookup
+    clst_time_ms: float = 0.0  # CLST search + scoring
+    signal_process_time_ms: float = 0.0  # Signal processing
     external_fetch_time_ms: float = 0.0
+
+    # Legacy alias for backward compatibility
+    @property
+    def flr_time_ms(self) -> float:
+        return self.simple_flr_time_ms
 
     # Attention hints for LLM
     attention_focus: list[str] = field(default_factory=list)
     suggested_memory_types: list[str] = field(default_factory=list)
+
+    # Signal processing info
+    signals_processed: int = 0
 
     # Warnings/errors
     warnings: list[str] = field(default_factory=list)
@@ -109,14 +124,17 @@ class QueryResult:
             "external_data_count": len(self.external_data),
             "path_used": self.path_used,
             "context_decision": self.context_decision.to_dict() if self.context_decision else None,
+            "clst_decision": self.clst_decision,
             "timing": {
                 "total_ms": self.total_time_ms,
                 "gate_ms": self.gate_time_ms,
-                "flr_ms": self.flr_time_ms,
+                "simple_flr_ms": self.simple_flr_time_ms,
                 "clst_ms": self.clst_time_ms,
+                "signal_process_ms": self.signal_process_time_ms,
                 "external_ms": self.external_fetch_time_ms,
             },
             "attention_focus": self.attention_focus,
+            "signals_processed": self.signals_processed,
             "warnings": self.warnings,
             "errors": self.errors,
         }
@@ -208,6 +226,7 @@ class SVLPipeline:
         enable_external_sources: bool = True,
         cache_size: int = 1000,
         cache_ttl_seconds: int = 300,
+        use_simple_flr: bool = True,  # Use new SimpleFLR by default
     ):
         """Initialize the SVL Pipeline.
 
@@ -219,10 +238,12 @@ class SVLPipeline:
             llm_call: LLM function for context decisions and retries
             enable_hot_path: Enable hot-path optimization (skip CLST when not needed)
             enable_external_sources: Enable external data source fetching
-            cache_size: FLR cache size
-            cache_ttl_seconds: FLR cache TTL
+            cache_size: SimpleFLR cache size
+            cache_ttl_seconds: SimpleFLR cache TTL
+            use_simple_flr: Use SimpleFLR (deterministic) instead of legacy FLR
         """
-        from mindcore.v2.flr import FLR
+        from mindcore.v2.clst import CLST
+        from mindcore.v2.flr import SimpleFLR, CLSTDecisionPolicy
         from mindcore.v2.storage import SQLiteStorage
         from mindcore.v2.svl import DEFAULT_SVL, SharedVocabularyLayer
 
@@ -250,11 +271,30 @@ class SVLPipeline:
             retry_config=retry_config or RetryConfig(),
         )
 
-        # Initialize FLR (cache layer)
-        self._flr = FLR(
+        # Initialize SimpleFLR (deterministic cache layer)
+        self._use_simple_flr = use_simple_flr
+        if use_simple_flr:
+            self._simple_flr = SimpleFLR(
+                storage=self._storage,
+                cache_size=cache_size,
+                cache_ttl_seconds=cache_ttl_seconds,
+                decision_policy=CLSTDecisionPolicy(),
+            )
+            self._flr = None  # Not using legacy FLR
+        else:
+            # Legacy FLR for backward compatibility
+            from mindcore.v2.flr import FLR
+            self._flr = FLR(
+                storage=self._storage,
+                cache_size=cache_size,
+                cache_ttl_seconds=cache_ttl_seconds,
+            )
+            self._simple_flr = None
+
+        # Initialize CLST for cold path and signal processing
+        self._clst = CLST(
             storage=self._storage,
-            cache_size=cache_size,
-            cache_ttl_seconds=cache_ttl_seconds,
+            vocabulary=self._vocabulary,
         )
 
         # Initialize metadata extractor for context decisions
@@ -273,6 +313,7 @@ class SVLPipeline:
             "external_fetches": 0,
             "stores": 0,
             "store_failures": 0,
+            "signals_processed": 0,
         }
 
     # =========================================================================
@@ -362,14 +403,17 @@ class SVLPipeline:
         memory_types: list[str] | None = None,
         limit: int = 10,
         force_full_path: bool = False,
+        metadata_hints: dict | None = None,
     ) -> QueryResult:
         """Query memories with automatic hot-path optimization.
 
-        The data flow is:
-        1. Get ContextDecision from LLM (if available)
-        2. If needs_clst=False AND hot_path enabled: use cache only
-        3. If needs_clst=True OR full path forced: query CLST + external sources
-        4. SVL Gate: Validate + sanitize outbound data
+        The data flow with SimpleFLR:
+        1. SimpleFLR cache lookup (deterministic, O(1))
+        2. CLSTDecision based on metadata hints
+        3. If needs_clst=False AND hot_path enabled: return cache results
+        4. If needs_clst=True: query CLST with complex scoring + external sources
+        5. SVL Gate: Validate + sanitize outbound data
+        6. Process pending signals in CLST
 
         Args:
             query: Search query
@@ -380,6 +424,7 @@ class SVLPipeline:
             memory_types: Filter by memory types
             limit: Maximum memories to return
             force_full_path: Force full CLST query (disable hot path)
+            metadata_hints: Hints for CLST decision (is_clst_needed, confidence, priority)
 
         Returns:
             QueryResult with memories and metadata
@@ -389,6 +434,22 @@ class SVLPipeline:
 
         result = QueryResult(success=True)
 
+        # Use SimpleFLR if enabled
+        if self._use_simple_flr and self._simple_flr:
+            return self._query_with_simple_flr(
+                query=query,
+                user_id=user_id,
+                agent_id=agent_id,
+                session_id=session_id,
+                attention_hints=attention_hints,
+                memory_types=memory_types,
+                limit=limit,
+                force_full_path=force_full_path,
+                metadata_hints=metadata_hints,
+                start_time=start_time,
+            )
+
+        # Legacy FLR path
         # Step 1: Get context decision
         context_decision = self._get_context_decision(
             query=query,
@@ -409,7 +470,7 @@ class SVLPipeline:
             # HOT PATH: Cache only
             result.path_used = "hot"
             self._stats["hot_path_queries"] += 1
-            result = self._execute_hot_path(
+            result = self._execute_hot_path_legacy(
                 query=query,
                 user_id=user_id,
                 agent_id=agent_id,
@@ -424,7 +485,7 @@ class SVLPipeline:
             # FULL PATH: Cache + CLST + External Sources
             result.path_used = "full"
             self._stats["full_path_queries"] += 1
-            result = self._execute_full_path(
+            result = self._execute_full_path_legacy(
                 query=query,
                 user_id=user_id,
                 agent_id=agent_id,
@@ -452,6 +513,178 @@ class SVLPipeline:
 
         result.memories = validated_memories
         result.gate_time_ms += (time.time() - gate_start) * 1000
+
+        # Final timing
+        result.total_time_ms = (time.time() - start_time) * 1000
+
+        return result
+
+    def _query_with_simple_flr(
+        self,
+        query: str,
+        user_id: str,
+        agent_id: str | None,
+        session_id: str | None,
+        attention_hints: list[str] | None,
+        memory_types: list[str] | None,
+        limit: int,
+        force_full_path: bool,
+        metadata_hints: dict | None,
+        start_time: float,
+    ) -> QueryResult:
+        """Query using SimpleFLR architecture.
+
+        This implements the new simplified flow:
+        1. SimpleFLR cache lookup (deterministic)
+        2. CLSTDecision from metadata hints
+        3. Hot path or full path based on decision
+        4. CLST signal processing
+        """
+        result = QueryResult(success=True)
+
+        # Build metadata hints for CLST decision
+        hints = metadata_hints or {}
+
+        # Get context decision from LLM if available (adds is_clst_needed hint)
+        context_decision = self._get_context_decision(
+            query=query,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        result.context_decision = context_decision
+
+        # Add LLM context decision to hints
+        if context_decision:
+            if context_decision.needs_clst():
+                hints["is_clst_needed"] = True
+            hints["priority"] = context_decision.urgency
+            hints["suggested_topics"] = context_decision.suggested_topics
+
+        # Step 1: SimpleFLR cache lookup
+        flr_start = time.time()
+        flr_result = self._simple_flr.query(
+            user_id=user_id,
+            session_id=session_id,
+            topics=attention_hints or hints.get("suggested_topics", []),
+            memory_types=memory_types,
+            limit=limit,
+            metadata_hints=hints,
+        )
+        result.simple_flr_time_ms = (time.time() - flr_start) * 1000
+        result.clst_decision = flr_result.clst_decision.to_dict()
+
+        # Step 2: Determine path based on CLSTDecision
+        use_hot_path = (
+            self._enable_hot_path
+            and not force_full_path
+            and not flr_result.clst_decision.needs_clst
+        )
+
+        if use_hot_path:
+            # HOT PATH: Use SimpleFLR cache results only
+            result.path_used = "hot"
+            self._stats["hot_path_queries"] += 1
+
+            result.memories = [m.to_dict() for m in flr_result.memories]
+            result.scores = [1.0] * len(result.memories)  # No scoring in hot path
+
+            # Extract attention focus from cached memories
+            topic_counts: dict[str, int] = {}
+            for m in flr_result.memories:
+                for topic in m.topics:
+                    topic_counts[topic] = topic_counts.get(topic, 0) + 1
+            result.attention_focus = sorted(
+                topic_counts.keys(),
+                key=lambda t: topic_counts[t],
+                reverse=True
+            )[:5]
+
+        else:
+            # FULL PATH: Query CLST with complex scoring
+            result.path_used = "full"
+            self._stats["full_path_queries"] += 1
+
+            clst_start = time.time()
+            try:
+                # Query CLST
+                clst_memories = self._clst.search(
+                    query=query,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    topics=attention_hints or hints.get("suggested_topics", []),
+                    memory_types=memory_types,
+                    limit=limit * 2,  # Get more for scoring
+                )
+
+                # Apply complex scoring (moved from FLR to CLST)
+                scored = self._clst.score_memories_complex(
+                    memories=clst_memories,
+                    query=query,
+                    attention_hints=attention_hints,
+                )
+
+                # Limit results
+                scored = scored[:limit]
+
+                result.memories = [m.to_dict() for m, _ in scored]
+                result.scores = [s for _, s in scored]
+
+                # Extract attention focus
+                topic_counts = {}
+                for m, _ in scored:
+                    for topic in m.topics:
+                        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+                result.attention_focus = sorted(
+                    topic_counts.keys(),
+                    key=lambda t: topic_counts[t],
+                    reverse=True
+                )[:5]
+
+            except Exception as e:
+                logger.error("CLST query failed: %s", e)
+                result.errors.append(f"CLST error: {e}")
+
+            result.clst_time_ms = (time.time() - clst_start) * 1000
+
+            # Fetch external sources if enabled
+            if self._enable_external_sources and context_decision:
+                external_start = time.time()
+                result = self._fetch_external_sources(
+                    context_decision=context_decision,
+                    user_id=user_id,
+                    session_id=session_id,
+                    query=query,
+                    result=result,
+                )
+                result.external_fetch_time_ms = (time.time() - external_start) * 1000
+
+        # Step 3: Outbound validation
+        gate_start = time.time()
+        validated_memories = []
+        for memory in result.memories:
+            gate_result = self._gate.process_outbound(memory)
+            if gate_result.success:
+                validated_memories.append(gate_result.memory)
+            else:
+                result.warnings.append(
+                    f"Memory {memory.get('memory_id', 'unknown')} failed outbound validation"
+                )
+        result.memories = validated_memories
+        result.gate_time_ms = (time.time() - gate_start) * 1000
+
+        # Step 4: Process pending signals in CLST
+        signal_start = time.time()
+        pending_signals = self._simple_flr.get_pending_signals()
+        if pending_signals:
+            try:
+                signal_result = self._clst.process_signals(pending_signals)
+                result.signals_processed = signal_result.processed
+                self._stats["signals_processed"] += signal_result.processed
+                self._simple_flr.clear_pending_signals()
+            except Exception as e:
+                logger.warning("Signal processing failed: %s", e)
+                result.warnings.append(f"Signal processing warning: {e}")
+        result.signal_process_time_ms = (time.time() - signal_start) * 1000
 
         # Final timing
         result.total_time_ms = (time.time() - start_time) * 1000
@@ -507,7 +740,7 @@ class SVLPipeline:
                 reasoning=f"Error getting decision: {e}",
             )
 
-    def _execute_hot_path(
+    def _execute_hot_path_legacy(
         self,
         query: str,
         user_id: str,
@@ -517,9 +750,10 @@ class SVLPipeline:
         limit: int,
         result: QueryResult,
     ) -> QueryResult:
-        """Execute hot path - FLR cache only.
+        """Execute hot path using legacy FLR - cache only.
 
         This is the fast path for queries that don't need historical context.
+        Used when use_simple_flr=False.
 
         Args:
             query: Search query
@@ -546,7 +780,7 @@ class SVLPipeline:
                 memory_types=memory_types or [],
             )
 
-            # Score memories
+            # Score memories (probabilistic - in legacy FLR)
             scored = self._flr._score_memories(
                 memories=cached_memories,
                 query=query,
@@ -572,10 +806,10 @@ class SVLPipeline:
             result.errors.append(f"Hot path error: {e}")
             result.success = False
 
-        result.flr_time_ms = (time.time() - flr_start) * 1000
+        result.simple_flr_time_ms = (time.time() - flr_start) * 1000
         return result
 
-    def _execute_full_path(
+    def _execute_full_path_legacy(
         self,
         query: str,
         user_id: str,
@@ -587,9 +821,10 @@ class SVLPipeline:
         context_decision: ContextDecision | None,
         result: QueryResult,
     ) -> QueryResult:
-        """Execute full path - FLR + CLST + External Sources.
+        """Execute full path using legacy FLR - FLR + CLST + External Sources.
 
         This is the complete path for queries needing historical context.
+        Used when use_simple_flr=False.
 
         Args:
             query: Search query
@@ -605,7 +840,7 @@ class SVLPipeline:
         Returns:
             Updated QueryResult
         """
-        # Step 1: Query FLR (includes cache + CLST)
+        # Step 1: Query FLR (includes cache + CLST with probabilistic scoring)
         flr_start = time.time()
         try:
             flr_result = self._flr.query(
@@ -626,7 +861,7 @@ class SVLPipeline:
             logger.error("FLR query failed: %s", e)
             result.errors.append(f"FLR error: {e}")
 
-        result.flr_time_ms = (time.time() - flr_start) * 1000
+        result.simple_flr_time_ms = (time.time() - flr_start) * 1000
 
         # Step 2: Fetch external data if enabled
         if self._enable_external_sources and context_decision:
@@ -736,7 +971,7 @@ class SVLPipeline:
     def get_stats(self) -> dict[str, Any]:
         """Get pipeline statistics."""
         total_queries = self._stats["total_queries"]
-        return {
+        stats = {
             "total_queries": total_queries,
             "hot_path_queries": self._stats["hot_path_queries"],
             "full_path_queries": self._stats["full_path_queries"],
@@ -754,9 +989,20 @@ class SVLPipeline:
                 if self._stats["stores"] > 0
                 else 0
             ),
+            "signals_processed": self._stats["signals_processed"],
             "gate_stats": self._gate.get_stats(),
-            "flr_stats": self._flr.get_stats(),
+            "clst_stats": self._clst.get_stats(),
         }
+
+        # Add FLR stats based on mode
+        if self._use_simple_flr and self._simple_flr:
+            stats["simple_flr_stats"] = self._simple_flr.get_stats()
+            stats["mode"] = "simple_flr"
+        elif self._flr:
+            stats["flr_stats"] = self._flr.get_stats()
+            stats["mode"] = "legacy_flr"
+
+        return stats
 
     def reset_stats(self) -> None:
         """Reset statistics."""
@@ -767,12 +1013,16 @@ class SVLPipeline:
             "external_fetches": 0,
             "stores": 0,
             "store_failures": 0,
+            "signals_processed": 0,
         }
         self._gate.reset_stats()
+        if self._simple_flr:
+            self._simple_flr.reset_stats()
 
     def close(self) -> None:
         """Close all connections."""
-        self._flr.flush_reinforcements()
+        if self._flr:
+            self._flr.flush_reinforcements()
         self._storage.close()
 
     def __enter__(self):

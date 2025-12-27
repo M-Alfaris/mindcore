@@ -857,3 +857,232 @@ class CLST:
             "vocabulary_version": self.vocabulary.schema.version if self.vocabulary else None,
             "storage_stats": self.storage.get_stats() if hasattr(self.storage, "get_stats") else {},
         }
+
+    # =========================================================================
+    # Signal Processing (receives signals from SimpleFLR)
+    # =========================================================================
+
+    def process_signals(
+        self,
+        signals: list[dict[str, Any]],
+    ) -> SignalProcessingResult:
+        """Process reinforcement signals from SimpleFLR.
+
+        SimpleFLR collects signals and passes them to CLST for complex processing.
+        This is where the sophisticated scoring happens:
+        - Temporal decay
+        - Multi-signal type weighting
+        - Context similarity adjustments
+        - Trend tracking
+
+        Args:
+            signals: List of signals from SimpleFLR.get_pending_signals()
+                Each signal contains:
+                - memory_id: str
+                - signal_type: str (relevance, usefulness, correctness, etc.)
+                - signal_value: float (-1 to 1)
+                - source: str (user, llm, automated)
+                - context: dict
+                - timestamp: str
+
+        Returns:
+            SignalProcessingResult with processing details
+
+        Example:
+            # Get signals from SimpleFLR
+            pending = simple_flr.get_pending_signals()
+
+            # Process in CLST with complex scoring
+            result = clst.process_signals(pending)
+
+            # Clear processed signals
+            simple_flr.clear_pending_signals()
+        """
+        start_time = time.time()
+        processed = 0
+        failed = 0
+        errors = []
+        memory_updates: dict[str, float] = {}
+
+        for signal in signals:
+            try:
+                memory_id = signal.get("memory_id")
+                if not memory_id:
+                    failed += 1
+                    errors.append("Signal missing memory_id")
+                    continue
+
+                # Get memory from storage
+                memory = self.storage.get(memory_id)
+                if not memory:
+                    failed += 1
+                    errors.append(f"Memory {memory_id} not found")
+                    continue
+
+                # Calculate weighted signal value
+                signal_value = float(signal.get("signal_value", 0))
+                signal_type = signal.get("signal_type", "relevance")
+                source = signal.get("source", "automated")
+                context = signal.get("context", {})
+
+                # Apply source weighting (user feedback weighs more)
+                source_weight = _get_source_weight(source)
+
+                # Apply type weighting (usefulness weighs more than relevance)
+                type_weight = _get_type_weight(signal_type)
+
+                # Apply context similarity if provided
+                context_similarity = context.get("similarity", 1.0)
+
+                # Calculate final weighted signal
+                weighted_signal = signal_value * source_weight * type_weight * context_similarity
+
+                # Apply to memory's reinforcement score
+                new_score = memory.apply_reinforcement(weighted_signal, use_robust=False)
+                memory_updates[memory_id] = new_score
+
+                # Persist to storage
+                self.storage.update_reinforcement(memory_id, weighted_signal)
+                processed += 1
+
+            except Exception as e:
+                failed += 1
+                errors.append(f"Error processing signal: {e}")
+
+        latency = (time.time() - start_time) * 1000
+
+        return SignalProcessingResult(
+            processed=processed,
+            failed=failed,
+            memory_updates=memory_updates,
+            errors=errors[:10],  # Limit error list
+            latency_ms=latency,
+        )
+
+    def score_memories_complex(
+        self,
+        memories: list[Memory],
+        query: str,
+        attention_hints: list[str] | None = None,
+    ) -> list[tuple[Memory, float]]:
+        """Complex scoring for memories (moved from FLR).
+
+        This is the sophisticated scoring that was previously in FLR.
+        It includes:
+        - Word overlap (simple text matching)
+        - Topic match with attention hints
+        - Recency decay
+        - Reinforcement score with exploration bonus
+        - Importance weighting
+        - Popularity/access count
+
+        Args:
+            memories: Memories to score
+            query: Search query
+            attention_hints: Topics to prioritize
+
+        Returns:
+            List of (memory, score) tuples, sorted by score descending
+        """
+        import math
+
+        attention_hints = attention_hints or []
+        scored = []
+        query_lower = query.lower()
+        query_words = set(query_lower.split())
+
+        for memory in memories:
+            score = 0.0
+
+            # 1. Content similarity (simple word overlap)
+            content_words = set(memory.content.lower().split())
+            overlap = len(query_words & content_words)
+            score += overlap * 0.1  # Up to ~0.5 for good overlap
+
+            # 2. Topic match with attention hints
+            if attention_hints:
+                topic_matches = len(set(memory.topics) & set(attention_hints))
+                score += topic_matches * 0.2  # Strong boost for topic match
+
+            # 3. Recency (decay over time)
+            if memory.created_at:
+                created_at = memory.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                age_hours = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
+                recency_score = max(0, 1 - (age_hours / 168))  # Decay over 1 week
+                score += recency_score * 0.15
+
+            # 4. Reinforcement score
+            reinforcement_score = memory.reinforcement_score
+
+            # Add exploration bonus for less-accessed memories (UCB-like)
+            if memory.access_count < 10:
+                exploration_bonus = 0.1 * math.sqrt(2 * math.log(max(1, 1000)) / max(1, memory.access_count))
+                reinforcement_score = min(1.0, reinforcement_score + exploration_bonus)
+
+            score += reinforcement_score * 0.2
+
+            # 5. Importance
+            score += memory.importance * 0.15
+
+            # 6. Access count (popularity)
+            popularity = min(1.0, memory.access_count / 100)
+            score += popularity * 0.1
+
+            # Normalize to 0-1
+            score = min(1.0, max(0.0, score))
+
+            scored.append((memory, score))
+
+        # Sort by score descending
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        return scored
+
+
+@dataclass
+class SignalProcessingResult:
+    """Result of signal processing operation."""
+
+    processed: int
+    failed: int
+    memory_updates: dict[str, float]  # memory_id -> new_score
+    errors: list[str]
+    latency_ms: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "processed": self.processed,
+            "failed": self.failed,
+            "memory_update_count": len(self.memory_updates),
+            "errors": self.errors,
+            "latency_ms": self.latency_ms,
+        }
+
+
+# Signal weighting functions for CLST processing
+
+def _get_source_weight(source: str) -> float:
+    """Get weight multiplier for signal source."""
+    weights = {
+        "user": 1.0,  # User explicit feedback
+        "user_explicit": 1.0,
+        "llm": 0.7,  # LLM evaluation
+        "llm_evaluation": 0.7,
+        "automated": 0.3,  # Automated metrics
+        "automated_metric": 0.3,
+    }
+    return weights.get(source.lower(), 0.5)
+
+
+def _get_type_weight(signal_type: str) -> float:
+    """Get weight multiplier for signal type."""
+    weights = {
+        "usefulness": 1.0,  # Was it useful?
+        "relevance": 0.8,  # Was it relevant?
+        "correctness": 0.9,  # Was it correct?
+        "freshness": 0.6,  # Was it timely?
+        "completeness": 0.7,  # Was it complete?
+    }
+    return weights.get(signal_type.lower(), 0.7)

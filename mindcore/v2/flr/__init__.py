@@ -3,11 +3,32 @@
 A protocol for rapid retrieval, inference-time memory access, and short-term
 contextual recall among AI agents.
 
-Reinforcement Modes:
-- Legacy (naive): Simple bounded accumulation with diminishing returns
-- Robust: Temporal decay, multi-signal types, exploration bonus, trend tracking
+FLR Modes:
+- SimpleFLR (recommended): Deterministic cache layer that passes signals to CLST
+- FLR (legacy): Complex probabilistic scoring with reinforcement processing
 
-Example (robust reinforcement):
+SimpleFLR Design:
+- O(1) LRU cache lookup
+- Deterministic filtering (topics, session, recency)
+- Metadata-based CLST decision (is_clst_needed, confidence, priority)
+- Collects signals and passes them to CLST for complex processing
+
+Example (SimpleFLR - recommended):
+    from mindcore.v2.flr import SimpleFLR
+
+    flr = SimpleFLR(storage=storage)
+
+    result = flr.query(
+        user_id="user123",
+        topics=["orders"],
+        metadata_hints={"is_clst_needed": False, "confidence": 0.9},
+    )
+
+    if result.clst_decision.needs_clst:
+        # Do full CLST query with complex scoring
+        ...
+
+Example (legacy FLR with robust reinforcement):
     from mindcore.v2.flr import FLR, SignalType, SignalSource
 
     flr = FLR(storage=storage, use_robust_reinforcement=True)
@@ -21,11 +42,23 @@ Example (robust reinforcement):
     )
 """
 
+# Legacy FLR (complex probabilistic scoring)
 from .recall import (
     FLR,
     ContextWindow,
     Memory,
     RecallResult,
+)
+
+# SimpleFLR (recommended - deterministic cache layer)
+from .simple_recall import (
+    SimpleFLR,
+    SimpleRecallResult,
+    CachedMemory,
+    CLSTDecision,
+    CLSTDecisionPolicy,
+    CLSTNeedLevel,
+    make_clst_decision,
 )
 
 from .reinforcement import (
@@ -67,7 +100,15 @@ from .query_optimizer import (
 
 
 __all__ = [
-    # Core FLR
+    # SimpleFLR (recommended)
+    "SimpleFLR",
+    "SimpleRecallResult",
+    "CachedMemory",
+    "CLSTDecision",
+    "CLSTDecisionPolicy",
+    "CLSTNeedLevel",
+    "make_clst_decision",
+    # Legacy FLR
     "FLR",
     "ContextWindow",
     "Memory",
