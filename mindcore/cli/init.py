@@ -2,11 +2,12 @@
 
 Guides users through:
 1. Persona selection (developer, startup, enterprise, etc.)
-2. Storage setup (SQLite, PostgreSQL)
-3. LLM provider configuration
-4. SVL vocabulary selection
-5. Policy configuration
-6. Optional integrations
+2. Integration mode (new project, existing agent, partial integration)
+3. Storage setup (SQLite, PostgreSQL) with connection testing
+4. LLM provider configuration with API validation
+5. SVL vocabulary selection
+6. Policy configuration (presets and custom)
+7. Optional integrations and features
 """
 
 import os
@@ -122,6 +123,32 @@ DOMAINS = {
     "8": {"name": "Custom / General", "domains": []},
 }
 
+INTEGRATION_MODES = {
+    "1": {
+        "name": "New Project",
+        "desc": "Starting fresh, no existing AI agent",
+        "full_setup": True,
+    },
+    "2": {
+        "name": "Existing AI Agent",
+        "desc": "Add memory to my existing LLM-based agent",
+        "full_setup": False,
+        "show_integration_guide": True,
+    },
+    "3": {
+        "name": "Partial Integration",
+        "desc": "Just storage/recall, I'll handle the rest",
+        "full_setup": False,
+        "minimal": True,
+    },
+    "4": {
+        "name": "Evaluation / Demo",
+        "desc": "Quick setup to evaluate Mindcore",
+        "full_setup": False,
+        "demo": True,
+    },
+}
+
 
 def select_persona() -> dict:
     """Let user select their persona."""
@@ -169,8 +196,172 @@ def select_domain() -> dict:
     return selected
 
 
+def select_integration_mode() -> dict:
+    """Let user select how they want to integrate Mindcore."""
+    click.echo()
+    click.echo(styled("  How will you use Mindcore?", Colors.BOLD))
+    click.echo()
+
+    for key, mode in INTEGRATION_MODES.items():
+        click.echo(
+            f"    {styled(key, Colors.CYAN, Colors.BOLD)}) {styled(mode['name'], Colors.BOLD)}"
+        )
+        click.echo(styled(f"       {mode['desc']}", Colors.DIM))
+
+    click.echo()
+    choice = click.prompt(
+        styled("  Select mode", Colors.YELLOW),
+        type=click.Choice(list(INTEGRATION_MODES.keys())),
+        default="1",
+    )
+
+    selected = INTEGRATION_MODES[choice]
+    click.echo()
+    click.echo(styled(f"  ✓ Mode: {selected['name']}", Colors.GREEN))
+    return selected
+
+
+def test_sqlite_connection(path: str) -> tuple[bool, str]:
+    """Test SQLite connection and write permissions."""
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        db_path = Path(path)
+        parent = db_path.parent
+
+        # Check if parent directory exists or can be created
+        if not parent.exists():
+            try:
+                parent.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                return False, f"Cannot create directory: {parent}"
+
+        # Test connection
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS _mindcore_test (id INTEGER)")
+        cursor.execute("DROP TABLE _mindcore_test")
+        conn.close()
+
+        return True, "Connection successful"
+    except sqlite3.Error as e:
+        return False, f"SQLite error: {e}"
+    except Exception as e:
+        return False, str(e)
+
+
+def test_postgres_connection(
+    host: str, port: str, database: str, user: str, password: str
+) -> tuple[bool, str]:
+    """Test PostgreSQL connection."""
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(
+            host=host,
+            port=int(port),
+            database=database,
+            user=user,
+            password=password,
+            connect_timeout=5,
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT version()")
+        version = cursor.fetchone()[0]
+        conn.close()
+
+        return True, f"Connected to PostgreSQL ({version.split(',')[0]})"
+    except ImportError:
+        return False, "psycopg2 not installed. Run: pip install mindcore[postgres]"
+    except Exception as e:
+        error_msg = str(e)
+        if "password authentication failed" in error_msg:
+            return False, "Authentication failed - check username/password"
+        if "could not connect to server" in error_msg or "Connection refused" in error_msg:
+            return False, f"Cannot connect to {host}:{port} - is PostgreSQL running?"
+        if "does not exist" in error_msg:
+            return False, f"Database '{database}' does not exist"
+        return False, error_msg
+
+
+def test_llm_api_key(provider: str, api_key: str) -> tuple[bool, str]:
+    """Test LLM API key validity."""
+    if not api_key:
+        return False, "No API key provided"
+
+    try:
+        if provider == "openai":
+            import urllib.error
+            import urllib.request
+
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status == 200:
+                        return True, "OpenAI API key valid"
+            except urllib.error.HTTPError as e:
+                if e.code == 401:
+                    return False, "Invalid API key"
+                return False, f"API error: {e.code}"
+            except urllib.error.URLError:
+                return False, "Network error - cannot reach OpenAI API"
+
+        elif provider == "anthropic":
+            import urllib.error
+            import urllib.request
+
+            req = urllib.request.Request(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                data=b'{"model":"claude-3-haiku-20240307","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}',
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10):
+                    return True, "Anthropic API key valid"
+            except urllib.error.HTTPError as e:
+                if e.code == 401:
+                    return False, "Invalid API key"
+                if e.code == 400:
+                    # Bad request but auth worked
+                    return True, "Anthropic API key valid"
+                return False, f"API error: {e.code}"
+            except urllib.error.URLError:
+                return False, "Network error - cannot reach Anthropic API"
+
+        elif provider == "google":
+            # Google uses different auth, just check format
+            if api_key.startswith("AIza") and len(api_key) > 30:
+                return True, "Google API key format valid (not verified)"
+            return False, "Invalid Google API key format"
+
+        return True, "Key format accepted"
+    except Exception as e:
+        return False, f"Validation error: {e}"
+
+
+def check_existing_files(output_dir: Path) -> list[Path]:
+    """Check for existing configuration files that would be overwritten."""
+    files_to_check = ["mindcore.yaml", ".env", "quickstart.py"]
+    existing = []
+
+    for filename in files_to_check:
+        filepath = output_dir / filename
+        if filepath.exists():
+            existing.append(filepath)
+
+    return existing
+
+
 def configure_storage(persona: dict) -> dict:
-    """Configure storage based on persona."""
+    """Configure storage based on persona with connection testing."""
     recommended = persona["storage"]
 
     click.echo()
@@ -200,41 +391,177 @@ def configure_storage(persona: dict) -> dict:
     )
 
     if choice == "1":
-        db_path = click.prompt(styled("  SQLite file path", Colors.YELLOW), default="./mindcore.db")
-        config = {"type": "sqlite", "path": db_path}
-        click.echo(styled(f"  ✓ SQLite configured: {db_path}", Colors.GREEN))
-    else:
-        click.echo()
-        click.echo(styled("  PostgreSQL connection:", Colors.DIM))
-        host = click.prompt("    Host", default="localhost")
-        port = click.prompt("    Port", default="5432")
-        database = click.prompt("    Database", default="mindcore")
-        user = click.prompt("    User", default="postgres")
-        password = click.prompt("    Password", hide_input=True, default="")
+        # SQLite configuration with testing
+        while True:
+            db_path = click.prompt(
+                styled("  SQLite file path", Colors.YELLOW), default="./mindcore.db"
+            )
 
-        config = {
-            "type": "postgresql",
-            "host": host,
-            "port": port,
-            "database": database,
-            "user": user,
-            "password": password,
-        }
-        click.echo(styled(f"  ✓ PostgreSQL configured: {host}:{port}/{database}", Colors.GREEN))
+            click.echo(styled("  Testing connection...", Colors.DIM))
+            success, message = test_sqlite_connection(db_path)
+
+            if success:
+                config = {"type": "sqlite", "path": db_path}
+                click.echo(styled(f"  ✓ SQLite configured: {db_path}", Colors.GREEN))
+                break
+            click.echo(styled(f"  ✗ Error: {message}", Colors.RED))
+            retry = click.confirm(styled("  Try a different path?", Colors.YELLOW), default=True)
+            if not retry:
+                click.echo(styled("  Using path anyway (will retry on first use)", Colors.YELLOW))
+                config = {"type": "sqlite", "path": db_path}
+                break
+    else:
+        # PostgreSQL configuration with testing
+        while True:
+            click.echo()
+            click.echo(styled("  PostgreSQL connection:", Colors.DIM))
+            click.echo(styled("  (Leave blank to use environment variables)", Colors.DIM))
+            click.echo()
+
+            host = click.prompt("    Host", default=os.environ.get("MINDCORE_DB_HOST", "localhost"))
+            port = click.prompt("    Port", default=os.environ.get("MINDCORE_DB_PORT", "5432"))
+            database = click.prompt(
+                "    Database", default=os.environ.get("MINDCORE_DB_NAME", "mindcore")
+            )
+            user = click.prompt("    User", default=os.environ.get("MINDCORE_DB_USER", "postgres"))
+            password = click.prompt(
+                "    Password", hide_input=True, default=os.environ.get("MINDCORE_DB_PASSWORD", "")
+            )
+
+            click.echo()
+            click.echo(styled("  Testing connection...", Colors.DIM))
+            success, message = test_postgres_connection(host, port, database, user, password)
+
+            if success:
+                config = {
+                    "type": "postgresql",
+                    "host": host,
+                    "port": port,
+                    "database": database,
+                    "user": user,
+                    "password": password,
+                }
+                click.echo(styled(f"  ✓ {message}", Colors.GREEN))
+                break
+            click.echo(styled(f"  ✗ {message}", Colors.RED))
+            click.echo()
+
+            # Provide helpful suggestions
+            if "psycopg2 not installed" in message:
+                click.echo(styled("  To install PostgreSQL support:", Colors.YELLOW))
+                click.echo(styled("    pip install mindcore[postgres]", Colors.CYAN))
+                click.echo()
+            elif "Connection refused" in message or "Cannot connect" in message:
+                click.echo(styled("  Troubleshooting:", Colors.YELLOW))
+                click.echo(styled("    1. Is PostgreSQL running?", Colors.DIM))
+                click.echo(styled("    2. Check host/port settings", Colors.DIM))
+                click.echo(
+                    styled(
+                        f"    3. Try: psql -h {host} -p {port} -U {user} -d {database}", Colors.DIM
+                    )
+                )
+                click.echo()
+            elif "does not exist" in message:
+                click.echo(styled("  To create the database:", Colors.YELLOW))
+                click.echo(
+                    styled(f"    createdb -h {host} -p {port} -U {user} {database}", Colors.CYAN)
+                )
+                click.echo()
+
+            action = click.prompt(
+                styled("  What would you like to do?", Colors.YELLOW),
+                type=click.Choice(["retry", "sqlite", "continue"]),
+                default="retry",
+            )
+
+            if action == "retry":
+                continue
+            if action == "sqlite":
+                click.echo(styled("  Switching to SQLite...", Colors.DIM))
+                db_path = click.prompt(
+                    styled("  SQLite file path", Colors.YELLOW), default="./mindcore.db"
+                )
+                config = {"type": "sqlite", "path": db_path}
+                click.echo(styled(f"  ✓ SQLite configured: {db_path}", Colors.GREEN))
+                break
+            click.echo(styled("  Continuing without connection test", Colors.YELLOW))
+            config = {
+                "type": "postgresql",
+                "host": host,
+                "port": port,
+                "database": database,
+                "user": user,
+                "password": password,
+            }
+            break
 
     return config
 
 
-def configure_llm() -> dict:
-    """Configure LLM provider."""
+def configure_llm(integration_mode: dict | None = None) -> dict:
+    """Configure LLM provider with validation."""
     click.echo()
-    click.echo(styled("  LLM Provider (for metadata extraction)", Colors.BOLD))
+    click.echo(styled("  LLM Provider Configuration", Colors.BOLD))
     click.echo()
-    click.echo(f"    {styled('1', Colors.CYAN, Colors.BOLD)}) OpenAI (GPT-4)")
-    click.echo(f"    {styled('2', Colors.CYAN, Colors.BOLD)}) Anthropic (Claude)")
-    click.echo(f"    {styled('3', Colors.CYAN, Colors.BOLD)}) Google (Gemini)")
-    click.echo(f"    {styled('4', Colors.CYAN, Colors.BOLD)}) Custom / Local LLM")
-    click.echo(f"    {styled('5', Colors.CYAN, Colors.BOLD)}) Skip (configure later)")
+
+    # Check if user has existing agent
+    if integration_mode and integration_mode.get("show_integration_guide"):
+        click.echo(styled("  Since you have an existing AI agent, you have options:", Colors.DIM))
+        click.echo()
+        click.echo(
+            f"    {styled('1', Colors.CYAN, Colors.BOLD)}) Use my agent's LLM {styled('(Recommended)', Colors.GREEN)}"
+        )
+        click.echo(
+            styled("       Mindcore will use your existing LLM for metadata extraction", Colors.DIM)
+        )
+        click.echo(f"    {styled('2', Colors.CYAN, Colors.BOLD)}) Configure separate LLM")
+        click.echo(
+            styled("       Use a different LLM for Mindcore's metadata extraction", Colors.DIM)
+        )
+        click.echo(f"    {styled('3', Colors.CYAN, Colors.BOLD)}) No LLM (rule-based only)")
+        click.echo(styled("       Use rule-based extraction (works but less accurate)", Colors.DIM))
+
+        click.echo()
+        mode_choice = click.prompt(
+            styled("  Select option", Colors.YELLOW),
+            type=click.Choice(["1", "2", "3"]),
+            default="1",
+        )
+
+        if mode_choice == "1":
+            click.echo()
+            click.echo(styled("  ✓ Will use your agent's LLM", Colors.GREEN))
+            click.echo()
+            click.echo(styled("  Integration code:", Colors.DIM))
+            click.echo(styled("    # In your agent code:", Colors.CYAN))
+            click.echo(styled("    from mindcore import Mindcore", Colors.CYAN))
+            click.echo(styled("    memory = Mindcore(", Colors.CYAN))
+            click.echo(styled("        storage='sqlite:///mindcore.db',", Colors.CYAN))
+            click.echo(
+                styled(
+                    "        llm_client=your_llm_client  # Pass your existing client", Colors.CYAN
+                )
+            )
+            click.echo(styled("    )", Colors.CYAN))
+            return {"provider": "agent", "api_key": None, "model": None, "use_agent_llm": True}
+        if mode_choice == "3":
+            click.echo(styled("  ✓ Using rule-based extraction only", Colors.GREEN))
+            return {"provider": None, "api_key": None, "model": None}
+        # else fall through to normal LLM configuration
+
+    click.echo(styled("  LLM is used for intelligent metadata extraction.", Colors.DIM))
+    click.echo(
+        styled("  Without it, Mindcore uses rule-based fallback (less accurate).", Colors.DIM)
+    )
+    click.echo()
+
+    click.echo(f"    {styled('1', Colors.CYAN, Colors.BOLD)}) OpenAI (GPT-4o-mini)")
+    click.echo(f"    {styled('2', Colors.CYAN, Colors.BOLD)}) Anthropic (Claude 3 Haiku)")
+    click.echo(f"    {styled('3', Colors.CYAN, Colors.BOLD)}) Google (Gemini 2.0)")
+    click.echo(
+        f"    {styled('4', Colors.CYAN, Colors.BOLD)}) Custom / Local LLM (Ollama, vLLM, etc.)"
+    )
+    click.echo(f"    {styled('5', Colors.CYAN, Colors.BOLD)}) Skip for now")
 
     click.echo()
     choice = click.prompt(
@@ -248,43 +575,138 @@ def configure_llm() -> dict:
     if choice == "1":
         config["provider"] = "openai"
         config["model"] = "gpt-4o-mini"
-        api_key = click.prompt(
-            "    OpenAI API Key", hide_input=True, default=os.environ.get("OPENAI_API_KEY", "")
-        )
-        if api_key:
-            config["api_key"] = api_key
-            click.echo(styled("  ✓ OpenAI configured", Colors.GREEN))
+        existing_key = os.environ.get("OPENAI_API_KEY", "")
+
+        if existing_key:
+            click.echo(styled("  Found OPENAI_API_KEY in environment", Colors.DIM))
+            use_existing = click.confirm(styled("  Use this key?", Colors.YELLOW), default=True)
+            if use_existing:
+                api_key = existing_key
+            else:
+                api_key = click.prompt("    Enter new OpenAI API Key", hide_input=True)
         else:
-            click.echo(styled("  ! API key not set, add OPENAI_API_KEY to .env", Colors.YELLOW))
+            api_key = click.prompt(
+                "    OpenAI API Key",
+                hide_input=True,
+                default="",
+            )
+
+        if api_key:
+            click.echo(styled("  Validating API key...", Colors.DIM))
+            success, message = test_llm_api_key("openai", api_key)
+            if success:
+                config["api_key"] = api_key
+                click.echo(styled(f"  ✓ {message}", Colors.GREEN))
+            else:
+                click.echo(styled(f"  ✗ {message}", Colors.RED))
+                proceed = click.confirm(styled("  Continue anyway?", Colors.YELLOW), default=False)
+                if proceed:
+                    config["api_key"] = api_key
+                else:
+                    config["provider"] = None
+                    click.echo(styled("  Skipped LLM configuration", Colors.DIM))
+        else:
+            click.echo(styled("  ! No API key provided", Colors.YELLOW))
+            click.echo(styled("  Add OPENAI_API_KEY to .env file later", Colors.DIM))
+
     elif choice == "2":
         config["provider"] = "anthropic"
         config["model"] = "claude-3-haiku-20240307"
-        api_key = click.prompt(
-            "    Anthropic API Key",
-            hide_input=True,
-            default=os.environ.get("ANTHROPIC_API_KEY", ""),
-        )
-        if api_key:
-            config["api_key"] = api_key
-            click.echo(styled("  ✓ Anthropic configured", Colors.GREEN))
+        existing_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+        if existing_key:
+            click.echo(styled("  Found ANTHROPIC_API_KEY in environment", Colors.DIM))
+            use_existing = click.confirm(styled("  Use this key?", Colors.YELLOW), default=True)
+            if use_existing:
+                api_key = existing_key
+            else:
+                api_key = click.prompt("    Enter new Anthropic API Key", hide_input=True)
         else:
-            click.echo(styled("  ! API key not set, add ANTHROPIC_API_KEY to .env", Colors.YELLOW))
+            api_key = click.prompt(
+                "    Anthropic API Key",
+                hide_input=True,
+                default="",
+            )
+
+        if api_key:
+            click.echo(styled("  Validating API key...", Colors.DIM))
+            success, message = test_llm_api_key("anthropic", api_key)
+            if success:
+                config["api_key"] = api_key
+                click.echo(styled(f"  ✓ {message}", Colors.GREEN))
+            else:
+                click.echo(styled(f"  ✗ {message}", Colors.RED))
+                proceed = click.confirm(styled("  Continue anyway?", Colors.YELLOW), default=False)
+                if proceed:
+                    config["api_key"] = api_key
+                else:
+                    config["provider"] = None
+                    click.echo(styled("  Skipped LLM configuration", Colors.DIM))
+        else:
+            click.echo(styled("  ! No API key provided", Colors.YELLOW))
+            click.echo(styled("  Add ANTHROPIC_API_KEY to .env file later", Colors.DIM))
+
     elif choice == "3":
         config["provider"] = "google"
         config["model"] = "gemini-2.0-flash"
-        api_key = click.prompt(
-            "    Google API Key", hide_input=True, default=os.environ.get("GOOGLE_API_KEY", "")
-        )
-        if api_key:
-            config["api_key"] = api_key
-            click.echo(styled("  ✓ Google configured", Colors.GREEN))
+        existing_key = os.environ.get("GOOGLE_API_KEY", "")
+
+        if existing_key:
+            click.echo(styled("  Found GOOGLE_API_KEY in environment", Colors.DIM))
+            use_existing = click.confirm(styled("  Use this key?", Colors.YELLOW), default=True)
+            if use_existing:
+                api_key = existing_key
+            else:
+                api_key = click.prompt("    Enter new Google API Key", hide_input=True)
         else:
-            click.echo(styled("  ! API key not set, add GOOGLE_API_KEY to .env", Colors.YELLOW))
+            api_key = click.prompt(
+                "    Google API Key",
+                hide_input=True,
+                default="",
+            )
+
+        if api_key:
+            success, message = test_llm_api_key("google", api_key)
+            if success:
+                config["api_key"] = api_key
+                click.echo(styled(f"  ✓ {message}", Colors.GREEN))
+            else:
+                click.echo(styled(f"  ✗ {message}", Colors.YELLOW))
+                config["api_key"] = api_key  # Still save it
+        else:
+            click.echo(styled("  ! No API key provided", Colors.YELLOW))
+            click.echo(styled("  Add GOOGLE_API_KEY to .env file later", Colors.DIM))
+
     elif choice == "4":
         config["provider"] = "custom"
-        click.echo(styled("  ✓ Will use custom LLM (configure in mindcore.yaml)", Colors.GREEN))
+        click.echo()
+        click.echo(styled("  Custom LLM Configuration", Colors.BOLD))
+        click.echo(styled("  Mindcore supports OpenAI-compatible APIs.", Colors.DIM))
+        click.echo()
+
+        base_url = click.prompt(
+            "    API Base URL",
+            default="http://localhost:11434/v1",
+        )
+        model = click.prompt(
+            "    Model name",
+            default="llama3.2",
+        )
+
+        config["provider"] = "custom"
+        config["model"] = model
+        config["base_url"] = base_url
+        click.echo()
+        click.echo(styled("  ✓ Custom LLM configured", Colors.GREEN))
+        click.echo(
+            styled("  Make sure your LLM server is running before using Mindcore", Colors.DIM)
+        )
+
     else:
+        click.echo()
         click.echo(styled("  ✓ Skipped LLM configuration", Colors.DIM))
+        click.echo(styled("  Mindcore will use rule-based metadata extraction", Colors.DIM))
+        click.echo(styled("  You can add an LLM later in mindcore.yaml", Colors.DIM))
 
     return config
 
@@ -296,45 +718,188 @@ def configure_policies(persona: dict) -> dict:
     click.echo()
     click.echo(styled("  Policy Configuration", Colors.BOLD))
     click.echo()
+    click.echo(styled("  Policies control how memories are validated and stored.", Colors.DIM))
+    click.echo()
 
-    if complexity in ["minimal", "simple", "demo"]:
-        click.echo(styled("  Using sensible defaults (recommended for your setup)", Colors.DIM))
+    # Policy presets
+    POLICY_PRESETS = {
+        "1": {
+            "name": "Relaxed",
+            "desc": "Accept most data, minimal validation",
+            "config": {
+                "strict_mode": False,
+                "require_user_id": True,
+                "require_topics": False,
+                "max_content_length": 50000,
+                "allowed_memory_types": [
+                    "preference",
+                    "semantic",
+                    "episodic",
+                    "procedural",
+                    "skill",
+                    "fact",
+                ],
+            },
+        },
+        "2": {
+            "name": "Balanced",
+            "desc": "Sensible defaults for most use cases",
+            "config": {
+                "strict_mode": False,
+                "require_user_id": True,
+                "require_topics": False,
+                "max_content_length": 10000,
+                "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
+            },
+        },
+        "3": {
+            "name": "Strict",
+            "desc": "Enforce all validation rules",
+            "config": {
+                "strict_mode": True,
+                "require_user_id": True,
+                "require_topics": True,
+                "max_content_length": 5000,
+                "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
+            },
+        },
+        "4": {
+            "name": "Enterprise",
+            "desc": "Full validation with audit requirements",
+            "config": {
+                "strict_mode": True,
+                "require_user_id": True,
+                "require_topics": True,
+                "require_source": True,
+                "max_content_length": 10000,
+                "audit_all_operations": True,
+                "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
+            },
+        },
+        "5": {
+            "name": "Custom",
+            "desc": "Configure each policy individually",
+            "config": None,
+        },
+    }
+
+    # Determine recommended preset based on complexity
+    if complexity in ["minimal", "demo"]:
+        recommended = "1"
+    elif complexity in ["simple", "standard"]:
+        recommended = "2"
+    elif complexity == "advanced":
+        recommended = "3"
+    elif complexity == "full":
+        recommended = "4"
+    else:
+        recommended = "2"
+
+    for key, preset in POLICY_PRESETS.items():
+        rec_tag = styled(" (Recommended)", Colors.GREEN) if key == recommended else ""
+        click.echo(
+            f"    {styled(key, Colors.CYAN, Colors.BOLD)}) {styled(preset['name'], Colors.BOLD)}{rec_tag}"
+        )
+        click.echo(styled(f"       {preset['desc']}", Colors.DIM))
+
+    click.echo()
+    choice = click.prompt(
+        styled("  Select policy preset", Colors.YELLOW),
+        type=click.Choice(list(POLICY_PRESETS.keys())),
+        default=recommended,
+    )
+
+    if choice != "5":
+        config = POLICY_PRESETS[choice]["config"].copy()
         click.echo()
-
-        config = {
-            "strict_mode": False,
-            "require_user_id": True,
-            "max_content_length": 10000,
-            "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
-        }
-
-        click.echo(styled("  ✓ Default policies applied", Colors.GREEN))
+        click.echo(styled(f"  ✓ {POLICY_PRESETS[choice]['name']} policies applied", Colors.GREEN))
         return config
 
-    # Advanced configuration for enterprise/research
-    click.echo("  Configure validation policies:")
+    # Custom configuration
+    click.echo()
+    click.echo(styled("  Custom Policy Configuration", Colors.BOLD))
     click.echo()
 
     strict = click.confirm(
-        styled("    Enable strict mode?", Colors.YELLOW)
-        + styled(" (reject invalid metadata)", Colors.DIM),
-        default=complexity == "full",
+        styled("    Strict mode?", Colors.YELLOW)
+        + styled(" (reject memories with invalid metadata)", Colors.DIM),
+        default=False,
+    )
+
+    require_user_id = click.confirm(
+        styled("    Require user_id?", Colors.YELLOW)
+        + styled(" (all memories must have a user ID)", Colors.DIM),
+        default=True,
     )
 
     require_topics = click.confirm(
-        styled("    Require topics on all memories?", Colors.YELLOW), default=False
+        styled("    Require topics?", Colors.YELLOW)
+        + styled(" (all memories must have at least one topic)", Colors.DIM),
+        default=False,
     )
 
     max_length = click.prompt(
-        styled("    Max content length", Colors.YELLOW), default=10000, type=int
+        styled("    Max content length", Colors.YELLOW),
+        default=10000,
+        type=int,
     )
+
+    click.echo()
+    click.echo(styled("  Available memory types:", Colors.DIM))
+    all_types = [
+        "preference",
+        "semantic",
+        "episodic",
+        "procedural",
+        "skill",
+        "fact",
+        "relationship",
+        "goal",
+    ]
+    for i, mtype in enumerate(all_types, 1):
+        click.echo(styled(f"    {i}. {mtype}", Colors.DIM))
+
+    click.echo()
+    types_input = click.prompt(
+        styled("    Allowed types (comma-separated numbers, or 'all')", Colors.YELLOW),
+        default="1,2,3,4",
+    )
+
+    if types_input.lower() == "all":
+        allowed_types = all_types
+    else:
+        try:
+            indices = [int(x.strip()) - 1 for x in types_input.split(",")]
+            allowed_types = [all_types[i] for i in indices if 0 <= i < len(all_types)]
+        except (ValueError, IndexError):
+            allowed_types = ["preference", "semantic", "episodic", "procedural"]
+            click.echo(styled("  Using default memory types", Colors.YELLOW))
+
+    # Custom memory types
+    click.echo()
+    add_custom = click.confirm(
+        styled("    Add custom memory types?", Colors.YELLOW),
+        default=False,
+    )
+
+    if add_custom:
+        custom_types = click.prompt(
+            styled("    Enter custom types (comma-separated)", Colors.YELLOW),
+            default="",
+        )
+        if custom_types:
+            for raw_type in custom_types.split(","):
+                clean_type = raw_type.strip().lower().replace(" ", "_")
+                if clean_type and clean_type not in allowed_types:
+                    allowed_types.append(clean_type)
+                    click.echo(styled(f"    Added: {clean_type}", Colors.GREEN))
 
     config = {
         "strict_mode": strict,
-        "require_user_id": True,
+        "require_user_id": require_user_id,
         "require_topics": require_topics,
         "max_content_length": max_length,
-        "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
+        "allowed_memory_types": allowed_types,
     }
 
     click.echo()
@@ -566,14 +1131,16 @@ def print_summary(
 @click.option(
     "--output", "-o", type=click.Path(), default=".", help="Output directory for config files"
 )
-def init_command(quick: bool, output: str):
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing files without asking")
+def init_command(quick: bool, output: str, force: bool):
     r"""Interactive setup wizard for Mindcore.
 
     Guides you through configuring:
 
     \b
-    - Storage (SQLite or PostgreSQL)
-    - LLM provider for metadata extraction
+    - Integration mode (new project, existing agent, evaluation)
+    - Storage (SQLite or PostgreSQL) with connection testing
+    - LLM provider for metadata extraction with API validation
     - SVL vocabulary for your domain
     - Validation policies
 
@@ -587,21 +1154,44 @@ def init_command(quick: bool, output: str):
 
     output_dir = Path(output).resolve()
 
+    # Check for existing files
+    if not force:
+        existing_files = check_existing_files(output_dir)
+        if existing_files:
+            click.echo()
+            click.echo(styled("  ⚠ Existing configuration files found:", Colors.YELLOW))
+            for f in existing_files:
+                click.echo(styled(f"    • {f}", Colors.DIM))
+            click.echo()
+
+            overwrite = click.confirm(
+                styled("  Overwrite these files?", Colors.YELLOW),
+                default=False,
+            )
+            if not overwrite:
+                click.echo()
+                click.echo(styled("  Setup cancelled. Use --force to overwrite.", Colors.DIM))
+                click.echo(styled("  Or specify a different output directory with -o", Colors.DIM))
+                raise SystemExit(0)
+            click.echo()
+
     print_banner()
 
     click.echo(styled("  Welcome to Mindcore Setup!", Colors.BOLD))
     click.echo(styled("  Let's configure your AI memory layer.", Colors.DIM))
     click.echo()
 
-    total_steps = 5
+    integration_mode = None
 
     if quick:
         # Quick mode - minimal prompts
-        print_step(1, 2, "Quick Setup")
+        total_steps = 2
+        print_step(1, total_steps, "Quick Setup")
         persona = PERSONAS["1"]
         domain = DOMAINS["8"]
+        integration_mode = INTEGRATION_MODES["4"]  # Evaluation mode
 
-        print_step(2, 2, "Storage")
+        print_step(2, total_steps, "Storage")
         storage = {"type": "sqlite", "path": "./mindcore.db"}
         click.echo(styled("  ✓ Using SQLite (./mindcore.db)", Colors.GREEN))
 
@@ -609,25 +1199,67 @@ def init_command(quick: bool, output: str):
         policies = {
             "strict_mode": False,
             "require_user_id": True,
+            "require_topics": False,
             "max_content_length": 10000,
             "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
         }
     else:
         # Full interactive mode
+        total_steps = 6
+
         print_step(1, total_steps, "Who You Are")
         persona = select_persona()
 
-        print_step(2, total_steps, "Your Domain")
-        domain = select_domain()
+        print_step(2, total_steps, "Integration Mode")
+        integration_mode = select_integration_mode()
 
-        print_step(3, total_steps, "Storage Setup")
-        storage = configure_storage(persona)
+        # Adjust flow based on integration mode
+        if integration_mode.get("demo"):
+            # Demo mode - skip to quick setup
+            click.echo(styled("  Setting up for quick evaluation...", Colors.DIM))
+            domain = DOMAINS["8"]
+            storage = {"type": "sqlite", "path": "./mindcore.db"}
+            click.echo(styled("  ✓ Using SQLite (./mindcore.db)", Colors.GREEN))
+            llm = {"provider": None, "api_key": None, "model": None}
+            policies = {
+                "strict_mode": False,
+                "require_user_id": True,
+                "require_topics": False,
+                "max_content_length": 10000,
+                "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
+            }
+        elif integration_mode.get("minimal"):
+            # Minimal mode - just storage
+            print_step(3, total_steps, "Storage Setup")
+            storage = configure_storage(persona)
 
-        print_step(4, total_steps, "LLM Provider")
-        llm = configure_llm()
+            domain = DOMAINS["8"]
+            llm = {"provider": None, "api_key": None, "model": None}
+            policies = {
+                "strict_mode": False,
+                "require_user_id": True,
+                "require_topics": False,
+                "max_content_length": 10000,
+                "allowed_memory_types": ["preference", "semantic", "episodic", "procedural"],
+            }
 
-        print_step(5, total_steps, "Policies")
-        policies = configure_policies(persona)
+            click.echo()
+            click.echo(
+                styled("  ✓ Minimal setup selected - skipping domain, LLM, policies", Colors.DIM)
+            )
+        else:
+            # Full setup
+            print_step(3, total_steps, "Your Domain")
+            domain = select_domain()
+
+            print_step(4, total_steps, "Storage Setup")
+            storage = configure_storage(persona)
+
+            print_step(5, total_steps, "LLM Provider")
+            llm = configure_llm(integration_mode)
+
+            print_step(6, total_steps, "Policies")
+            policies = configure_policies(persona)
 
     # Generate config files
     click.echo()
@@ -643,3 +1275,26 @@ def init_command(quick: bool, output: str):
     )
 
     print_summary(persona, config_path, env_path, script_path)
+
+    # Show integration-specific guidance
+    if integration_mode and integration_mode.get("show_integration_guide"):
+        click.echo(styled("  Integration Guide for Existing Agents:", Colors.BOLD))
+        click.echo()
+        click.echo(styled("  Add to your agent's initialization:", Colors.DIM))
+        click.echo(styled("    from mindcore import Mindcore", Colors.CYAN))
+        click.echo(styled("    memory = Mindcore('sqlite:///mindcore.db')", Colors.CYAN))
+        click.echo()
+        click.echo(styled("  Before LLM calls - get context:", Colors.DIM))
+        click.echo(
+            styled("    context = memory.recall(query=user_message, user_id=user_id)", Colors.CYAN)
+        )
+        click.echo(styled("    system_prompt += format_context(context.memories)", Colors.CYAN))
+        click.echo()
+        click.echo(styled("  After LLM responses - store learnings:", Colors.DIM))
+        click.echo(
+            styled(
+                "    memory.store(content=info, memory_type='semantic', user_id=user_id)",
+                Colors.CYAN,
+            )
+        )
+        click.echo()

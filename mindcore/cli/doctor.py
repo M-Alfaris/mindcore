@@ -2,10 +2,15 @@
 
 Validates:
 - Configuration files
-- Database connectivity
-- LLM API access
+- Database connectivity (with actual connection tests)
+- LLM API access (with actual API validation)
 - SVL vocabulary
 - Feature availability
+- Disk space and permissions
+
+Provides:
+- Verbose mode for detailed output
+- Fix mode for automatic issue resolution
 """
 
 import os
@@ -13,6 +18,10 @@ import sys
 from pathlib import Path
 
 import click
+
+
+# Global verbose flag
+VERBOSE = False
 
 
 class Colors:
@@ -28,6 +37,12 @@ class Colors:
 def styled(text: str, *styles: str) -> str:
     """Apply ANSI color/style codes to text."""
     return "".join(styles) + text + Colors.RESET
+
+
+def verbose_log(message: str):
+    """Print message only in verbose mode."""
+    if VERBOSE:
+        click.echo(styled(f"         [debug] {message}", Colors.DIM))
 
 
 def check_passed(name: str, detail: str = ""):
@@ -163,20 +178,71 @@ def check_storage(config: dict | None) -> bool:
     return True
 
 
-def check_llm_provider(config: dict | None) -> bool:
+def test_llm_connectivity(provider: str, api_key: str) -> tuple[bool, str]:
+    """Test actual LLM API connectivity."""
+    try:
+        import urllib.error
+        import urllib.request
+
+        verbose_log(f"Testing {provider} API connectivity...")
+
+        if provider == "openai":
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status == 200:
+                        return True, "API connected successfully"
+            except urllib.error.HTTPError as e:
+                if e.code == 401:
+                    return False, "Invalid API key"
+                return False, f"API error: {e.code}"
+            except urllib.error.URLError as e:
+                return False, f"Network error: {e.reason}"
+
+        elif provider == "anthropic":
+            # For Anthropic, we can't easily test without making a real request
+            # Just validate the key format
+            if api_key and len(api_key) > 20:
+                return True, "API key format valid"
+            return False, "Invalid API key format"
+
+        elif provider == "google":
+            if api_key and api_key.startswith("AIza"):
+                return True, "API key format valid"
+            return False, "Invalid API key format"
+
+        return True, "Provider configured"
+    except Exception as e:
+        return False, str(e)
+
+
+def check_llm_provider(config: dict | None, test_connectivity: bool = False) -> bool:
     """Check LLM provider configuration."""
     if not config or "llm" not in config:
         # Check environment variables
         providers = [
-            ("OPENAI_API_KEY", "OpenAI"),
-            ("ANTHROPIC_API_KEY", "Anthropic"),
-            ("GOOGLE_API_KEY", "Google"),
+            ("OPENAI_API_KEY", "OpenAI", "openai"),
+            ("ANTHROPIC_API_KEY", "Anthropic", "anthropic"),
+            ("GOOGLE_API_KEY", "Google", "google"),
         ]
 
         found = []
-        for env_var, name in providers:
-            if os.environ.get(env_var):
+        for env_var, name, provider_id in providers:
+            api_key = os.environ.get(env_var)
+            if api_key:
                 found.append(name)
+                verbose_log(f"Found {env_var} in environment")
+
+                # Test connectivity if requested
+                if test_connectivity:
+                    success, message = test_llm_connectivity(provider_id, api_key)
+                    if success:
+                        verbose_log(f"{name}: {message}")
+                    else:
+                        check_warn(f"{name} connectivity", message)
 
         if found:
             check_passed("LLM provider", f"Found: {', '.join(found)}")
@@ -188,14 +254,41 @@ def check_llm_provider(config: dict | None) -> bool:
         return True  # Not a hard failure
 
     provider = config["llm"].get("provider")
-    if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-        check_failed(
-            "LLM provider",
-            "OpenAI configured but OPENAI_API_KEY not set",
-            "Set OPENAI_API_KEY in your environment or .env file",
-        )
-        return False
+    verbose_log(f"Config specifies provider: {provider}")
 
+    env_var_map = {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "google": "GOOGLE_API_KEY",
+    }
+
+    if provider in env_var_map:
+        env_var = env_var_map[provider]
+        api_key = os.environ.get(env_var)
+
+        if not api_key:
+            check_failed(
+                "LLM provider",
+                f"{provider.title()} configured but {env_var} not set",
+                f"Set {env_var} in your environment or .env file",
+            )
+            return False
+
+        # Test connectivity if requested
+        if test_connectivity:
+            verbose_log("Testing API connectivity...")
+            success, message = test_llm_connectivity(provider, api_key)
+            if success:
+                check_passed("LLM provider", f"{provider.title()}: {message}")
+            else:
+                check_failed("LLM provider", f"{provider.title()}: {message}")
+                return False
+        else:
+            check_passed("LLM provider", f"Configured: {provider}")
+
+        return True
+
+    # Custom or unknown provider
     check_passed("LLM provider", f"Configured: {provider}")
     return True
 
@@ -316,28 +409,148 @@ def run_quick_test() -> bool:
         return False
 
 
+def try_fix_config() -> bool:
+    """Attempt to create a default configuration file."""
+    try:
+        import yaml
+
+        default_config = {
+            "version": "2.0",
+            "storage": {
+                "backend": "sqlite",
+                "path": "./mindcore.db",
+            },
+            "svl": {
+                "policies": {
+                    "strict_mode": False,
+                    "require_user_id": True,
+                },
+            },
+            "features": {
+                "hot_path": True,
+                "session_segmentation": True,
+            },
+        }
+
+        config_path = Path("mindcore.yaml")
+        with open(config_path, "w") as f:
+            yaml.dump(default_config, f, default_flow_style=False, sort_keys=False)
+
+        click.echo(styled("         Fixed: Created mindcore.yaml", Colors.GREEN))
+        return True
+    except Exception as e:
+        click.echo(styled(f"         Could not create config: {e}", Colors.RED))
+        return False
+
+
+def try_fix_env_file() -> bool:
+    """Attempt to create a template .env file."""
+    try:
+        env_path = Path(".env")
+        if not env_path.exists():
+            template = """# Mindcore Environment Configuration
+# Uncomment and set the API keys you want to use
+
+# LLM Providers (for metadata extraction)
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# GOOGLE_API_KEY=AIza...
+
+# PostgreSQL (if using)
+# MINDCORE_DB_HOST=localhost
+# MINDCORE_DB_PORT=5432
+# MINDCORE_DB_NAME=mindcore
+# MINDCORE_DB_USER=postgres
+# MINDCORE_DB_PASSWORD=
+"""
+            with open(env_path, "w") as f:
+                f.write(template)
+
+            click.echo(styled("         Fixed: Created .env template", Colors.GREEN))
+            return True
+        return False
+    except Exception as e:
+        click.echo(styled(f"         Could not create .env: {e}", Colors.RED))
+        return False
+
+
+def check_disk_space() -> bool:
+    """Check available disk space."""
+    try:
+        import shutil
+
+        cwd = Path.cwd()
+        _total, _used, free = shutil.disk_usage(cwd)
+        free_mb = free // (1024 * 1024)
+        free_gb = free_mb / 1024
+
+        verbose_log(f"Disk space: {free_gb:.1f} GB free")
+
+        if free_mb < 100:  # Less than 100MB
+            check_warn("Disk space", f"Only {free_mb}MB available - may cause issues")
+            return False
+        if free_mb < 1000:  # Less than 1GB
+            check_passed("Disk space", f"{free_mb}MB available (low)")
+        else:
+            check_passed("Disk space", f"{free_gb:.1f}GB available")
+        return True
+    except Exception as e:
+        verbose_log(f"Could not check disk space: {e}")
+        return True  # Don't fail on this
+
+
+def check_write_permissions() -> bool:
+    """Check write permissions in current directory."""
+    try:
+        test_file = Path(".mindcore_permission_test")
+        test_file.touch()
+        test_file.unlink()
+        check_passed("Write permissions", "Current directory is writable")
+        return True
+    except PermissionError:
+        check_failed(
+            "Write permissions",
+            "Cannot write to current directory",
+            "Check directory permissions or use a different location",
+        )
+        return False
+    except Exception as e:
+        verbose_log(f"Permission check error: {e}")
+        return True
+
+
 @click.command()
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.option("--fix", is_flag=True, help="Attempt to fix issues")
-def doctor_command(verbose: bool, fix: bool):
+@click.option("--test-llm", is_flag=True, help="Test LLM API connectivity")
+def doctor_command(verbose: bool, fix: bool, test_llm: bool):
     r"""Check your Mindcore setup and diagnose issues.
 
     Validates configuration, connectivity, and features.
 
     \b
     Examples:
-        mindcore doctor         # Basic health check
-        mindcore doctor -v      # Verbose output
-        mindcore doctor --fix   # Attempt fixes
+        mindcore doctor            # Basic health check
+        mindcore doctor -v         # Verbose output
+        mindcore doctor --fix      # Attempt to fix issues
+        mindcore doctor --test-llm # Test LLM API connectivity
     """
+    global VERBOSE
+    VERBOSE = verbose
+
     click.echo()
     click.echo(styled("  Mindcore Doctor", Colors.BOLD, Colors.CYAN))
     click.echo(styled("  Checking your setup...", Colors.DIM))
+    if verbose:
+        click.echo(styled("  (Verbose mode enabled)", Colors.DIM))
+    if fix:
+        click.echo(styled("  (Fix mode enabled)", Colors.DIM))
     click.echo()
 
     passed = 0
     failed = 0
     warnings = 0
+    fixed = 0
 
     # Core checks
     click.echo(styled("  Core Components", Colors.BOLD))
@@ -354,13 +567,55 @@ def doctor_command(verbose: bool, fix: bool):
         failed += 1
         click.echo()
         click.echo(styled("  Cannot continue without Mindcore installed.", Colors.RED))
-        raise SystemExit(1)
+        if fix:
+            click.echo(styled("  Attempting fix: pip install mindcore", Colors.YELLOW))
+            import subprocess
+
+            result = subprocess.run(  # noqa: S603 # nosec B603
+                [sys.executable, "-m", "pip", "install", "mindcore"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                click.echo(styled("  Fixed: Mindcore installed", Colors.GREEN))
+                fixed += 1
+            else:
+                click.echo(styled("  Could not install Mindcore", Colors.RED))
+                raise SystemExit(1)
+        else:
+            raise SystemExit(1)
 
     config = check_config_file()
     if config:
         passed += 1
     else:
         warnings += 1
+        if fix:
+            if try_fix_config():
+                fixed += 1
+                # Reload config
+                try:
+                    import yaml
+
+                    with open("mindcore.yaml") as f:
+                        config = yaml.safe_load(f)
+                except Exception:
+                    pass
+
+    click.echo()
+    click.echo(styled("  Environment", Colors.BOLD))
+    click.echo(styled("  ─" * 25, Colors.DIM))
+
+    if check_disk_space():
+        passed += 1
+    else:
+        warnings += 1
+
+    if check_write_permissions():
+        passed += 1
+    else:
+        failed += 1
 
     click.echo()
     click.echo(styled("  Storage & Connectivity", Colors.BOLD))
@@ -371,10 +626,14 @@ def doctor_command(verbose: bool, fix: bool):
     else:
         failed += 1
 
-    if check_llm_provider(config):
+    if check_llm_provider(config, test_connectivity=test_llm):
         passed += 1
     else:
         failed += 1
+        if fix:
+            if try_fix_env_file():
+                fixed += 1
+                click.echo(styled("         Edit .env and add your API keys", Colors.YELLOW))
 
     click.echo()
     click.echo(styled("  SVL & Vocabulary", Colors.BOLD))
@@ -417,12 +676,19 @@ def doctor_command(verbose: bool, fix: bool):
         click.echo(f"  {styled('✗', Colors.RED)} Failed: {failed}")
     if warnings > 0:
         click.echo(f"  {styled('!', Colors.YELLOW)} Warnings: {warnings}")
+    if fixed > 0:
+        click.echo(f"  {styled('⚡', Colors.CYAN)} Fixed: {fixed}")
 
     click.echo()
 
     if failed > 0:
         click.echo(styled("  Need help?", Colors.BOLD))
-        click.echo("    Run: mindcore init    # Reconfigure")
-        click.echo("    Docs: https://github.com/mindcore/mindcore")
+        click.echo(f"    {styled('•', Colors.CYAN)} Run: mindcore init        # Reconfigure")
+        click.echo(f"    {styled('•', Colors.CYAN)} Run: mindcore doctor --fix  # Auto-fix issues")
+        click.echo(f"    {styled('•', Colors.CYAN)} Docs: https://github.com/mindcore/mindcore")
         click.echo()
         raise SystemExit(1)
+    click.echo(styled("  Ready to use Mindcore!", Colors.GREEN))
+    click.echo(f"    {styled('•', Colors.CYAN)} Run: mindcore demo     # See it in action")
+    click.echo(f"    {styled('•', Colors.CYAN)} Run: python quickstart.py  # Test your setup")
+    click.echo()
