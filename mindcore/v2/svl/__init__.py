@@ -92,6 +92,14 @@ from .gated_storage import (
     StoreResult,
 )
 
+# SVL Pipeline - Complete orchestrated data flow
+from .pipeline import (
+    QueryResult,
+    SVLPipeline,
+    StoreResult as PipelineStoreResult,
+    create_pipeline,
+)
+
 # Layer - Main interface (unified vocabulary)
 from .layer import (
     DEFAULT_SVL,
@@ -225,6 +233,11 @@ __all__ = [
     "GatedMindcore",
     "GatedRecallResult",
     "StoreResult",
+    # SVL Pipeline exports
+    "QueryResult",
+    "SVLPipeline",
+    "PipelineStoreResult",
+    "create_pipeline",
     "Confidence",
     "ContextDecision",
     "ContextInjector",
