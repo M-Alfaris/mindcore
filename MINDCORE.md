@@ -1,20 +1,22 @@
 # MindCore Documentation
 
 > Ground truth documentation for MindCore - a memory protocol stack for AI agents.
-> Last updated: 2025-12-25
+> Last updated: 2025-12-28
 
 ## Quick Reference
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `mindcore/v2/flr/` | Core | Fast Local Recall - hot path with reinforcement learning |
-| `mindcore/v2/clst/` | Core | Cognitive Long-term Storage Transfer - cold path with aggregates |
-| `mindcore/v2/svl/` | Core | Shared Vocabulary Layer - LLM-enforced metadata extraction |
-| `mindcore/v2/context/` | Core | Context Gateway - unified context assembly |
-| `mindcore/v2/federation/` | Core | Multi-agent memory federation with access control |
-| `mindcore/v2/cross_agent/` | Core | Cross-agent memory sharing and routing |
-| `mindcore/v2/enterprise/` | Enterprise | Audit, encryption, observability, rate limiting |
-| `mindcore/v2/patterns/` | Patterns | Customer-facing agent patterns |
+| `mindcore/flr/` | Core | Fast Local Recall - hot path with reinforcement learning |
+| `mindcore/clst/` | Core | Cognitive Long-term Storage Transfer - cold path with aggregates |
+| `mindcore/svl/` | Core | Shared Vocabulary Layer - LLM-enforced metadata extraction |
+| `mindcore/context/` | Core | Context Gateway - unified context assembly |
+| `mindcore/federation/` | Core | Multi-agent memory federation with access control |
+| `mindcore/cross_agent/` | Core | Cross-agent memory sharing and routing |
+| `mindcore/enterprise/` | Enterprise | Audit, encryption, observability, rate limiting |
+| `mindcore/patterns/` | Patterns | Customer-facing agent patterns |
+| `mindcore/cli/` | CLI | Interactive setup, diagnostics, and benchmarking tools |
+| `mindcore/benchmarks/` | Benchmarks | System-level evaluation suite with real datasets |
 
 ---
 
@@ -121,7 +123,7 @@ MindCore is a **memory protocol stack** for AI agents that provides:
 
 ### 3.1 FLR (Fast Local Recall)
 
-**Location:** `mindcore/v2/flr/`
+**Location:** `mindcore/flr/`
 
 Hot path for inference-time memory access with robust reinforcement learning.
 
@@ -138,7 +140,7 @@ Hot path for inference-time memory access with robust reinforcement learning.
 #### Robust Reinforcement System
 
 ```python
-from mindcore.v2.flr.reinforcement import (
+from mindcore.flr.reinforcement import (
     RobustReinforcement,
     ReinforcementSignal,
     SignalType,
@@ -171,6 +173,7 @@ breakdown = reinforcement.get_signal_breakdown()
 #### Signal Types and Sources
 
 **Signal Types** (what aspect of quality):
+
 - `RELEVANCE` - Was the memory relevant to the query?
 - `USEFULNESS` - Did it help solve the task?
 - `CORRECTNESS` - Was the information accurate?
@@ -178,6 +181,7 @@ breakdown = reinforcement.get_signal_breakdown()
 - `COMPLETENESS` - Did it provide sufficient detail?
 
 **Signal Sources** (reliability weights):
+
 - `USER_EXPLICIT` (1.0) - Direct user feedback (thumbs up/down)
 - `USER_IMPLICIT` (0.7) - Inferred from behavior
 - `LLM_EVALUATION` (0.5) - LLM self-assessment
@@ -187,7 +191,7 @@ breakdown = reinforcement.get_signal_breakdown()
 #### Metadata Feedback Tracking
 
 ```python
-from mindcore.v2.flr.metadata_feedback import MetadataFeedbackTracker
+from mindcore.flr.metadata_feedback import MetadataFeedbackTracker
 
 tracker = MetadataFeedbackTracker()
 
@@ -208,7 +212,7 @@ feedback = tracker.get_feedback_for_extractor()
 #### Usage Detection
 
 ```python
-from mindcore.v2.flr.usage_detector import UsageDetector
+from mindcore.flr.usage_detector import UsageDetector
 
 detector = UsageDetector()
 
@@ -229,7 +233,7 @@ result = detector.detect_usage(
 #### Query Optimizer
 
 ```python
-from mindcore.v2.flr.query_optimizer import QueryOptimizer
+from mindcore.flr.query_optimizer import QueryOptimizer
 
 optimizer = QueryOptimizer()
 
@@ -260,7 +264,7 @@ recs = optimizer.get_recommendations()
 
 ### 3.2 CLST (Cognitive Long-term Storage Transfer)
 
-**Location:** `mindcore/v2/clst/`
+**Location:** `mindcore/clst/`
 
 Cold path for persistent storage with hierarchical retrieval and session aggregates.
 
@@ -276,7 +280,7 @@ Cold path for persistent storage with hierarchical retrieval and session aggrega
 The key insight: Topics and categories have different importance/density within sessions. By tracking weights, we can query relevant sessions without embeddings, then drill into memories.
 
 ```python
-from mindcore.v2.clst.aggregates import SessionAggregate, WeightCalculator
+from mindcore.clst.aggregates import SessionAggregate, WeightCalculator
 
 # Session aggregates are auto-updated when memories are stored
 aggregate = SessionAggregate(
@@ -306,6 +310,7 @@ topic_weight = (frequency * 0.4) + (avg_importance * 0.4) + (recency * 0.2)
 ```
 
 Where:
+
 - `frequency`: How often the topic appears in the session
 - `avg_importance`: Average importance of memories with this topic
 - `recency`: Exponential decay based on last mention time
@@ -323,7 +328,7 @@ This reduces search space dramatically and eliminates need for per-memory embedd
 
 ### 3.3 SVL (Shared Vocabulary Layer)
 
-**Location:** `mindcore/v2/svl/`
+**Location:** `mindcore/svl/`
 
 Semantic spine of MindCore - standardized vocabulary for consistent metadata with LLM enforcement.
 
@@ -344,7 +349,7 @@ Semantic spine of MindCore - standardized vocabulary for consistent metadata wit
 The LLM is **forced** to assign metadata from SVL vocabulary through structured outputs:
 
 ```python
-from mindcore.v2.svl.enforced_metadata import (
+from mindcore.svl.enforced_metadata import (
     MetadataExtractor,
     EnforcedMetadata,
     ContextDecision,
@@ -389,7 +394,7 @@ metadata, memories = extractor.parse_metadata(llm_response)
 Support for latest LLM API features:
 
 ```python
-from mindcore.v2.svl.llm_providers import (
+from mindcore.svl.llm_providers import (
     OpenAIConfig,
     ClaudeConfig,
     GeminiConfig,
@@ -432,7 +437,7 @@ gemini3_config = GeminiConfig(
 Inject feedback through API mechanisms without modifying user prompts:
 
 ```python
-from mindcore.v2.svl.llm_providers import (
+from mindcore.svl.llm_providers import (
     ContextInjector,
     FeedbackInjection,
     create_injector_from_flr,
@@ -463,12 +468,12 @@ annotated_schema = injector.annotate_schema(original_schema)
 
 ### 3.4 Context Gateway
 
-**Location:** `mindcore/v2/context/`
+**Location:** `mindcore/context/`
 
 Unified entry point for building LLM context from FLR, CLST, and SVL.
 
 ```python
-from mindcore.v2.context.gateway import ContextGateway, ContextResult
+from mindcore.context.gateway import ContextGateway, ContextResult
 
 gateway = ContextGateway(
     storage=postgres_storage,
@@ -511,7 +516,7 @@ llm_context = context.to_llm_context(max_memories=20)
 
 ### 3.5 Federation (Multi-Agent Memory)
 
-**Location:** `mindcore/v2/federation/`
+**Location:** `mindcore/federation/`
 
 Enterprise-grade memory federation for organizations with multiple AI agents.
 
@@ -530,7 +535,7 @@ Enterprise-grade memory federation for organizations with multiple AI agents.
 #### Access Levels
 
 ```python
-from mindcore.v2.federation import AccessLevel
+from mindcore.federation import AccessLevel
 
 class AccessLevel(IntEnum):
     PRIVATE = 0       # Only the specific agent
@@ -545,7 +550,7 @@ class AccessLevel(IntEnum):
 #### Quick Setup
 
 ```python
-from mindcore.v2.federation import quick_setup
+from mindcore.federation import quick_setup
 
 # Create federation with departments and teams
 federation = quick_setup(
@@ -578,7 +583,7 @@ agent.reinforce("memory-id", signal=0.8)
 #### Cross-Agent Signal Aggregation
 
 ```python
-from mindcore.v2.federation import (
+from mindcore.federation import (
     CrossAgentSignalAggregator,
     TrustPolicy,
 )
@@ -609,7 +614,7 @@ final_signal = aggregator.get_aggregated_signal("mem_123")
 
 ### 3.6 Enterprise Features
 
-**Location:** `mindcore/v2/enterprise/`
+**Location:** `mindcore/enterprise/`
 
 Production-ready features for enterprise deployments.
 
@@ -623,7 +628,7 @@ Production-ready features for enterprise deployments.
 | `rate_limiting.py` | Configurable rate limits with multiple backends |
 
 ```python
-from mindcore.v2.enterprise import (
+from mindcore.enterprise import (
     # Audit
     AuditLogger,
     AuditEventType,
@@ -657,14 +662,14 @@ mc.enable_encryption(EncryptionConfig(key_from_env="MINDCORE_ENCRYPTION_KEY"))
 
 ### 3.7 Cross-Agent Layer (Legacy)
 
-**Location:** `mindcore/v2/cross_agent/`
+**Location:** `mindcore/cross_agent/`
 
 Multi-agent memory sharing, synchronization, and intelligent query routing.
 
-> **Note:** For new deployments, prefer the Federation module (`mindcore/v2/federation/`) which provides more granular access control and namespace hierarchy.
+> **Note:** For new deployments, prefer the Federation module (`mindcore/federation/`) which provides more granular access control and namespace hierarchy.
 
 ```python
-from mindcore.v2.cross_agent import (
+from mindcore.cross_agent import (
     CrossAgentLayer,
     RoutingStrategy,
     SyncDirection,
@@ -693,14 +698,14 @@ result = layer.query(
 
 ### 3.8 Patterns
 
-**Location:** `mindcore/v2/patterns/`
+**Location:** `mindcore/patterns/`
 
 Ready-to-use patterns for common use cases.
 
 #### Customer-Facing Agents
 
 ```python
-from mindcore.v2.patterns.customer_facing import (
+from mindcore.patterns.customer_facing import (
     UserMemoryHelper,
     consent_to_access_level,
     mask_pii,
@@ -730,11 +735,123 @@ if contains_pii(text):
 
 ---
 
+### 3.9 CLI (Command-Line Interface)
+
+**Location:** `mindcore/cli/`
+
+Interactive setup, diagnostics, and benchmarking tools for MindCore.
+
+#### Commands
+
+| Command | Description |
+|---------|-------------|
+| `mindcore init` | Interactive setup wizard - configure storage, LLM, SVL domains |
+| `mindcore doctor` | Health check and diagnostics - verify configuration |
+| `mindcore demo` | Run a quick interactive demo |
+| `mindcore status` | Show current configuration and status |
+| `mindcore explain [id]` | Explain what happened during a memory operation (requires audit) |
+| `mindcore config [action]` | View, validate, diff, or reset configuration |
+| `mindcore benchmark [type]` | Run trust and performance benchmarks |
+
+#### Quick Start
+
+```bash
+# Install mindcore
+pip install mindcore
+
+# Interactive setup
+mindcore init
+
+# Check setup
+mindcore doctor
+
+# Run demo
+mindcore demo
+```
+
+#### Benchmark Command
+
+```bash
+# Run all benchmarks
+mindcore benchmark
+
+# Run specific benchmark type
+mindcore benchmark replay    # Test deterministic memory replay
+mindcore benchmark audit     # Verify audit trail integrity
+mindcore benchmark drift     # Check for memory drift over time
+mindcore benchmark latency   # Measure FLR and CLST latency
+
+# With options
+mindcore benchmark -n 50 -v  # 50 iterations, verbose output
+```
+
+---
+
+### 3.10 Benchmarks Module
+
+**Location:** `mindcore/benchmarks/`
+
+System-level evaluation suite that goes beyond typical model benchmarks to measure what matters for production AI memory systems.
+
+#### Benchmark Categories
+
+1. **Determinism & Reproducibility** - Can you replay and get identical results?
+2. **Auditability & Traceability** - Can you explain what happened and why?
+3. **Memory Quality Over Time** - Does memory drift or remain stable?
+4. **Cost & Operational Efficiency** - FLR vs CLST cost/latency trade-offs
+5. **Failure & Adversarial Robustness** - Does the system degrade gracefully?
+
+#### Usage
+
+```python
+from mindcore.benchmarks import BenchmarkRunner, BenchmarkSuite, DatasetLoader
+
+# Load standard datasets (LoCoMo, MultiWOZ, etc.)
+loader = DatasetLoader()
+dataset = loader.load("locomo")
+
+# Run benchmarks
+runner = BenchmarkRunner()
+results = runner.run_suite(BenchmarkSuite.FULL)
+
+# Export results
+runner.export_report("benchmark_results.json")
+
+# Generate HTML dashboard
+from mindcore.benchmarks import generate_dashboard
+generate_dashboard(results, "dashboard.html")
+```
+
+#### Dataset Enrichment
+
+```python
+from mindcore.benchmarks import DatasetEnrichmentPipeline, EnrichedDataset
+
+# Enrich dataset with SVL metadata
+pipeline = DatasetEnrichmentPipeline(svl=shared_vocabulary_layer)
+enriched: EnrichedDataset = pipeline.enrich(raw_dataset)
+
+# Access enriched memories
+for memory in enriched.memories:
+    print(f"Topics: {memory.topics}")
+    print(f"Categories: {memory.categories}")
+    print(f"Importance: {memory.importance}")
+```
+
+#### Supported Datasets
+
+- **LoCoMo** - Long-context memory benchmark
+- **MultiWOZ** - Multi-domain task-oriented dialogues
+- **MemoryAgentBench** - Agent memory evaluation
+- **AgentBench** - General agent capabilities
+
+---
+
 ## 4. Storage Backends
 
 ### PostgreSQL (Production)
 
-**Location:** `mindcore/v2/storage/postgres.py`
+**Location:** `mindcore/storage/postgres.py`
 
 ```python
 from mindcore import Mindcore, PostgresStorage
@@ -747,6 +864,7 @@ memory = Mindcore(storage=storage)
 ```
 
 **Features:**
+
 - Connection pooling (psycopg v3)
 - Full-text search via `tsvector`
 - JSONB for topics, categories, entities
@@ -755,7 +873,7 @@ memory = Mindcore(storage=storage)
 
 ### SQLite (Development)
 
-**Location:** `mindcore/v2/storage/sqlite.py`
+**Location:** `mindcore/storage/sqlite.py`
 
 ```python
 from mindcore import Mindcore
@@ -765,6 +883,7 @@ memory = Mindcore(storage="sqlite:///:memory:")  # In-memory
 ```
 
 **Features:**
+
 - Thread-safe with WAL mode
 - FTS5 full-text search
 - JSON arrays stored as TEXT
@@ -775,7 +894,7 @@ memory = Mindcore(storage="sqlite:///:memory:")  # In-memory
 
 ### MCP Server
 
-**Location:** `mindcore/v2/server/mcp.py`
+**Location:** `mindcore/server/mcp.py`
 
 ```python
 mcp = memory.get_mcp_server()
@@ -785,13 +904,14 @@ tools = mcp.get_tools()
 
 ### REST API
 
-**Location:** `mindcore/v2/server/rest.py`
+**Location:** `mindcore/server/rest.py`
 
 ```python
 memory.serve_rest(host="0.0.0.0", port=8000)
 ```
 
 **Endpoints:**
+
 ```
 POST   /memories              - Store memory
 GET    /memories/{id}         - Get memory
@@ -811,97 +931,110 @@ GET    /health                - Health check
 mindcore/
 ├── __init__.py                     # Main exports
 ├── py.typed                        # PEP 561 marker
+├── mindcore.py                     # Main Mindcore class
+├── exceptions.py                   # Custom exceptions
 │
-├── v2/                             # Core memory layer
-│   ├── mindcore.py                 # Main Mindcore class
-│   ├── exceptions.py               # Custom exceptions
-│   │
-│   ├── flr/                        # Fast Local Recall (hot path)
-│   │   ├── recall.py               # FLR protocol
-│   │   ├── reinforcement.py        # Robust reinforcement with decay
-│   │   ├── metadata_feedback.py    # Metadata effectiveness tracking
-│   │   ├── usage_detector.py       # Detect memory usage in responses
-│   │   ├── query_optimizer.py      # Dynamic query optimization
-│   │   └── __init__.py
-│   │
-│   ├── clst/                       # Cognitive Long-term Storage
-│   │   ├── storage.py              # CLST protocol
-│   │   ├── aggregates.py           # Session aggregates with weights
-│   │   └── __init__.py
-│   │
-│   ├── svl/                        # Shared Vocabulary Layer
-│   │   ├── ontology.py             # Core semantic definitions
-│   │   ├── domains.py              # Domain vocabularies
-│   │   ├── sources.py              # Data source mapping
-│   │   ├── layer.py                # SharedVocabularyLayer
-│   │   ├── enforced_metadata.py    # LLM-enforced metadata extraction
-│   │   ├── llm_providers.py        # OpenAI/Claude/Gemini configs
-│   │   ├── registry.py             # SVL registry
-│   │   ├── user_sources/           # User-defined source mappings
-│   │   │   ├── topics/
-│   │   │   └── categories/
-│   │   └── __init__.py
-│   │
-│   ├── context/                    # Context Gateway
-│   │   ├── gateway.py              # Unified context assembly
-│   │   └── __init__.py
-│   │
-│   ├── federation/                 # Multi-Agent Federation
-│   │   ├── access_control.py       # AccessLevel, AccessScope, MemoryACL
-│   │   ├── namespace.py            # MemoryNamespace, NamespaceHierarchy
-│   │   ├── federated_clst.py       # FederatedCLST with access control
-│   │   ├── federated_svl.py        # FederatedSVL with scoped feedback
-│   │   ├── signal_aggregator.py    # Cross-agent signal aggregation
-│   │   ├── agent_bridge.py         # AgentMemoryBridge
-│   │   ├── config.py               # FederationConfig, quick_setup()
-│   │   └── __init__.py
-│   │
-│   ├── cross_agent/                # Cross-agent layer (legacy)
-│   │   ├── registry.py             # Agent/Team registration
-│   │   ├── sharing.py              # Memory sharing and sync
-│   │   ├── routing.py              # Attention routing
-│   │   ├── layer.py                # CrossAgentLayer
-│   │   └── __init__.py
-│   │
-│   ├── access/                     # Access control
-│   │   ├── permissions.py          # AccessController
-│   │   └── __init__.py
-│   │
-│   ├── storage/                    # Storage backends
-│   │   ├── base.py                 # BaseStorage interface
-│   │   ├── postgres.py             # PostgreSQL backend
-│   │   ├── sqlite.py               # SQLite backend
-│   │   └── __init__.py
-│   │
-│   ├── server/                     # API servers
-│   │   ├── mcp.py                  # MCP server
-│   │   ├── rest.py                 # REST API
-│   │   └── __init__.py
-│   │
-│   ├── enterprise/                 # Enterprise features
-│   │   ├── audit.py                # Audit logging
-│   │   ├── encryption.py           # At-rest encryption
-│   │   ├── observability.py        # OpenTelemetry metrics/tracing
-│   │   ├── rate_limiting.py        # Rate limiting
-│   │   └── __init__.py
-│   │
-│   ├── patterns/                   # Usage patterns
-│   │   ├── customer_facing.py      # Customer-facing agent patterns
-│   │   └── __init__.py
-│   │
-│   ├── vocabulary/                 # Vocabulary schema
-│   │   ├── schema.py               # VocabularySchema
-│   │   └── __init__.py
-│   │
-│   └── tests/                      # Tests
-│       ├── test_mindcore_v2.py
-│       ├── test_cross_agent.py
-│       ├── test_svl.py
-│       ├── test_svl_registry.py
-│       ├── test_enterprise.py
-│       ├── test_federation.py
-│       ├── test_flr_reinforcement.py
-│       └── __init__.py
+├── cli/                            # Command-line interface
+│   ├── __init__.py                 # Main CLI entry point (mindcore command)
+│   ├── init.py                     # Interactive setup wizard
+│   ├── doctor.py                   # Health check and diagnostics
+│   └── demo.py                     # Quick demo command
+│
+├── benchmarks/                     # System-level benchmarks
+│   ├── __init__.py                 # BenchmarkRunner, BenchmarkSuite exports
+│   ├── runner.py                   # Benchmark execution engine
+│   ├── metrics.py                  # BenchmarkMetrics collection
+│   ├── datasets.py                 # DatasetLoader for LoCoMo, MultiWOZ, etc.
+│   ├── enrichment.py               # Dataset enrichment pipeline
+│   └── dashboard.py                # HTML dashboard generation
+│
+├── flr/                            # Fast Local Recall (hot path)
+│   ├── recall.py                   # FLR protocol
+│   ├── reinforcement.py            # Robust reinforcement with decay
+│   ├── metadata_feedback.py        # Metadata effectiveness tracking
+│   ├── usage_detector.py           # Detect memory usage in responses
+│   ├── query_optimizer.py          # Dynamic query optimization
+│   └── __init__.py
+│
+├── clst/                           # Cognitive Long-term Storage
+│   ├── storage.py                  # CLST protocol
+│   ├── aggregates.py               # Session aggregates with weights
+│   └── __init__.py
+│
+├── svl/                            # Shared Vocabulary Layer
+│   ├── ontology.py                 # Core semantic definitions
+│   ├── domains.py                  # Domain vocabularies
+│   ├── sources.py                  # Data source mapping
+│   ├── layer.py                    # SharedVocabularyLayer
+│   ├── enforced_metadata.py        # LLM-enforced metadata extraction
+│   ├── llm_providers.py            # OpenAI/Claude/Gemini configs
+│   ├── registry.py                 # SVL registry
+│   ├── user_sources/               # User-defined source mappings
+│   │   ├── topics/
+│   │   └── categories/
+│   └── __init__.py
+│
+├── context/                        # Context Gateway
+│   ├── gateway.py                  # Unified context assembly
+│   └── __init__.py
+│
+├── federation/                     # Multi-Agent Federation
+│   ├── access_control.py           # AccessLevel, AccessScope, MemoryACL
+│   ├── namespace.py                # MemoryNamespace, NamespaceHierarchy
+│   ├── federated_clst.py           # FederatedCLST with access control
+│   ├── federated_svl.py            # FederatedSVL with scoped feedback
+│   ├── signal_aggregator.py        # Cross-agent signal aggregation
+│   ├── agent_bridge.py             # AgentMemoryBridge
+│   ├── config.py                   # FederationConfig, quick_setup()
+│   └── __init__.py
+│
+├── cross_agent/                    # Cross-agent layer (legacy)
+│   ├── registry.py                 # Agent/Team registration
+│   ├── sharing.py                  # Memory sharing and sync
+│   ├── routing.py                  # Attention routing
+│   ├── layer.py                    # CrossAgentLayer
+│   └── __init__.py
+│
+├── access/                         # Access control
+│   ├── permissions.py              # AccessController
+│   └── __init__.py
+│
+├── storage/                        # Storage backends
+│   ├── base.py                     # BaseStorage interface
+│   ├── postgres.py                 # PostgreSQL backend
+│   ├── sqlite.py                   # SQLite backend
+│   └── __init__.py
+│
+├── server/                         # API servers
+│   ├── mcp.py                      # MCP server
+│   ├── rest.py                     # REST API
+│   └── __init__.py
+│
+├── enterprise/                     # Enterprise features
+│   ├── audit.py                    # Audit logging
+│   ├── encryption.py               # At-rest encryption
+│   ├── observability.py            # OpenTelemetry metrics/tracing
+│   ├── rate_limiting.py            # Rate limiting
+│   └── __init__.py
+│
+├── patterns/                       # Usage patterns
+│   ├── customer_facing.py          # Customer-facing agent patterns
+│   └── __init__.py
+│
+├── vocabulary/                     # Vocabulary schema (legacy)
+│   ├── schema.py                   # VocabularySchema
+│   └── __init__.py
+│
+├── tests/                          # Tests
+│   ├── test_mindcore.py
+│   ├── test_cross_agent.py
+│   ├── test_svl.py
+│   ├── test_svl_registry.py
+│   ├── test_enterprise.py
+│   ├── test_federation.py
+│   ├── test_flr_reinforcement.py
+│   ├── test_cli.py
+│   └── __init__.py
 │
 ├── observability/                  # Optional observability
 │   ├── observer.py
@@ -913,6 +1046,17 @@ mindcore/
 └── utils/                          # Utilities
     ├── logger.py
     └── __init__.py
+
+examples/
+└── real_datasets/                  # Real-world dataset examples
+    ├── __init__.py
+    ├── __main__.py                 # Entry point for python -m examples.real_datasets
+    ├── downloader.py               # Dataset download utilities
+    ├── enrichment.py               # SVL metadata enrichment
+    ├── pipeline.py                 # End-to-end benchmark pipeline
+    ├── postgres_store.py           # PostgreSQL storage integration
+    ├── run_benchmark.py            # Benchmark runner script
+    └── test_scenarios.py           # Test scenario definitions
 ```
 
 ---
@@ -923,10 +1067,10 @@ mindcore/
 
 ```python
 from mindcore import Mindcore
-from mindcore.v2.context.gateway import ContextGateway
-from mindcore.v2.svl.enforced_metadata import MetadataExtractor
-from mindcore.v2.flr.usage_detector import UsageDetector
-from mindcore.v2.flr.query_optimizer import QueryOptimizer
+from mindcore.context.gateway import ContextGateway
+from mindcore.svl.enforced_metadata import MetadataExtractor
+from mindcore.flr.usage_detector import UsageDetector
+from mindcore.flr.query_optimizer import QueryOptimizer
 
 # Initialize
 memory = Mindcore(storage="postgresql://...")
@@ -982,7 +1126,7 @@ for mem in new_memories:
 ### Pattern: Multi-Agent with Federation
 
 ```python
-from mindcore.v2.federation import quick_setup, AccessLevel
+from mindcore.federation import quick_setup, AccessLevel
 
 # Setup organization
 federation = quick_setup(
@@ -1031,14 +1175,20 @@ support_agent.reinforce("memory-id", signal=0.8)
 ## 8. Testing
 
 ```bash
-# All v2 tests
-pytest mindcore/v2/tests/ -v
+# All tests (919 tests)
+pytest mindcore/tests/ -v
 
 # Specific test files
-pytest mindcore/v2/tests/test_flr_reinforcement.py -v
-pytest mindcore/v2/tests/test_federation.py -v
-pytest mindcore/v2/tests/test_enterprise.py -v
+pytest mindcore/tests/test_flr_reinforcement.py -v
+pytest mindcore/tests/test_federation.py -v
+pytest mindcore/tests/test_enterprise.py -v
+pytest mindcore/tests/test_cli.py -v
+
+# Run benchmarks via CLI
+mindcore benchmark
 ```
+
+Current test status: **919 tests passing**
 
 ---
 
@@ -1101,6 +1251,7 @@ User Feedback → Signal → Memory Reinforcement → Score Update
 ```
 
 Reinforcement signals flow:
+
 1. Into memory scores (better ranking)
 2. Into metadata effectiveness tracking (which topics work)
 3. Into query optimization (adjust limits, filter topics)

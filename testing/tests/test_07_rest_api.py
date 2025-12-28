@@ -57,7 +57,7 @@ def test_client(flr, clst):
     try:
         from starlette.testclient import TestClient
 
-        from mindcore.v2.server.rest import create_app
+        from mindcore.server.rest import create_app
 
         app = create_app(flr=flr, clst=clst)
         client = TestClient(app)
@@ -127,7 +127,7 @@ class TestMemoryCRUD:
         # First create a memory
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -163,7 +163,7 @@ class TestMemoryCRUD:
         # First create a memory to delete
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -203,7 +203,7 @@ class TestSearchRecallEndpoints:
         # First create some memories to search
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -230,7 +230,7 @@ class TestSearchRecallEndpoints:
         # First create some memories
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -282,7 +282,7 @@ class TestReinforcementEndpoint:
         # Create a memory first
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -304,7 +304,7 @@ class TestReinforcementEndpoint:
 
         from datetime import datetime
 
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",

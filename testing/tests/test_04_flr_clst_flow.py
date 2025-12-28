@@ -26,7 +26,7 @@ class TestFLRCache:
 
     def test_flr_query_caching(self, flr, sqlite_storage):
         """Test that FLR caches frequently accessed memories."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store some memories directly in storage
         memory = Memory(
@@ -51,7 +51,7 @@ class TestFLRCache:
 
     def test_flr_cache_stats(self, flr, sqlite_storage):
         """Test FLR cache statistics."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Add some memories
         for i in range(5):
@@ -74,7 +74,7 @@ class TestFLRCache:
 
     def test_flr_reinforcement(self, flr, sqlite_storage):
         """Test reinforcement through FLR."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -95,7 +95,7 @@ class TestFLRCache:
 
     def test_flr_flush_reinforcements(self, flr, sqlite_storage):
         """Test flushing pending reinforcements to storage."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -118,7 +118,7 @@ class TestFLRCache:
 
     def test_flr_query_with_attention(self, flr, sqlite_storage):
         """Test FLR query with attention hints."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store memories with different topics
         topics_list = [["billing"], ["api"], ["billing", "api"]]
@@ -153,7 +153,7 @@ class TestCLSTStorage:
 
     def test_clst_store(self, clst):
         """Test storing memory through CLST."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -170,7 +170,7 @@ class TestCLSTStorage:
 
     def test_clst_retrieve(self, clst):
         """Test retrieving memory from CLST."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -188,7 +188,7 @@ class TestCLSTStorage:
 
     def test_clst_search(self, clst):
         """Test searching in CLST."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store multiple memories
         for i in range(5):
@@ -208,7 +208,7 @@ class TestCLSTStorage:
 
     def test_clst_batch_store(self, clst):
         """Test batch storing in CLST."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memories = [
             Memory(
@@ -236,7 +236,7 @@ class TestCLSTCompression:
 
     def test_compress_old_memories(self, clst):
         """Test compressing old memories."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store old memories
         old_date = datetime.now() - timedelta(days=60)
@@ -261,7 +261,7 @@ class TestCLSTCompression:
 
     def test_compress_summarize_strategy(self, clst):
         """Test summarize compression strategy."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         old_date = datetime.now() - timedelta(days=60)
         for i in range(12):
@@ -287,7 +287,7 @@ class TestCLSTCompression:
 
     def test_compress_merge_strategy(self, clst):
         """Test merge compression strategy."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         old_date = datetime.now() - timedelta(days=60)
         for i in range(12):
@@ -318,7 +318,7 @@ class TestFLRCLSTTransfer:
 
     def test_promote_working_memory(self, flr, sqlite_storage):
         """Test promoting working memory to long-term storage."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Create working memory
         memory = Memory(
@@ -409,7 +409,7 @@ class TestFLRCLSTPerformance:
 
     def test_flr_cache_hit_performance(self, flr, sqlite_storage):
         """Test that cache hits are faster than cache misses."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Preload data
         for i in range(50):
@@ -438,7 +438,7 @@ class TestFLRCLSTPerformance:
 
     def test_clst_search_performance(self, clst):
         """Test CLST search performance with many records."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store many memories
         memories = [
@@ -476,7 +476,7 @@ class TestCacheHitRate:
 
     def test_repeated_query_cache_hits(self, flr, sqlite_storage):
         """Test cache hit rate on repeated queries."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Setup data
         for i in range(20):

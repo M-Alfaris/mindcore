@@ -28,7 +28,7 @@ class TestSQLiteStorage:
 
     def test_store_and_retrieve(self, sqlite_storage):
         """Test basic store and retrieve operations."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",  # Will be assigned
@@ -56,7 +56,7 @@ class TestSQLiteStorage:
 
     def test_update_memory(self, sqlite_storage):
         """Test updating an existing memory."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Create initial memory
         memory = Memory(
@@ -83,8 +83,8 @@ class TestSQLiteStorage:
 
     def test_delete_memory(self, sqlite_storage):
         """Test deleting a memory."""
-        from mindcore.v2.exceptions import MemoryNotFoundError
-        from mindcore.v2.flr import Memory
+        from mindcore.exceptions import MemoryNotFoundError
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -111,7 +111,7 @@ class TestSQLiteStorage:
 
     def test_search_by_user(self, sqlite_storage):
         """Test searching memories by user."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store memories for different users
         for i, user_id in enumerate(["user_a", "user_a", "user_b"]):
@@ -137,7 +137,7 @@ class TestSQLiteStorage:
 
     def test_search_by_topics(self, sqlite_storage):
         """Test searching by topics."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memories_data = [
             {"content": "API docs", "topics": ["api", "documentation"]},
@@ -166,7 +166,7 @@ class TestSQLiteStorage:
 
     def test_search_by_memory_type(self, sqlite_storage):
         """Test searching by memory type."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         types = ["semantic", "episodic", "preference"]
         for i, mtype in enumerate(types):
@@ -187,7 +187,7 @@ class TestSQLiteStorage:
 
     def test_search_with_date_range(self, sqlite_storage, old_date, recent_date):
         """Test searching with date range filters."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store old memory
         old_memory = Memory(
@@ -219,7 +219,7 @@ class TestSQLiteStorage:
 
     def test_batch_store(self, sqlite_storage):
         """Test batch storage of multiple memories."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memories = [
             Memory(
@@ -243,7 +243,7 @@ class TestSQLiteStorage:
 
     def test_reinforcement_update(self, sqlite_storage):
         """Test reinforcement signal updates."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -270,7 +270,7 @@ class TestSQLiteStorage:
 
     def test_storage_stats(self, sqlite_storage):
         """Test getting storage statistics."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store some memories
         for i in range(5):
@@ -289,7 +289,7 @@ class TestSQLiteStorage:
 
     def test_performance_store(self, sqlite_storage):
         """Test storage performance (should be < 10ms per operation)."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         times = []
         for i in range(100):
@@ -324,7 +324,7 @@ class TestPostgresStorage:
 
     def test_store_and_retrieve(self, postgres_storage):
         """Test basic store and retrieve with PostgreSQL."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         memory = Memory(
             memory_id="",
@@ -349,7 +349,7 @@ class TestPostgresStorage:
 
     def test_search_with_full_text(self, postgres_storage):
         """Test PostgreSQL full-text search."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store memories with different content
         memories_data = [
@@ -383,7 +383,7 @@ class TestPostgresStorage:
 
     def test_performance_postgres(self, postgres_storage):
         """Test PostgreSQL performance (should be < 50ms per operation)."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         times = []
         memory_ids = []
@@ -428,7 +428,7 @@ class TestStorageMigration:
     @requires_postgres
     def test_sqlite_to_postgres_migration(self, sqlite_storage, postgres_storage):
         """Test migrating data from SQLite to PostgreSQL."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         # Store in SQLite
         memory_ids = []
@@ -480,7 +480,7 @@ class TestStorageEdgeCases:
 
     def test_delete_nonexistent_memory(self, sqlite_storage):
         """Test deleting a memory that doesn't exist."""
-        from mindcore.v2.exceptions import MemoryNotFoundError
+        from mindcore.exceptions import MemoryNotFoundError
 
         with pytest.raises(MemoryNotFoundError):
             sqlite_storage.delete("nonexistent_id_12345")
@@ -492,7 +492,7 @@ class TestStorageEdgeCases:
 
     def test_special_characters_in_content(self, sqlite_storage):
         """Test storing content with special characters."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         special_content = "Test with 'quotes', \"double quotes\", and emoji 🎉!"
         memory = Memory(
@@ -511,7 +511,7 @@ class TestStorageEdgeCases:
 
     def test_large_content(self, sqlite_storage):
         """Test storing large content."""
-        from mindcore.v2.flr import Memory
+        from mindcore.flr import Memory
 
         large_content = "x" * 10000  # 10KB of content
         memory = Memory(

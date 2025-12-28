@@ -360,7 +360,7 @@ class TestMultiAgentDisabled:
 
     def test_register_agent_when_disabled(self, mindcore):
         """Test that register_agent fails when multi-agent is disabled."""
-        from mindcore.v2.exceptions import MultiAgentNotEnabledError
+        from mindcore.exceptions import MultiAgentNotEnabledError
 
         with pytest.raises(MultiAgentNotEnabledError):
             mindcore.register_agent(

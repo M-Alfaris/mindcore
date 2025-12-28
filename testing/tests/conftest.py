@@ -82,7 +82,7 @@ def temp_db_path() -> Generator[str, None, None]:
 @pytest.fixture
 def sqlite_storage(temp_db_path):
     """Provide a SQLite storage instance."""
-    from mindcore.v2.storage.sqlite import SQLiteStorage
+    from mindcore.storage.sqlite import SQLiteStorage
 
     storage = SQLiteStorage(temp_db_path)
     yield storage
@@ -95,7 +95,7 @@ def postgres_storage():
     if not is_postgres_available():
         pytest.skip("PostgreSQL not available")
 
-    from mindcore.v2.storage.postgres import PostgresStorage
+    from mindcore.storage.postgres import PostgresStorage
 
     storage = PostgresStorage(POSTGRES_URL)
     yield storage
@@ -110,7 +110,7 @@ def postgres_storage():
 @pytest.fixture
 def mindcore(temp_db_path):
     """Provide a basic Mindcore instance with SQLite."""
-    from mindcore.v2 import Mindcore
+    from mindcore import Mindcore
 
     mc = Mindcore(storage=f"sqlite:///{temp_db_path}")
     yield mc
@@ -120,7 +120,7 @@ def mindcore(temp_db_path):
 @pytest.fixture
 def mindcore_multi_agent(temp_db_path):
     """Provide a Mindcore instance with multi-agent enabled."""
-    from mindcore.v2 import Mindcore
+    from mindcore import Mindcore
 
     mc = Mindcore(storage=f"sqlite:///{temp_db_path}", enable_multi_agent=True)
     yield mc
@@ -133,7 +133,7 @@ def mindcore_postgres():
     if not is_postgres_available():
         pytest.skip("PostgreSQL not available")
 
-    from mindcore.v2 import Mindcore
+    from mindcore import Mindcore
 
     mc = Mindcore(storage=POSTGRES_URL)
     yield mc
@@ -148,7 +148,7 @@ def mindcore_postgres():
 @pytest.fixture
 def default_svl():
     """Provide the default SharedVocabularyLayer."""
-    from mindcore.v2.svl import SharedVocabularyLayer
+    from mindcore.svl import SharedVocabularyLayer
 
     return SharedVocabularyLayer()
 
@@ -156,7 +156,7 @@ def default_svl():
 @pytest.fixture
 def custom_svl():
     """Provide a custom SharedVocabularyLayer with domains."""
-    from mindcore.v2.svl import SharedVocabularyLayer, SVLSchema
+    from mindcore.svl import SharedVocabularyLayer, SVLSchema
 
     schema = SVLSchema(
         version="1.0.0",
@@ -183,7 +183,7 @@ def custom_svl():
 @pytest.fixture
 def flr(sqlite_storage):
     """Provide an FLR instance."""
-    from mindcore.v2.flr import FLR
+    from mindcore.flr import FLR
 
     return FLR(storage=sqlite_storage)
 
@@ -191,7 +191,7 @@ def flr(sqlite_storage):
 @pytest.fixture
 def clst(sqlite_storage, default_svl):
     """Provide a CLST instance."""
-    from mindcore.v2.clst import CLST
+    from mindcore.clst import CLST
 
     return CLST(storage=sqlite_storage, vocabulary=default_svl)
 

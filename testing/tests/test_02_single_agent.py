@@ -135,7 +135,7 @@ class TestBasicOperations:
 
     def test_delete_memory(self, mindcore):
         """Test deleting a memory."""
-        from mindcore.v2.exceptions import MemoryNotFoundError
+        from mindcore.exceptions import MemoryNotFoundError
 
         memory_id = mindcore.store(
             content="Memory to delete", memory_type="semantic", user_id="user_001", topics=["api"]

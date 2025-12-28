@@ -65,7 +65,7 @@ class TestTopicCategoryManagement:
 
     def test_add_topics(self):
         """Test adding custom topics."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
         svl.add_topics("custom_topic_1", "custom_topic_2")
@@ -76,7 +76,7 @@ class TestTopicCategoryManagement:
 
     def test_add_categories(self):
         """Test adding custom categories."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
         svl.add_categories("custom_category")
@@ -86,7 +86,7 @@ class TestTopicCategoryManagement:
 
     def test_add_subcategories(self):
         """Test adding subcategories to a category."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
         svl.add_categories("parent_category")
@@ -96,7 +96,7 @@ class TestTopicCategoryManagement:
 
     def test_add_custom_field(self):
         """Test adding custom fields to schema."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
         svl.add_custom_field(
@@ -253,7 +253,7 @@ class TestVocabularyMerging:
 
     def test_merge_domain_vocabularies(self):
         """Test merging multiple domain vocabularies."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
 
@@ -263,7 +263,7 @@ class TestVocabularyMerging:
 
     def test_merge_without_duplicates(self):
         """Test that merged vocabularies don't have duplicates."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         svl = SharedVocabularyLayer(domains=["customer_service"])
 
@@ -283,7 +283,7 @@ class TestVocabularyMigration:
 
     def test_add_migration(self):
         """Test adding a migration."""
-        from mindcore.v2.svl import Migration, SharedVocabularyLayer
+        from mindcore.svl import Migration, SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -301,7 +301,7 @@ class TestVocabularyMigration:
 
     def test_migrate_memory(self):
         """Test migrating a memory to new vocabulary version."""
-        from mindcore.v2.svl import Migration, SharedVocabularyLayer
+        from mindcore.svl import Migration, SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -325,7 +325,7 @@ class TestVocabularyMigration:
 
     def test_get_migration_path(self):
         """Test getting migration path between versions."""
-        from mindcore.v2.svl import Migration, SharedVocabularyLayer
+        from mindcore.svl import Migration, SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -358,7 +358,7 @@ class TestVocabularyMigration:
 
     def test_rollback_memory(self):
         """Test rolling back a migrated memory."""
-        from mindcore.v2.svl import Migration, SharedVocabularyLayer
+        from mindcore.svl import Migration, SharedVocabularyLayer
 
         svl = SharedVocabularyLayer()
 
@@ -411,7 +411,7 @@ class TestSVLSerialization:
 
     def test_from_dict(self, default_svl):
         """Test creating SVL from dictionary."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         data = default_svl.to_dict()
         restored = SharedVocabularyLayer.from_dict(data)
@@ -420,7 +420,7 @@ class TestSVLSerialization:
 
     def test_from_json(self, default_svl):
         """Test creating SVL from JSON."""
-        from mindcore.v2.svl import SharedVocabularyLayer
+        from mindcore.svl import SharedVocabularyLayer
 
         json_str = default_svl.to_json()
         restored = SharedVocabularyLayer.from_json(json_str)

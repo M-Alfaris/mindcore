@@ -5,7 +5,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/M-Alfaris/mindcore)
-[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
+[![Tests](https://img.shields.io/badge/tests-919%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 **A modular memory layer framework built on three foundational protocols: FLR, CLST, and SVL.**
@@ -82,6 +82,25 @@ Mindcore provides **three foundational protocols** that standardize AI agent mem
 
 ```bash
 pip install mindcore
+```
+
+### CLI Quick Start
+
+```bash
+# Interactive setup wizard
+mindcore init
+
+# Check your configuration
+mindcore doctor
+
+# Run a quick demo
+mindcore demo
+
+# Show current status
+mindcore status
+
+# Run benchmarks
+mindcore benchmark
 ```
 
 ### Basic Usage
@@ -580,34 +599,48 @@ Recall Flow (with ContextGateway):
 mindcore/
 ├── __init__.py                 # Public API exports
 ├── mindcore.py                 # Main Mindcore orchestrator
+├── exceptions.py               # Standardized exceptions
 │
-├── v2/                         # Version 2 with ContextGateway
-│   ├── flr/                    # Fast Learning Recall protocol
-│   │   ├── __init__.py
-│   │   └── recall.py           # FLR, Memory (with session_id, thread_id)
-│   │
-│   ├── clst/                   # Cognitive Long-term Storage Transfer
-│   │   ├── __init__.py
-│   │   ├── storage.py          # CLST, CompressionResult, SyncResult
-│   │   └── aggregates.py       # SessionAggregate, WeightCalculator
-│   │
-│   ├── svl/                    # Shared Vocabulary Layer
-│   │   ├── __init__.py
-│   │   ├── layer.py            # SharedVocabularyLayer, Migration
-│   │   ├── ontology.py         # MessageType, Intent, Sentiment enums
-│   │   ├── domains.py          # Pre-built domain vocabularies
-│   │   ├── sources.py          # TableSource, APISource, MCPSource
-│   │   ├── enforced_metadata.py # EnforcedMetadata, ContextDecision, MetadataExtractor
-│   │   └── llm_providers.py    # OpenAIConfig, ClaudeConfig, GeminiConfig
-│   │
-│   ├── context/                # Unified context assembly
-│   │   ├── __init__.py
-│   │   └── gateway.py          # ContextGateway, QueryMetadata, ResponseMetadata
-│   │
-│   └── storage/                # Storage backends
-│       ├── base.py             # BaseStorage with session aggregate methods
-│       ├── sqlite.py           # SQLiteStorage
-│       └── postgres.py         # PostgresStorage with session_aggregates table
+├── cli/                        # Command-line interface
+│   ├── __init__.py             # Main CLI entry point (mindcore command)
+│   ├── init.py                 # Interactive setup wizard
+│   ├── doctor.py               # Health check and diagnostics
+│   └── demo.py                 # Quick demo command
+│
+├── benchmarks/                 # System-level benchmarks
+│   ├── __init__.py             # BenchmarkRunner, BenchmarkSuite exports
+│   ├── runner.py               # Benchmark execution engine
+│   ├── metrics.py              # BenchmarkMetrics collection
+│   ├── datasets.py             # DatasetLoader for LoCoMo, MultiWOZ, etc.
+│   ├── enrichment.py           # Dataset enrichment pipeline
+│   └── dashboard.py            # HTML dashboard generation
+│
+├── flr/                        # Fast Learning Recall protocol (hot path)
+│   ├── __init__.py
+│   └── recall.py               # FLR, Memory (with session_id, thread_id)
+│
+├── clst/                       # Cognitive Long-term Storage Transfer (cold path)
+│   ├── __init__.py
+│   ├── storage.py              # CLST, CompressionResult, SyncResult
+│   └── aggregates.py           # SessionAggregate, WeightCalculator
+│
+├── svl/                        # Shared Vocabulary Layer
+│   ├── __init__.py
+│   ├── layer.py                # SharedVocabularyLayer, Migration
+│   ├── ontology.py             # MessageType, Intent, Sentiment enums
+│   ├── domains.py              # Pre-built domain vocabularies
+│   ├── sources.py              # TableSource, APISource, MCPSource
+│   ├── enforced_metadata.py    # EnforcedMetadata, ContextDecision, MetadataExtractor
+│   └── llm_providers.py        # OpenAIConfig, ClaudeConfig, GeminiConfig
+│
+├── context/                    # Unified context assembly
+│   ├── __init__.py
+│   └── gateway.py              # ContextGateway, QueryMetadata, ResponseMetadata
+│
+├── storage/                    # Storage backends
+│   ├── base.py                 # BaseStorage with session aggregate methods
+│   ├── sqlite.py               # SQLiteStorage
+│   └── postgres.py             # PostgresStorage with session_aggregates table
 │
 ├── cross_agent/                # Multi-agent support
 │   ├── layer.py                # CrossAgentLayer
@@ -625,10 +658,16 @@ mindcore/
 │   ├── mcp.py                  # MCP server
 │   └── rest.py                 # FastAPI REST server
 │
-├── exceptions.py               # Standardized exceptions
-├── tests/                      # Test suite
+├── tests/                      # Test suite (919 tests)
 │
 └── utils/                      # Logging utilities
+
+examples/
+└── real_datasets/              # Real-world dataset examples
+    ├── downloader.py           # Dataset download utilities
+    ├── enrichment.py           # SVL metadata enrichment
+    ├── pipeline.py             # End-to-end benchmark pipeline
+    └── run_benchmark.py        # Benchmark runner script
 ```
 
 ---
@@ -740,7 +779,7 @@ ContextResult (unified context for LLM)
 Instead of flat memory search, Mindcore uses **hierarchical retrieval**:
 
 ```python
-from mindcore.v2.clst import SessionAggregate
+from mindcore.clst import SessionAggregate
 
 # Session-level metadata with weights
 aggregate = SessionAggregate(
@@ -763,6 +802,7 @@ aggregate = SessionAggregate(
 ```
 
 **Weight Calculation:**
+
 ```python
 topic_weight = (frequency * 0.4) + (avg_importance * 0.4) + (recency * 0.2)
 ```
@@ -772,8 +812,8 @@ topic_weight = (frequency * 0.4) + (avg_importance * 0.4) + (recency * 0.2)
 The LLM decides if historical context (CLST) is needed:
 
 ```python
-from mindcore.v2.svl import ContextDecision, HistoricalContextNeeded, MetadataExtractor
-from mindcore.v2.context import ContextGateway
+from mindcore.svl import ContextDecision, HistoricalContextNeeded, MetadataExtractor
+from mindcore.context import ContextGateway
 
 extractor = MetadataExtractor(svl=shared_vocabulary_layer)
 gateway = ContextGateway(storage=postgres_storage, svl=svl)
@@ -809,7 +849,7 @@ The **MetadataExtractor** forces LLMs to assign metadata from SVL vocabulary:
 ### Enforced Metadata Schema
 
 ```python
-from mindcore.v2.svl import EnforcedMetadata
+from mindcore.svl import EnforcedMetadata
 
 metadata = EnforcedMetadata(
     message_id="msg_abc123",
@@ -842,7 +882,7 @@ metadata = EnforcedMetadata(
 Mindcore supports the latest LLM APIs with reasoning/thinking modes:
 
 ```python
-from mindcore.v2.svl import (
+from mindcore.svl import (
     MetadataExtractor,
     OpenAIConfig,
     ClaudeConfig,
@@ -942,7 +982,7 @@ pytest mindcore/tests/ --cov=mindcore --cov-report=html
 pytest mindcore/tests/test_enterprise.py -v
 ```
 
-Current test status: **140 tests passing, 58% coverage**
+Current test status: **919 tests passing**
 
 ---
 
