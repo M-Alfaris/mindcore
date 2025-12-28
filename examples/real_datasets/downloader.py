@@ -93,7 +93,7 @@ class DatasetDownloader:
                 self._datasets_lib = datasets
             except ImportError:
                 raise ImportError(
-                    "HuggingFace datasets library required. " "Install with: pip install datasets"
+                    "HuggingFace datasets library required. Install with: pip install datasets"
                 )
 
     def download_locomo(
