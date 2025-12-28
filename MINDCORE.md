@@ -1,7 +1,7 @@
 # MindCore Documentation
 
 > Ground truth documentation for MindCore - a memory protocol stack for AI agents.
-> Last updated: 2025-12-25
+> Last updated: 2025-12-28
 
 ## Quick Reference
 
@@ -15,6 +15,8 @@
 | `mindcore/cross_agent/` | Core | Cross-agent memory sharing and routing |
 | `mindcore/enterprise/` | Enterprise | Audit, encryption, observability, rate limiting |
 | `mindcore/patterns/` | Patterns | Customer-facing agent patterns |
+| `mindcore/cli/` | CLI | Interactive setup, diagnostics, and benchmarking tools |
+| `mindcore/benchmarks/` | Benchmarks | System-level evaluation suite with real datasets |
 
 ---
 
@@ -733,6 +735,118 @@ if contains_pii(text):
 
 ---
 
+### 3.9 CLI (Command-Line Interface)
+
+**Location:** `mindcore/cli/`
+
+Interactive setup, diagnostics, and benchmarking tools for MindCore.
+
+#### Commands
+
+| Command | Description |
+|---------|-------------|
+| `mindcore init` | Interactive setup wizard - configure storage, LLM, SVL domains |
+| `mindcore doctor` | Health check and diagnostics - verify configuration |
+| `mindcore demo` | Run a quick interactive demo |
+| `mindcore status` | Show current configuration and status |
+| `mindcore explain [id]` | Explain what happened during a memory operation (requires audit) |
+| `mindcore config [action]` | View, validate, diff, or reset configuration |
+| `mindcore benchmark [type]` | Run trust and performance benchmarks |
+
+#### Quick Start
+
+```bash
+# Install mindcore
+pip install mindcore
+
+# Interactive setup
+mindcore init
+
+# Check setup
+mindcore doctor
+
+# Run demo
+mindcore demo
+```
+
+#### Benchmark Command
+
+```bash
+# Run all benchmarks
+mindcore benchmark
+
+# Run specific benchmark type
+mindcore benchmark replay    # Test deterministic memory replay
+mindcore benchmark audit     # Verify audit trail integrity
+mindcore benchmark drift     # Check for memory drift over time
+mindcore benchmark latency   # Measure FLR and CLST latency
+
+# With options
+mindcore benchmark -n 50 -v  # 50 iterations, verbose output
+```
+
+---
+
+### 3.10 Benchmarks Module
+
+**Location:** `mindcore/benchmarks/`
+
+System-level evaluation suite that goes beyond typical model benchmarks to measure what matters for production AI memory systems.
+
+#### Benchmark Categories
+
+1. **Determinism & Reproducibility** - Can you replay and get identical results?
+2. **Auditability & Traceability** - Can you explain what happened and why?
+3. **Memory Quality Over Time** - Does memory drift or remain stable?
+4. **Cost & Operational Efficiency** - FLR vs CLST cost/latency trade-offs
+5. **Failure & Adversarial Robustness** - Does the system degrade gracefully?
+
+#### Usage
+
+```python
+from mindcore.benchmarks import BenchmarkRunner, BenchmarkSuite, DatasetLoader
+
+# Load standard datasets (LoCoMo, MultiWOZ, etc.)
+loader = DatasetLoader()
+dataset = loader.load("locomo")
+
+# Run benchmarks
+runner = BenchmarkRunner()
+results = runner.run_suite(BenchmarkSuite.FULL)
+
+# Export results
+runner.export_report("benchmark_results.json")
+
+# Generate HTML dashboard
+from mindcore.benchmarks import generate_dashboard
+generate_dashboard(results, "dashboard.html")
+```
+
+#### Dataset Enrichment
+
+```python
+from mindcore.benchmarks import DatasetEnrichmentPipeline, EnrichedDataset
+
+# Enrich dataset with SVL metadata
+pipeline = DatasetEnrichmentPipeline(svl=shared_vocabulary_layer)
+enriched: EnrichedDataset = pipeline.enrich(raw_dataset)
+
+# Access enriched memories
+for memory in enriched.memories:
+    print(f"Topics: {memory.topics}")
+    print(f"Categories: {memory.categories}")
+    print(f"Importance: {memory.importance}")
+```
+
+#### Supported Datasets
+
+- **LoCoMo** - Long-context memory benchmark
+- **MultiWOZ** - Multi-domain task-oriented dialogues
+- **MemoryAgentBench** - Agent memory evaluation
+- **AgentBench** - General agent capabilities
+
+---
+
 ## 4. Storage Backends
 
 ### PostgreSQL (Production)
@@ -820,6 +934,20 @@ mindcore/
 ├── mindcore.py                     # Main Mindcore class
 ├── exceptions.py                   # Custom exceptions
 │
+├── cli/                            # Command-line interface
+│   ├── __init__.py                 # Main CLI entry point (mindcore command)
+│   ├── init.py                     # Interactive setup wizard
+│   ├── doctor.py                   # Health check and diagnostics
+│   └── demo.py                     # Quick demo command
+│
+├── benchmarks/                     # System-level benchmarks
+│   ├── __init__.py                 # BenchmarkRunner, BenchmarkSuite exports
+│   ├── runner.py                   # Benchmark execution engine
+│   ├── metrics.py                  # BenchmarkMetrics collection
+│   ├── datasets.py                 # DatasetLoader for LoCoMo, MultiWOZ, etc.
+│   ├── enrichment.py               # Dataset enrichment pipeline
+│   └── dashboard.py                # HTML dashboard generation
+│
 ├── flr/                            # Fast Local Recall (hot path)
 │   ├── recall.py                   # FLR protocol
 │   ├── reinforcement.py            # Robust reinforcement with decay
@@ -905,6 +1033,7 @@ mindcore/
 │   ├── test_enterprise.py
 │   ├── test_federation.py
 │   ├── test_flr_reinforcement.py
+│   ├── test_cli.py
 │   └── __init__.py
 │
 ├── observability/                  # Optional observability
@@ -917,6 +1046,17 @@ mindcore/
 └── utils/                          # Utilities
     ├── logger.py
     └── __init__.py
+
+examples/
+└── real_datasets/                  # Real-world dataset examples
+    ├── __init__.py
+    ├── __main__.py                 # Entry point for python -m examples.real_datasets
+    ├── downloader.py               # Dataset download utilities
+    ├── enrichment.py               # SVL metadata enrichment
+    ├── pipeline.py                 # End-to-end benchmark pipeline
+    ├── postgres_store.py           # PostgreSQL storage integration
+    ├── run_benchmark.py            # Benchmark runner script
+    └── test_scenarios.py           # Test scenario definitions
 ```
 
 ---
@@ -1035,14 +1175,20 @@ support_agent.reinforce("memory-id", signal=0.8)
 ## 8. Testing
 
 ```bash
-# All v2 tests
+# All tests (919 tests)
 pytest mindcore/tests/ -v
 
 # Specific test files
 pytest mindcore/tests/test_flr_reinforcement.py -v
 pytest mindcore/tests/test_federation.py -v
 pytest mindcore/tests/test_enterprise.py -v
+pytest mindcore/tests/test_cli.py -v
+
+# Run benchmarks via CLI
+mindcore benchmark
 ```
+
+Current test status: **919 tests passing**
 
 ---
 

@@ -1091,9 +1091,15 @@ class FLR:
         limit: int,
         include_cross_agent: bool,
     ) -> list[Memory]:
-        """Query storage backend (CLST)."""
+        """Query storage backend (CLST).
+
+        Uses FTS-based search first, then falls back to non-FTS search
+        if no results are found. This improves recall for queries where
+        exact word matches are not found in stored content.
+        """
         try:
-            return self.storage.search(
+            # Try FTS search first
+            results = self.storage.search(
                 query=query,
                 user_id=user_id,
                 agent_id=agent_id if not include_cross_agent else None,
@@ -1101,6 +1107,19 @@ class FLR:
                 memory_types=memory_types,
                 limit=limit,
             )
+
+            # Fallback to non-FTS search if FTS returns nothing
+            if not results:
+                results = self.storage.search(
+                    query=None,  # Skip FTS
+                    user_id=user_id,
+                    agent_id=agent_id if not include_cross_agent else None,
+                    topics=attention_hints,
+                    memory_types=memory_types,
+                    limit=limit,
+                )
+
+            return results
         except Exception:
             return []
 

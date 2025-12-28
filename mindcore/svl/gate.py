@@ -695,6 +695,12 @@ class SVLGate:
 
         # Skip further validation if missing required fields
         if errors:
+            # Track violation statistics before early return
+            for error in errors:
+                violation_key = error.violation.value
+                self._stats["violations_by_type"][violation_key] = (
+                    self._stats["violations_by_type"].get(violation_key, 0) + 1
+                )
             return errors
 
         # Validate content length

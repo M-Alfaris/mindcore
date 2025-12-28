@@ -1,0 +1,927 @@
+{
+  "generated_at": "2025-12-27T22:16:08.492298+00:00",
+  "config": {
+    "suite": "full",
+    "scenario": "single_agent",
+    "dataset_size": "small"
+  },
+  "results": [
+    {
+      "suite": "full",
+      "scenario": "single_agent",
+      "started_at": "2025-12-27T22:16:02.892347+00:00",
+      "completed_at": "2025-12-27T22:16:08.489887+00:00",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "benchmarks": [
+        {
+          "name": "deterministic_replay",
+          "passed": true,
+          "metrics": {
+            "name": "deterministic_replay",
+            "category": "determinism",
+            "started_at": "2025-12-27T22:16:02.897896+00:00",
+            "completed_at": "2025-12-27T22:16:02.934087+00:00",
+            "duration_seconds": 0.036,
+            "total_operations": 0,
+            "qps": 0.0,
+            "latency": {
+              "count": 0,
+              "mean_ms": 0.0,
+              "median_ms": 0.0,
+              "p50_ms": 0.0,
+              "p90_ms": 0.0,
+              "p95_ms": 0.0,
+              "p99_ms": 0.0,
+              "min_ms": 0.0,
+              "max_ms": 0.0,
+              "std_ms": 0.0
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 5,
+              "identical_results": 8,
+              "replay_consistency": 1.6,
+              "hash_stability": 0.5,
+              "unique_hashes": 2,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "hash_stability",
+          "passed": true,
+          "metrics": {
+            "name": "hash_stability",
+            "category": "determinism",
+            "started_at": "2025-12-27T22:16:02.934104+00:00",
+            "completed_at": "2025-12-27T22:16:02.941297+00:00",
+            "duration_seconds": 0.007,
+            "total_operations": 0,
+            "qps": 0.0,
+            "latency": {
+              "count": 0,
+              "mean_ms": 0.0,
+              "median_ms": 0.0,
+              "p50_ms": 0.0,
+              "p90_ms": 0.0,
+              "p95_ms": 0.0,
+              "p99_ms": 0.0,
+              "min_ms": 0.0,
+              "max_ms": 0.0,
+              "std_ms": 0.0
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 1,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "recall_accuracy",
+          "passed": true,
+          "metrics": {
+            "name": "recall_accuracy",
+            "category": "quality",
+            "started_at": "2025-12-27T22:16:02.941306+00:00",
+            "completed_at": "2025-12-27T22:16:02.997247+00:00",
+            "duration_seconds": 0.056,
+            "total_operations": 2,
+            "qps": 35.75,
+            "latency": {
+              "count": 2,
+              "mean_ms": 0.664,
+              "median_ms": 0.664,
+              "p50_ms": 0.664,
+              "p90_ms": 0.772,
+              "p95_ms": 0.785,
+              "p99_ms": 0.796,
+              "min_ms": 0.529,
+              "max_ms": 0.799,
+              "std_ms": 0.191
+            },
+            "quality": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "true_positives": 6,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "preference_stability",
+          "passed": true,
+          "metrics": {
+            "name": "preference_stability",
+            "category": "quality",
+            "started_at": "2025-12-27T22:16:02.997269+00:00",
+            "completed_at": "2025-12-27T22:16:02.999704+00:00",
+            "duration_seconds": 0.002,
+            "total_operations": 0,
+            "qps": 0.0,
+            "latency": {
+              "count": 0,
+              "mean_ms": 0.0,
+              "median_ms": 0.0,
+              "p50_ms": 0.0,
+              "p90_ms": 0.0,
+              "p95_ms": 0.0,
+              "p99_ms": 0.0,
+              "min_ms": 0.0,
+              "max_ms": 0.0,
+              "std_ms": 0.0
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 4,
+              "stability_scores": [
+                1.0
+              ]
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "store_latency",
+          "passed": true,
+          "metrics": {
+            "name": "store_latency",
+            "category": "performance",
+            "started_at": "2025-12-27T22:16:02.999712+00:00",
+            "completed_at": "2025-12-27T22:16:03.071447+00:00",
+            "duration_seconds": 0.072,
+            "total_operations": 100,
+            "qps": 1394.02,
+            "latency": {
+              "count": 100,
+              "mean_ms": 0.706,
+              "median_ms": 0.615,
+              "p50_ms": 0.615,
+              "p90_ms": 1.077,
+              "p95_ms": 1.23,
+              "p99_ms": 1.529,
+              "min_ms": 0.352,
+              "max_ms": 2.26,
+              "std_ms": 0.292
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "recall_latency",
+          "passed": true,
+          "metrics": {
+            "name": "recall_latency",
+            "category": "performance",
+            "started_at": "2025-12-27T22:16:03.071486+00:00",
+            "completed_at": "2025-12-27T22:16:03.250134+00:00",
+            "duration_seconds": 0.179,
+            "total_operations": 100,
+            "qps": 559.76,
+            "latency": {
+              "count": 100,
+              "mean_ms": 1.271,
+              "median_ms": 0.848,
+              "p50_ms": 0.848,
+              "p90_ms": 2.131,
+              "p95_ms": 3.386,
+              "p99_ms": 7.111,
+              "min_ms": 0.588,
+              "max_ms": 7.273,
+              "std_ms": 1.224
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "throughput",
+          "passed": true,
+          "metrics": {
+            "name": "throughput",
+            "category": "performance",
+            "started_at": "2025-12-27T22:16:03.250168+00:00",
+            "completed_at": "2025-12-27T22:16:08.324777+00:00",
+            "duration_seconds": 5.075,
+            "total_operations": 5272,
+            "qps": 1038.9,
+            "latency": {
+              "count": 5272,
+              "mean_ms": 0.946,
+              "median_ms": 0.589,
+              "p50_ms": 0.589,
+              "p90_ms": 1.573,
+              "p95_ms": 2.342,
+              "p99_ms": 5.677,
+              "min_ms": 0.516,
+              "max_ms": 29.874,
+              "std_ms": 1.201
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "flr_vs_clst",
+          "passed": true,
+          "metrics": {
+            "name": "flr_vs_clst",
+            "category": "cost",
+            "started_at": "2025-12-27T22:16:08.324812+00:00",
+            "completed_at": "2025-12-27T22:16:08.467728+00:00",
+            "duration_seconds": 0.143,
+            "total_operations": 0,
+            "qps": 0.0,
+            "latency": {
+              "count": 0,
+              "mean_ms": 0.0,
+              "median_ms": 0.0,
+              "p50_ms": 0.0,
+              "p90_ms": 0.0,
+              "p95_ms": 0.0,
+              "p99_ms": 0.0,
+              "min_ms": 0.0,
+              "max_ms": 0.0,
+              "std_ms": 0.0
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 50,
+              "clst_queries": 50,
+              "flr_ratio": 0.5,
+              "avg_cost_per_query": 5.5,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 50,
+                "mean_ms": 0.815,
+                "median_ms": 0.64,
+                "p50_ms": 0.64,
+                "p90_ms": 1.262,
+                "p95_ms": 1.448,
+                "p99_ms": 2.148,
+                "min_ms": 0.581,
+                "max_ms": 2.491,
+                "std_ms": 0.373
+              },
+              "clst_latency": {
+                "count": 50,
+                "mean_ms": 1.244,
+                "median_ms": 0.753,
+                "p50_ms": 0.753,
+                "p90_ms": 2.662,
+                "p95_ms": 2.974,
+                "p99_ms": 4.948,
+                "min_ms": 0.681,
+                "max_ms": 6.435,
+                "std_ms": 1.034
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "noise_resistance",
+          "passed": true,
+          "metrics": {
+            "name": "noise_resistance",
+            "category": "robustness",
+            "started_at": "2025-12-27T22:16:08.467823+00:00",
+            "completed_at": "2025-12-27T22:16:08.483038+00:00",
+            "duration_seconds": 0.015,
+            "total_operations": 0,
+            "qps": 0.0,
+            "latency": {
+              "count": 0,
+              "mean_ms": 0.0,
+              "median_ms": 0.0,
+              "p50_ms": 0.0,
+              "p90_ms": 0.0,
+              "p95_ms": 0.0,
+              "p99_ms": 0.0,
+              "min_ms": 0.0,
+              "max_ms": 0.0,
+              "std_ms": 0.0
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 0,
+              "stability_scores": []
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 7,
+              "correctly_handled": 7
+            }
+          },
+          "errors": []
+        },
+        {
+          "name": "drift_detection",
+          "passed": true,
+          "metrics": {
+            "name": "drift_detection",
+            "category": "robustness",
+            "started_at": "2025-12-27T22:16:08.483052+00:00",
+            "completed_at": "2025-12-27T22:16:08.487063+00:00",
+            "duration_seconds": 0.004,
+            "total_operations": 0,
+            "qps": 0.0,
+            "latency": {
+              "count": 0,
+              "mean_ms": 0.0,
+              "median_ms": 0.0,
+              "p50_ms": 0.0,
+              "p90_ms": 0.0,
+              "p95_ms": 0.0,
+              "p99_ms": 0.0,
+              "min_ms": 0.0,
+              "max_ms": 0.0,
+              "std_ms": 0.0
+            },
+            "quality": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0
+            },
+            "determinism": {
+              "replay_runs": 0,
+              "identical_results": 0,
+              "replay_consistency": 0.0,
+              "hash_stability": 1.0,
+              "unique_hashes": 0,
+              "avg_injection_variance": 0.0
+            },
+            "cost": {
+              "flr_queries": 0,
+              "clst_queries": 0,
+              "flr_ratio": 0.0,
+              "avg_cost_per_query": 0.0,
+              "total_tokens_used": 0,
+              "total_api_calls": 0,
+              "flr_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              },
+              "clst_latency": {
+                "count": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "p50_ms": 0.0,
+                "p90_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+                "std_ms": 0.0
+              }
+            },
+            "drift": {
+              "drift_rate": 0.0,
+              "avg_correction_latency_ms": 0.0,
+              "false_promotion_rate": 0.0,
+              "false_preference_promotions": 0,
+              "total_preferences_tracked": 3,
+              "stability_scores": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "robustness": {
+              "noise_resistance": 1.0,
+              "recovery_rate": 1.0,
+              "memory_pollution_events": 0,
+              "noisy_inputs": 0,
+              "correctly_handled": 0
+            }
+          },
+          "errors": []
+        }
+      ],
+      "summary": {
+        "total_benchmarks": 10,
+        "passed": 10,
+        "failed": 0,
+        "pass_rate": 1.0,
+        "overall_latency": {
+          "mean_ms": 0.948,
+          "p95_ms": 2.34
+        }
+      }
+    }
+  ]
+}

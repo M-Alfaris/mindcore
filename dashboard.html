@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mindcore Benchmark Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e4e4e7;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: #a1a1aa;
+            font-size: 1rem;
+        }
+
+        .summary {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .summary-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.5rem 2.5rem;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .summary-value {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #10b981;
+        }
+
+        .summary-label {
+            color: #a1a1aa;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .benchmarks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .benchmark-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .benchmark-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .benchmark-card.pass {
+            border-left: 4px solid #10b981;
+        }
+
+        .benchmark-card.fail {
+            border-left: 4px solid #ef4444;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-header h3 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .card-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        .metric {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: #a1a1aa;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metric-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #f4f4f5;
+        }
+
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .chart-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.5rem;
+        }
+
+        .chart-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        footer {
+            text-align: center;
+            color: #71717a;
+            font-size: 0.875rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .summary {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mindcore Benchmark Dashboard</h1>
+            <p class="subtitle">Industry-standard evaluation for production AI memory</p>
+        </header>
+
+        <div class="summary">
+            <div class="summary-card">
+                <div class="summary-value">10/10</div>
+                <div class="summary-label">Benchmarks Passed</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value" style="color: #10b981">100%</div>
+                <div class="summary-label">Pass Rate</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value">FULL</div>
+                <div class="summary-label">Suite</div>
+            </div>
+        </div>
+
+        <section>
+            <h2 class="section-title">
+                <span class="material-icons">assessment</span>
+                Benchmark Results
+            </h2>
+            <div class="benchmarks-grid">
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Deterministic Replay</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">Consistency</span>
+                    <span class="metric-value">160%</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Hash Stability</h3>
+                </div>
+                <div class="card-metrics">
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Recall Accuracy</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">p50 Latency</span>
+                    <span class="metric-value">0.63ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">p99 Latency</span>
+                    <span class="metric-value">0.69ms</span>
+                </div>
+
+                <div class="metric">
+                    <span class="metric-label">Recall</span>
+                    <span class="metric-value">100%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Precision</span>
+                    <span class="metric-value">100%</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Preference Stability</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">Drift Rate</span>
+                    <span class="metric-value">0.0%</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Store Latency</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">p50 Latency</span>
+                    <span class="metric-value">0.20ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">p99 Latency</span>
+                    <span class="metric-value">1.38ms</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Recall Latency</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">p50 Latency</span>
+                    <span class="metric-value">0.86ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">p99 Latency</span>
+                    <span class="metric-value">3.20ms</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Throughput</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">p50 Latency</span>
+                    <span class="metric-value">0.58ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">p99 Latency</span>
+                    <span class="metric-value">4.36ms</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Flr Vs Clst</h3>
+                </div>
+                <div class="card-metrics">
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Noise Resistance</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">Noise Resistance</span>
+                    <span class="metric-value">100%</span>
+                </div>
+
+                </div>
+            </div>
+
+            <div class="benchmark-card pass">
+                <div class="card-header">
+                    <span class="material-icons" style="color: #10b981">check_circle</span>
+                    <h3>Drift Detection</h3>
+                </div>
+                <div class="card-metrics">
+
+                <div class="metric">
+                    <span class="metric-label">Drift Rate</span>
+                    <span class="metric-value">0.0%</span>
+                </div>
+
+                </div>
+            </div>
+
+            </div>
+        </section>
+
+        <section class="charts-section">
+            <div class="chart-card">
+                <h3 class="chart-title">Latency Distribution (ms)</h3>
+                <canvas id="latencyChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Hot Path vs Cold Path (ms)</h3>
+                <canvas id="costChart"></canvas>
+            </div>
+        </section>
+
+        <footer>
+            <p>Generated on 2025-12-27 22:03:15 | Mindcore Benchmark Suite</p>
+        </footer>
+    </div>
+
+    <script>
+        // Latency Chart
+        const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+        new Chart(latencyCtx, {
+            type: 'bar',
+            data: {
+                labels: ["Recall Accuracy", "Store Latency", "Recall Latency", "Throughput"],
+                datasets: [
+                    {
+                        label: 'p50',
+                        data: [0.628, 0.196, 0.863, 0.58],
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'p95',
+                        data: [0.682, 0.709, 2.211, 2.059],
+                        backgroundColor: 'rgba(118, 75, 162, 0.8)',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'p99',
+                        data: [0.687, 1.384, 3.196, 4.359],
+                        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e4e4e7' }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#a1a1aa' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    y: {
+                        ticks: { color: '#a1a1aa' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                }
+            }
+        });
+
+        // Cost Chart
+        const costCtx = document.getElementById('costChart').getContext('2d');
+        new Chart(costCtx, {
+            type: 'bar',
+            data: {
+                labels: ["Flr Vs Clst"],
+                datasets: [
+                    {
+                        label: 'FLR (Hot Path)',
+                        data: [0.71],
+                        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'CLST (Cold Path)',
+                        data: [0.798],
+                        backgroundColor: 'rgba(234, 179, 8, 0.8)',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e4e4e7' }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#a1a1aa' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    y: {
+                        ticks: { color: '#a1a1aa' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

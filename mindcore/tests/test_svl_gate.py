@@ -44,11 +44,11 @@ def gate(svl):
 
 @pytest.fixture
 def strict_gate(svl):
-    """Create gate with strict policy."""
+    """Create gate with strict policy - no auto-correction allowed."""
     policy = GatePolicy(
         strict_mode=True,
         enforce_vocabulary=True,
-        allow_canonicalization=True,
+        allow_canonicalization=False,  # Disable auto-correction for strict mode
         allow_fallback=False,
     )
     return SVLGate(svl=svl, policy=policy)
@@ -460,25 +460,49 @@ class TestGatePolicy:
     """Test different policy configurations."""
 
     def test_non_strict_mode_with_fallback(self, svl):
-        """Test that non-strict mode uses fallback strategies."""
+        """Test that non-strict mode uses fallback strategies when canonicalization disabled."""
         policy = GatePolicy(
             strict_mode=False,
             allow_fallback=True,
             enforce_vocabulary=True,
+            allow_canonicalization=False,  # Disable to force fallback path
         )
         gate = SVLGate(svl=svl, policy=policy)
 
         result = gate.process_inbound(
             llm_output={
                 "content": "Test content",
-                "memory_type": "invalid_type",  # Invalid
+                "memory_type": "invalid_type",  # Invalid - will need fallback
             },
             user_id="user123",
         )
 
-        # Should succeed with fallback
+        # Should succeed with fallback since canonicalization is disabled
         assert result.success
         assert result.decision == GateDecision.FALLBACK
+
+    def test_non_strict_mode_with_canonicalization(self, svl):
+        """Test that non-strict mode uses canonicalization when enabled."""
+        policy = GatePolicy(
+            strict_mode=False,
+            allow_fallback=True,
+            enforce_vocabulary=True,
+            allow_canonicalization=True,  # Enable canonicalization
+        )
+        gate = SVLGate(svl=svl, policy=policy)
+
+        result = gate.process_inbound(
+            llm_output={
+                "content": "Test content",
+                "memory_type": "invalid_type",  # Will be canonicalized to episodic
+            },
+            user_id="user123",
+        )
+
+        # Should succeed with canonicalization (preferred over fallback)
+        assert result.success
+        assert result.decision == GateDecision.CANONICALIZE
+        assert result.memory["memory_type"] == "episodic"
 
     def test_vocabulary_enforcement_disabled(self, svl):
         """Test that vocabulary enforcement can be disabled."""
@@ -528,10 +552,14 @@ class TestGatedStorage:
         memory.close()
 
     def test_gated_mindcore_rejects_invalid(self, svl):
-        """Test that GatedMindcore rejects invalid data."""
+        """Test that GatedMindcore rejects invalid data when canonicalization is disabled."""
         from mindcore.svl.gated_storage import GatedMindcore
 
-        policy = GatePolicy(strict_mode=True, allow_fallback=False)
+        policy = GatePolicy(
+            strict_mode=True,
+            allow_fallback=False,
+            allow_canonicalization=False,  # Disable auto-correction to test rejection
+        )
         memory = GatedMindcore(
             storage="sqlite:///:memory:",
             vocabulary=svl,

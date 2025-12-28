@@ -223,10 +223,12 @@ def status():
 def explain(request_id: str | None, last: bool):
     r"""Explain what happened during a memory operation.
 
-    Shows what memories were injected, why they were selected,
-    what policies applied, and whether CLST was queried.
+    Shows what memories were stored/recalled using real audit logs.
 
-    This is your audit trail for any memory operation.
+    \b
+    Requirements:
+        - Audit logging must be enabled in configuration
+        - Operations must be logged to access explain data
 
     \b
     Examples:
@@ -246,55 +248,127 @@ def explain(request_id: str | None, last: bool):
         click.echo(styled("  Use --last to explain the most recent operation.", Colors.DIM))
         return
 
-    # Try to load from audit log
-    try:
-        from mindcore import Mindcore
+    # Check for config file to find audit log location
+    config_paths = [
+        Path("mindcore.yaml"),
+        Path("mindcore.yml"),
+        Path("config/mindcore.yaml"),
+    ]
 
-        # Check for config
-        config_path = Path("mindcore.yaml")
-        if not config_path.exists():
-            click.echo(styled("  No mindcore.yaml found. Run: mindcore init", Colors.YELLOW))
+    config = None
+    for config_path in config_paths:
+        if config_path.exists():
+            try:
+                import yaml
+
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                break
+            except Exception:
+                pass
+
+    if not config:
+        click.echo(styled("  No configuration found.", Colors.YELLOW))
+        click.echo(styled("  Run: mindcore init", Colors.DIM))
+        click.echo()
+        click.echo(styled("  To enable audit logs, configure:", Colors.DIM))
+        click.echo(styled("    enterprise:", Colors.DIM))
+        click.echo(styled("      audit:", Colors.DIM))
+        click.echo(styled("        enabled: true", Colors.DIM))
+        click.echo(styled("        file_path: ./audit.log", Colors.DIM))
+        return
+
+    # Check for audit configuration
+    audit_config = config.get("enterprise", {}).get("audit", {})
+    audit_enabled = audit_config.get("enabled", False)
+    audit_file = audit_config.get("file_path")
+
+    if not audit_enabled:
+        click.echo(styled("  Audit logging is not enabled.", Colors.YELLOW))
+        click.echo()
+        click.echo(styled("  To enable, add to your mindcore.yaml:", Colors.DIM))
+        click.echo(styled("    enterprise:", Colors.DIM))
+        click.echo(styled("      audit:", Colors.DIM))
+        click.echo(styled("        enabled: true", Colors.DIM))
+        click.echo(styled("        file_path: ./audit.log", Colors.DIM))
+        return
+
+    # Try to read from audit log file
+    if audit_file:
+        audit_path = Path(audit_file)
+        if not audit_path.exists():
+            click.echo(styled(f"  Audit log file not found: {audit_file}", Colors.YELLOW))
+            click.echo(styled("  No operations have been logged yet.", Colors.DIM))
             return
 
-        click.echo(styled("  Looking up request...", Colors.DIM))
+        try:
+            import json
 
-        # This would integrate with actual audit system
-        # For now, show the structure
-        click.echo()
-        click.echo(styled("  Request Details", Colors.BOLD))
-        click.echo(f"    Request ID: {request_id or 'last'}")
-        click.echo("    Operation: recall")
-        click.echo("    User ID: demo_user")
-        click.echo("    Timestamp: 2024-01-15 10:30:00")
-        click.echo()
+            # Read audit log entries
+            entries = []
+            with open(audit_path) as f:
+                for raw_line in f:
+                    stripped = raw_line.strip()
+                    if stripped:
+                        try:
+                            entries.append(json.loads(stripped))
+                        except json.JSONDecodeError:
+                            continue
 
-        click.echo(styled("  Memory Injection", Colors.BOLD))
-        click.echo(f"    {styled('FLR (Fast Path):', Colors.GREEN)} 3 memories injected")
-        click.echo(f"    {styled('CLST (Cold Path):', Colors.DIM)} Not queried")
-        click.echo("    Total latency: 4.2ms")
-        click.echo()
+            if not entries:
+                click.echo(styled("  Audit log is empty.", Colors.YELLOW))
+                click.echo(
+                    styled("  Operations will be logged after memory operations.", Colors.DIM)
+                )
+                return
 
-        click.echo(styled("  Memories Selected", Colors.BOLD))
-        click.echo("    1. [preference] User prefers dark mode (score: 0.92)")
-        click.echo("    2. [semantic] Works on AI projects (score: 0.87)")
-        click.echo("    3. [episodic] Asked about Python (score: 0.81)")
-        click.echo()
+            # Find the requested entry
+            target_entry = None
+            if last:
+                target_entry = entries[-1] if entries else None
+            elif request_id:
+                for entry in reversed(entries):
+                    if (
+                        entry.get("request_id") == request_id
+                        or entry.get("memory_id") == request_id
+                    ):
+                        target_entry = entry
+                        break
 
-        click.echo(styled("  Policy Applied", Colors.BOLD))
-        click.echo("    Strict mode: No")
-        click.echo("    User ID required: Yes ✓")
-        click.echo("    Max results: 10")
-        click.echo()
+            if not target_entry:
+                if request_id:
+                    click.echo(
+                        styled(
+                            f"  Request ID '{request_id}' not found in audit log.", Colors.YELLOW
+                        )
+                    )
+                else:
+                    click.echo(styled("  No entries found in audit log.", Colors.YELLOW))
+                return
 
-        click.echo(styled("  Reinforcement", Colors.BOLD))
-        click.echo("    Signal recorded: Yes")
-        click.echo("    Strength: 0.8 (positive)")
-        click.echo()
+            # Display the actual audit entry
+            click.echo(styled("  Audit Entry", Colors.BOLD))
+            click.echo()
 
-    except ImportError:
-        click.echo(styled("  Mindcore not properly installed.", Colors.RED))
-    except Exception as e:
-        click.echo(styled(f"  Error: {e}", Colors.RED))
+            for key, value in target_entry.items():
+                if key.startswith("_"):
+                    continue
+                display_key = key.replace("_", " ").title()
+                click.echo(f"    {styled(display_key + ':', Colors.CYAN)} {value}")
+
+            click.echo()
+
+        except Exception as e:
+            click.echo(styled(f"  Error reading audit log: {e}", Colors.RED))
+            return
+
+    else:
+        click.echo(styled("  Audit file path not configured.", Colors.YELLOW))
+        click.echo()
+        click.echo(styled("  Configure in mindcore.yaml:", Colors.DIM))
+        click.echo(styled("    enterprise:", Colors.DIM))
+        click.echo(styled("      audit:", Colors.DIM))
+        click.echo(styled("        file_path: ./audit.log", Colors.DIM))
 
 
 @main.command()
@@ -469,10 +543,12 @@ def config(action: str, path: str | None):
     default="all",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
-def benchmark(test_type: str, verbose: bool):
+@click.option("--iterations", "-n", default=10, help="Number of iterations for benchmarks")
+def benchmark(test_type: str, verbose: bool, iterations: int):
     r"""Run trust and performance benchmarks.
 
     These benchmarks prove Mindcore works correctly and deterministically.
+    All measurements are performed on real operations - no simulated data.
 
     \b
     Benchmark types:
@@ -487,78 +563,450 @@ def benchmark(test_type: str, verbose: bool):
         mindcore benchmark           # Run all benchmarks
         mindcore benchmark replay    # Test determinism
         mindcore benchmark latency   # Measure performance
+        mindcore benchmark -n 50     # Run with 50 iterations
     """
+    import hashlib
+    import tempfile
+    import time
+
     click.echo()
     click.echo(styled("  Mindcore Benchmarks", Colors.BOLD, Colors.CYAN))
     click.echo(styled("  ─" * 25, Colors.DIM))
+    click.echo(styled("  All tests use real operations with actual measurements", Colors.DIM))
     click.echo()
 
     tests_to_run = [test_type] if test_type != "all" else ["replay", "latency", "audit", "drift"]
     results = {}
 
-    for test in tests_to_run:
-        click.echo(styled(f"  Running: {test}", Colors.BOLD))
+    # Create a real temporary database for benchmarks
+    try:
+        from mindcore import Mindcore
+        from mindcore.svl import SharedVocabularyLayer
+    except ImportError:
+        click.echo(styled("  Error: Mindcore not installed properly", Colors.RED))
+        return
 
-        if test == "replay":
-            click.echo(styled("    Testing deterministic memory replay...", Colors.DIM))
-            # Simulate benchmark
-            import time
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
 
-            time.sleep(0.5)
-            click.echo(f"    {styled('✓', Colors.GREEN)} Stored 10 test memories")
-            click.echo(f"    {styled('✓', Colors.GREEN)} Replayed with identical results")
-            click.echo(f"    {styled('✓', Colors.GREEN)} Hash match: PASS")
-            results["replay"] = "PASS"
+    try:
+        vocab = SharedVocabularyLayer()
+        vocab.add_topics("benchmark", "test", "settings", "user")
+        memory = Mindcore(storage=f"sqlite:///{db_path}", vocabulary=vocab)
 
-        elif test == "latency":
-            click.echo(styled("    Measuring memory operation latency...", Colors.DIM))
-            import time
+        for test in tests_to_run:
+            click.echo(styled(f"  Running: {test}", Colors.BOLD))
 
-            time.sleep(0.3)
-            click.echo(f"    FLR (fast path): {styled('3.2ms', Colors.GREEN)}")
-            click.echo(f"    CLST (cold path): {styled('12.4ms', Colors.GREEN)}")
-            click.echo(f"    Store operation: {styled('4.1ms', Colors.GREEN)}")
-            click.echo(f"    Recall operation: {styled('5.8ms', Colors.GREEN)}")
-            results["latency"] = "PASS"
+            if test == "replay":
+                # Test deterministic replay with real operations
+                click.echo(styled("    Testing deterministic memory replay...", Colors.DIM))
 
-        elif test == "audit":
-            click.echo(styled("    Verifying audit trail integrity...", Colors.DIM))
-            import time
+                # Store test memories
+                test_contents = [
+                    ("User prefers dark mode interface", ["settings", "user"]),
+                    ("Application settings stored", ["settings"]),
+                    ("Benchmark test memory", ["benchmark", "test"]),
+                    ("User completed tutorial", ["user"]),
+                    ("Configuration validated", ["settings", "benchmark"]),
+                ]
 
-            time.sleep(0.4)
-            click.echo(f"    {styled('✓', Colors.GREEN)} All operations logged")
-            click.echo(f"    {styled('✓', Colors.GREEN)} No gaps in audit trail")
-            click.echo(f"    {styled('✓', Colors.GREEN)} Timestamps sequential")
-            results["audit"] = "PASS"
+                stored_ids = []
+                for content, topics in test_contents:
+                    mid = memory.store(
+                        content=content,
+                        memory_type="semantic",
+                        user_id="benchmark_user",
+                        topics=topics,
+                    )
+                    stored_ids.append(mid)
 
-        elif test == "drift":
-            click.echo(styled("    Checking for memory drift...", Colors.DIM))
-            import time
+                if verbose:
+                    click.echo(f"    Stored {len(stored_ids)} test memories")
 
-            time.sleep(0.3)
-            click.echo(f"    {styled('✓', Colors.GREEN)} Reinforcement scores stable")
-            click.echo(f"    {styled('✓', Colors.GREEN)} No unexpected decay")
-            click.echo(f"    {styled('✓', Colors.GREEN)} Topic clustering consistent")
-            results["drift"] = "PASS"
+                # Perform multiple identical recalls and compare results
+                query = "user settings preferences"
+                first_result = None
+                all_match = True
 
-        click.echo()
+                for i in range(min(iterations, 10)):
+                    result = memory.recall(
+                        query=query,
+                        user_id="benchmark_user",
+                        limit=5,
+                    )
+
+                    # Hash the results for comparison (sha256 for security)
+                    result_hash = hashlib.sha256(
+                        str([m.memory_id for m in result.memories]).encode()
+                    ).hexdigest()
+
+                    if first_result is None:
+                        first_result = result_hash
+                    elif result_hash != first_result:
+                        all_match = False
+                        break
+
+                if all_match:
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} Stored {len(stored_ids)} test memories"
+                    )
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} Replayed {min(iterations, 10)} times with identical results"
+                    )
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} Hash match: PASS ({first_result[:8]}...)"
+                    )
+                    results["replay"] = "PASS"
+                else:
+                    click.echo(f"    {styled('✗', Colors.RED)} Determinism check FAILED")
+                    results["replay"] = "FAIL"
+
+            elif test == "latency":
+                # Measure real operation latencies
+                click.echo(
+                    styled(f"    Measuring latency ({iterations} iterations)...", Colors.DIM)
+                )
+
+                store_times = []
+                recall_times = []
+
+                for i in range(iterations):
+                    # Measure store latency
+                    start = time.perf_counter()
+                    memory.store(
+                        content=f"Latency test memory {i}",
+                        memory_type="episodic",
+                        user_id="latency_user",
+                        topics=["benchmark"],
+                    )
+                    store_times.append((time.perf_counter() - start) * 1000)
+
+                    # Measure recall latency
+                    start = time.perf_counter()
+                    memory.recall(
+                        query="latency test",
+                        user_id="latency_user",
+                        limit=5,
+                    )
+                    recall_times.append((time.perf_counter() - start) * 1000)
+
+                # Calculate statistics
+                avg_store = sum(store_times) / len(store_times)
+                avg_recall = sum(recall_times) / len(recall_times)
+                min_store = min(store_times)
+                max_store = max(store_times)
+                min_recall = min(recall_times)
+                max_recall = max(recall_times)
+
+                # Display results
+                store_color = Colors.GREEN if avg_store < 50 else Colors.YELLOW
+                recall_color = Colors.GREEN if avg_recall < 50 else Colors.YELLOW
+
+                click.echo(
+                    f"    Store operation: {styled(f'{avg_store:.2f}ms', store_color)} (min: {min_store:.2f}ms, max: {max_store:.2f}ms)"
+                )
+                click.echo(
+                    f"    Recall operation: {styled(f'{avg_recall:.2f}ms', recall_color)} (min: {min_recall:.2f}ms, max: {max_recall:.2f}ms)"
+                )
+
+                if verbose:
+                    click.echo(f"    Iterations: {iterations}")
+
+                # Pass if average latency is under 100ms
+                if avg_store < 100 and avg_recall < 100:
+                    click.echo(f"    {styled('✓', Colors.GREEN)} Latency within acceptable bounds")
+                    results["latency"] = "PASS"
+                else:
+                    click.echo(f"    {styled('!', Colors.YELLOW)} Latency higher than expected")
+                    results["latency"] = "WARN"
+
+            elif test == "audit":
+                # Verify operations are tracked correctly
+                click.echo(styled("    Verifying operation tracking...", Colors.DIM))
+
+                # Store some memories and track them
+                operation_ids = []
+                for i in range(5):
+                    mid = memory.store(
+                        content=f"Audit test memory {i}",
+                        memory_type="semantic",
+                        user_id="audit_user",
+                        topics=["benchmark"],
+                    )
+                    operation_ids.append(mid)
+
+                # Verify all can be retrieved
+                all_found = True
+                for mid in operation_ids:
+                    retrieved = memory.get(mid)
+                    if retrieved is None:
+                        all_found = False
+                        break
+
+                # Verify sequential storage
+                memories_list = memory.search(user_id="audit_user", topics=["benchmark"])
+
+                if all_found:
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} All {len(operation_ids)} operations tracked"
+                    )
+                    click.echo(f"    {styled('✓', Colors.GREEN)} All memories retrievable by ID")
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} Search returns {len(memories_list)} memories"
+                    )
+                    results["audit"] = "PASS"
+                else:
+                    click.echo(f"    {styled('✗', Colors.RED)} Some operations not tracked")
+                    results["audit"] = "FAIL"
+
+            elif test == "drift":
+                # Check reinforcement score stability
+                click.echo(styled("    Checking reinforcement stability...", Colors.DIM))
+
+                # Store memory and apply reinforcements
+                drift_id = memory.store(
+                    content="Drift test memory",
+                    memory_type="semantic",
+                    user_id="drift_user",
+                    topics=["benchmark"],
+                )
+
+                initial_mem = memory.get(drift_id)
+                initial_score = initial_mem.reinforcement_score
+
+                # Apply positive and negative reinforcements
+                memory.reinforce(drift_id, signal=0.5)
+                memory.reinforce(drift_id, signal=-0.2)
+                memory.reinforce(drift_id, signal=0.3)
+
+                final_mem = memory.get(drift_id)
+                final_score = final_mem.reinforcement_score
+
+                # Verify scores are bounded
+                score_bounded = -1.0 <= final_score <= 1.0
+                score_changed = final_score != initial_score
+
+                if score_bounded and score_changed:
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} Reinforcement score bounded: {final_score:.3f}"
+                    )
+                    click.echo(
+                        f"    {styled('✓', Colors.GREEN)} Score changed from {initial_score:.3f} to {final_score:.3f}"
+                    )
+                    click.echo(f"    {styled('✓', Colors.GREEN)} No unexpected drift detected")
+                    results["drift"] = "PASS"
+                else:
+                    if not score_bounded:
+                        click.echo(
+                            f"    {styled('✗', Colors.RED)} Score out of bounds: {final_score}"
+                        )
+                    if not score_changed:
+                        click.echo(
+                            f"    {styled('!', Colors.YELLOW)} Score did not change after reinforcement"
+                        )
+                    results["drift"] = "FAIL" if not score_bounded else "WARN"
+
+            click.echo()
+
+        memory.close()
+
+    except Exception as e:
+        click.echo(styled(f"  Error running benchmarks: {e}", Colors.RED))
+        import traceback
+
+        if verbose:
+            traceback.print_exc()
+        return
+    finally:
+        # Cleanup
+        try:
+            os.unlink(db_path)
+        except Exception:
+            pass
 
     # Summary
     click.echo(styled("  ═" * 25, Colors.BOLD))
     passed = sum(1 for r in results.values() if r == "PASS")
+    warned = sum(1 for r in results.values() if r == "WARN")
+    failed = sum(1 for r in results.values() if r == "FAIL")
     total = len(results)
 
     if passed == total:
         click.echo(styled(f"  All {total} benchmarks passed!", Colors.GREEN, Colors.BOLD))
+    elif failed == 0:
+        click.echo(
+            styled(f"  {passed}/{total} passed, {warned} warnings", Colors.YELLOW, Colors.BOLD)
+        )
     else:
-        click.echo(styled(f"  {passed}/{total} benchmarks passed", Colors.YELLOW, Colors.BOLD))
+        click.echo(
+            styled(
+                f"  {passed} passed, {warned} warnings, {failed} failed", Colors.RED, Colors.BOLD
+            )
+        )
 
     click.echo()
-    click.echo(styled("  These results prove:", Colors.DIM))
-    click.echo(styled("    • Memory operations are deterministic", Colors.DIM))
-    click.echo(styled("    • Audit trail is complete", Colors.DIM))
-    click.echo(styled("    • Performance meets expectations", Colors.DIM))
+    click.echo(styled("  These real measurements prove:", Colors.DIM))
+    click.echo(styled("    • Memory operations are deterministic (replay)", Colors.DIM))
+    click.echo(styled("    • Operations are properly tracked (audit)", Colors.DIM))
+    click.echo(styled("    • Performance is measured accurately (latency)", Colors.DIM))
+    click.echo(styled("    • Reinforcement bounds are enforced (drift)", Colors.DIM))
     click.echo()
+
+
+@main.command("benchmark-suite")
+@click.argument(
+    "suite",
+    type=click.Choice(
+        ["quick", "core", "full", "determinism", "performance", "quality", "cost", "robustness"]
+    ),
+    default="core",
+)
+@click.option(
+    "--scenario",
+    "-s",
+    type=click.Choice(["single_agent", "multi_agent", "hot_path", "cold_path"]),
+    default="single_agent",
+)
+@click.option("--size", type=click.Choice(["small", "medium", "large"]), default="small")
+@click.option("--output", "-o", type=click.Path(), help="Export results to JSON file")
+@click.option("--dashboard", "-d", type=click.Path(), help="Generate HTML dashboard")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
+def benchmark_suite(
+    suite: str, scenario: str, size: str, output: str | None, dashboard: str | None, verbose: bool
+):
+    r"""Run comprehensive benchmark suite against industry standards.
+
+    Benchmarks are designed to measure what matters for production AI memory:
+
+    \b
+    DETERMINISM  - Can you replay and get identical results?
+    AUDITABILITY - Can you explain what happened and why?
+    QUALITY      - Does memory remain accurate over time?
+    COST         - What's the FLR vs CLST efficiency?
+    ROBUSTNESS   - Does the system handle edge cases?
+
+    \b
+    Suites:
+        quick       - Fast validation (< 1 minute)
+        core        - Essential benchmarks (< 5 minutes)
+        full        - Complete evaluation (< 30 minutes)
+        determinism - Replay consistency tests
+        performance - Latency and throughput tests
+        quality     - Recall accuracy tests
+        cost        - FLR vs CLST comparison
+        robustness  - Noise and drift resistance
+
+    \b
+    Comparison targets:
+        - Mem0 (https://github.com/mem0ai/mem0)
+        - MemGPT/Letta (https://github.com/letta-ai/letta)
+        - LangMem (https://github.com/langchain-ai/langmem)
+        - Zep (https://github.com/getzep/zep)
+
+    \b
+    Examples:
+        mindcore benchmark-suite                    # Run core benchmarks
+        mindcore benchmark-suite full -v            # Full suite with details
+        mindcore benchmark-suite determinism -o results.json
+    """
+    click.echo()
+    click.echo(styled("  Mindcore Benchmark Suite", Colors.BOLD, Colors.CYAN))
+    click.echo(styled("  ─" * 25, Colors.DIM))
+    click.echo(styled("  Industry-standard evaluation for production AI memory", Colors.DIM))
+    click.echo()
+
+    try:
+        from mindcore.benchmarks import BenchmarkRunner, BenchmarkSuite
+
+        # Map string to enum
+        suite_map = {
+            "quick": BenchmarkSuite.QUICK,
+            "core": BenchmarkSuite.CORE,
+            "full": BenchmarkSuite.FULL,
+            "determinism": BenchmarkSuite.DETERMINISM,
+            "performance": BenchmarkSuite.PERFORMANCE,
+            "quality": BenchmarkSuite.QUALITY,
+            "cost": BenchmarkSuite.COST,
+            "robustness": BenchmarkSuite.ROBUSTNESS,
+        }
+
+        from mindcore.benchmarks.runner import BenchmarkConfig, Scenario
+
+        scenario_map = {
+            "single_agent": Scenario.SINGLE_AGENT,
+            "multi_agent": Scenario.MULTI_AGENT,
+            "hot_path": Scenario.HOT_PATH_ONLY,
+            "cold_path": Scenario.COLD_PATH_ONLY,
+        }
+
+        config = BenchmarkConfig(
+            suite=suite_map[suite],
+            scenario=scenario_map[scenario],
+            dataset_size=size,
+            verbose=verbose,
+        )
+
+        runner = BenchmarkRunner(config)
+
+        click.echo(f"  Suite: {styled(suite, Colors.CYAN)}")
+        click.echo(f"  Scenario: {styled(scenario, Colors.CYAN)}")
+        click.echo(f"  Dataset size: {styled(size, Colors.CYAN)}")
+        click.echo()
+
+        result = runner.run_suite()
+
+        # Show results
+        click.echo(styled("  ═" * 25, Colors.BOLD))
+        click.echo()
+
+        for b in result.benchmarks:
+            status_color = Colors.GREEN if b.passed else Colors.RED
+            status = "PASS" if b.passed else "FAIL"
+            click.echo(f"  [{styled(status, status_color)}] {b.name}")
+
+            if verbose and b.metrics.latency.samples:
+                click.echo(
+                    f"         p50: {b.metrics.latency.p50:.2f}ms, p99: {b.metrics.latency.p99:.2f}ms"
+                )
+
+        click.echo()
+        click.echo(styled("  ═" * 25, Colors.BOLD))
+
+        if result.passed == result.total:
+            click.echo(
+                styled(f"  All {result.total} benchmarks passed!", Colors.GREEN, Colors.BOLD)
+            )
+        else:
+            click.echo(
+                styled(
+                    f"  {result.passed}/{result.total} passed, {result.failed} failed",
+                    Colors.YELLOW,
+                    Colors.BOLD,
+                )
+            )
+
+        # Export if requested
+        if output:
+            runner.export_report(output)
+            click.echo(f"\n  Results exported to: {styled(output, Colors.CYAN)}")
+
+        # Generate dashboard if requested
+        if dashboard:
+            from mindcore.benchmarks import generate_dashboard
+
+            # Use output file if available, otherwise create temp JSON
+            json_file = output or "benchmark_results.json"
+            if not output:
+                runner.export_report(json_file)
+
+            generate_dashboard(json_file, dashboard)
+            click.echo(f"  Dashboard generated: {styled(dashboard, Colors.CYAN)}")
+
+        click.echo()
+
+    except ImportError as e:
+        click.echo(styled(f"  Error: Missing dependency - {e}", Colors.RED))
+        click.echo(styled("  Install with: pip install mindcore[benchmarks]", Colors.DIM))
 
 
 @main.command()

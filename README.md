@@ -5,7 +5,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/M-Alfaris/mindcore)
-[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
+[![Tests](https://img.shields.io/badge/tests-919%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 **A modular memory layer framework built on three foundational protocols: FLR, CLST, and SVL.**
@@ -82,6 +82,25 @@ Mindcore provides **three foundational protocols** that standardize AI agent mem
 
 ```bash
 pip install mindcore
+```
+
+### CLI Quick Start
+
+```bash
+# Interactive setup wizard
+mindcore init
+
+# Check your configuration
+mindcore doctor
+
+# Run a quick demo
+mindcore demo
+
+# Show current status
+mindcore status
+
+# Run benchmarks
+mindcore benchmark
 ```
 
 ### Basic Usage
@@ -582,6 +601,20 @@ mindcore/
 ├── mindcore.py                 # Main Mindcore orchestrator
 ├── exceptions.py               # Standardized exceptions
 │
+├── cli/                        # Command-line interface
+│   ├── __init__.py             # Main CLI entry point (mindcore command)
+│   ├── init.py                 # Interactive setup wizard
+│   ├── doctor.py               # Health check and diagnostics
+│   └── demo.py                 # Quick demo command
+│
+├── benchmarks/                 # System-level benchmarks
+│   ├── __init__.py             # BenchmarkRunner, BenchmarkSuite exports
+│   ├── runner.py               # Benchmark execution engine
+│   ├── metrics.py              # BenchmarkMetrics collection
+│   ├── datasets.py             # DatasetLoader for LoCoMo, MultiWOZ, etc.
+│   ├── enrichment.py           # Dataset enrichment pipeline
+│   └── dashboard.py            # HTML dashboard generation
+│
 ├── flr/                        # Fast Learning Recall protocol (hot path)
 │   ├── __init__.py
 │   └── recall.py               # FLR, Memory (with session_id, thread_id)
@@ -625,9 +658,16 @@ mindcore/
 │   ├── mcp.py                  # MCP server
 │   └── rest.py                 # FastAPI REST server
 │
-├── tests/                      # Test suite
+├── tests/                      # Test suite (919 tests)
 │
 └── utils/                      # Logging utilities
+
+examples/
+└── real_datasets/              # Real-world dataset examples
+    ├── downloader.py           # Dataset download utilities
+    ├── enrichment.py           # SVL metadata enrichment
+    ├── pipeline.py             # End-to-end benchmark pipeline
+    └── run_benchmark.py        # Benchmark runner script
 ```
 
 ---
@@ -942,7 +982,7 @@ pytest mindcore/tests/ --cov=mindcore --cov-report=html
 pytest mindcore/tests/test_enterprise.py -v
 ```
 
-Current test status: **140 tests passing, 58% coverage**
+Current test status: **919 tests passing**
 
 ---
 
