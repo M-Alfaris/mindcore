@@ -937,5 +937,266 @@ class TestEdgeCases:
         assert any("expires_at" in str(e[0]) for e in executed)
 
 
+# =============================================================================
+# Enhanced Search Tests (pg_trgm, SQL ranking)
+# =============================================================================
+
+
+class TestSearchRanked:
+    """Tests for search_ranked() with SQL-based ranking."""
+
+    @pytest.fixture
+    def storage_with_extensions(self, storage):
+        """Create storage with mocked extensions available."""
+        # Set extension flags to simulate extensions being available
+        storage._has_pg_trgm = True
+        storage._has_pg_search = False
+        storage._has_rank_memory = True
+        storage._has_rank_session = True
+        return storage
+
+    @pytest.fixture
+    def storage_without_extensions(self, storage):
+        """Create storage without extensions."""
+        # Set extension flags to simulate extensions not available
+        storage._has_pg_trgm = False
+        storage._has_pg_search = False
+        storage._has_rank_memory = False
+        storage._has_rank_session = False
+        return storage
+
+    def test_search_ranked_with_extensions(self, storage_with_extensions):
+        """Test search_ranked uses SQL ranking when extensions available."""
+        storage = storage_with_extensions
+        storage._pool._connection._cursor._results = []
+
+        results = storage.search_ranked(
+            query="test query",
+            user_id="user_1",
+            attention_hints=["topic1", "topic2"],
+            limit=10,
+        )
+
+        assert isinstance(results, list)
+        # Should have executed SQL with rank_memory function
+        executed = storage._pool._connection._cursor._executed
+        assert any("rank_memory" in str(e[0]) for e in executed)
+
+    def test_search_ranked_raises_without_pg_trgm(self, storage_without_extensions):
+        """Test search_ranked raises StorageError without pg_trgm extension."""
+        storage = storage_without_extensions
+
+        with pytest.raises(StorageError, match="pg_trgm extension required"):
+            storage.search_ranked(
+                query="test query",
+                user_id="user_1",
+                attention_hints=["topic1"],
+                limit=10,
+            )
+
+    def test_search_ranked_raises_without_rank_memory(self, storage_without_extensions):
+        """Test search_ranked raises StorageError without rank_memory function."""
+        storage = storage_without_extensions
+        storage._has_pg_trgm = True  # Has extension but not function
+
+        with pytest.raises(StorageError, match="rank_memory.*function required"):
+            storage.search_ranked(
+                query="test query",
+                user_id="user_1",
+                attention_hints=["topic1"],
+                limit=10,
+            )
+
+    def test_search_ranked_with_attention_hints(self, storage_with_extensions):
+        """Test search_ranked uses attention hints in ranking."""
+        storage = storage_with_extensions
+        storage._pool._connection._cursor._results = []
+
+        storage.search_ranked(
+            query="order status",
+            user_id="user_1",
+            attention_hints=["orders", "shipping"],
+            limit=20,
+        )
+
+        executed = storage._pool._connection._cursor._executed
+        # Verify attention hints appear in query
+        assert any("orders" in str(e) and "shipping" in str(e) for e in executed)
+
+    def test_search_ranked_with_min_similarity(self, storage_with_extensions):
+        """Test search_ranked respects min_similarity threshold."""
+        storage = storage_with_extensions
+        storage._pool._connection._cursor._results = []
+
+        storage.search_ranked(
+            query="test",
+            user_id="user_1",
+            min_similarity=0.3,
+            limit=10,
+        )
+
+        executed = storage._pool._connection._cursor._executed
+        # Should have similarity threshold in query
+        assert any("similarity" in str(e[0]) for e in executed)
+
+    def test_search_capabilities_property(self, storage_with_extensions):
+        """Test search_capabilities returns correct status."""
+        storage = storage_with_extensions
+
+        capabilities = storage.search_capabilities
+
+        assert capabilities["trigram_search"] is True
+        assert capabilities["sql_memory_ranking"] is True
+        assert capabilities["bm25_search"] is False
+
+    def test_search_capabilities_without_extensions(self, storage_without_extensions):
+        """Test search_capabilities when extensions unavailable."""
+        storage = storage_without_extensions
+
+        capabilities = storage.search_capabilities
+
+        assert capabilities["trigram_search"] is False
+        assert capabilities["sql_memory_ranking"] is False
+        assert capabilities["bm25_search"] is False
+
+    def test_search_bm25_raises_without_pg_search(self, storage_without_extensions):
+        """Test search_bm25 raises StorageError without pg_search extension."""
+        storage = storage_without_extensions
+
+        with pytest.raises(StorageError, match="pg_search extension required"):
+            storage.search_bm25(
+                query="test query",
+                user_id="user_1",
+                limit=10,
+            )
+
+    def test_search_bm25_raises_without_rank_memory(self, storage_without_extensions):
+        """Test search_bm25 raises StorageError without rank_memory function."""
+        storage = storage_without_extensions
+        storage._has_pg_search = True  # Has extension but not function
+
+        with pytest.raises(StorageError, match="rank_memory.*function required"):
+            storage.search_bm25(
+                query="test query",
+                user_id="user_1",
+                limit=10,
+            )
+
+
+class TestQuerySessionsRanked:
+    """Tests for query_sessions_ranked() with SQL-based session ranking."""
+
+    @pytest.fixture
+    def storage_with_extensions(self, storage):
+        """Create storage with mocked extensions available."""
+        # Set extension flags to simulate extensions being available
+        storage._has_pg_trgm = True
+        storage._has_pg_search = False
+        storage._has_rank_memory = True
+        storage._has_rank_session = True
+        return storage
+
+    def test_query_sessions_ranked_with_extensions(self, storage_with_extensions):
+        """Test query_sessions_ranked uses SQL ranking."""
+        storage = storage_with_extensions
+        storage._pool._connection._cursor._results = []
+
+        results = storage.query_sessions_ranked(
+            user_id="user_1",
+            topic_hints=["orders", "support"],
+            limit=5,
+        )
+
+        assert isinstance(results, list)
+        executed = storage._pool._connection._cursor._executed
+        assert any("rank_session" in str(e[0]) for e in executed)
+
+    def test_query_sessions_ranked_with_category_hints(self, storage_with_extensions):
+        """Test query_sessions_ranked uses category hints."""
+        storage = storage_with_extensions
+        storage._pool._connection._cursor._results = []
+
+        storage.query_sessions_ranked(
+            user_id="user_1",
+            category_hints=["support", "billing"],
+            limit=5,
+        )
+
+        executed = storage._pool._connection._cursor._executed
+        assert any("support" in str(e) and "billing" in str(e) for e in executed)
+
+    def test_query_sessions_ranked_raises_without_rank_session(self, storage_with_extensions):
+        """Test query_sessions_ranked raises StorageError without rank_session function."""
+        storage = storage_with_extensions
+        storage._has_rank_session = False  # Disable the function
+
+        with pytest.raises(StorageError, match="rank_session.*function required"):
+            storage.query_sessions_ranked(
+                user_id="user_1",
+                topic_hints=["orders"],
+                limit=5,
+            )
+
+
+class TestSearchConfig:
+    """Tests for SearchConfig configuration."""
+
+    def test_default_config(self):
+        """Test default SearchConfig values."""
+        from mindcore.storage.config import SearchConfig
+
+        config = SearchConfig()
+
+        assert config.use_trigram_search is True
+        assert config.use_bm25_search is False
+        assert config.trigram_similarity_threshold == 0.2
+        assert "content" in config.ranking_weights
+        assert "topic" in config.ranking_weights
+
+    def test_config_validation_invalid_threshold(self):
+        """Test SearchConfig validation rejects invalid threshold."""
+        from mindcore.storage.config import SearchConfig
+
+        with pytest.raises(ValueError, match="trigram_similarity_threshold"):
+            SearchConfig(trigram_similarity_threshold=1.5)
+
+    def test_config_validation_invalid_weights(self):
+        """Test SearchConfig validation rejects invalid weights."""
+        from mindcore.storage.config import SearchConfig
+
+        with pytest.raises(ValueError, match="ranking_weights"):
+            SearchConfig(
+                ranking_weights={
+                    "content": 0.5,
+                    # Missing other required keys
+                }
+            )
+
+    def test_config_to_sql_weights_json(self):
+        """Test SearchConfig.to_sql_weights_json() produces valid JSON."""
+        from mindcore.storage.config import SearchConfig
+
+        config = SearchConfig()
+        json_str = config.to_sql_weights_json()
+
+        # Should be valid JSON
+        parsed = json.loads(json_str)
+        assert parsed["content"] == 0.15
+        assert parsed["topic"] == 0.25
+
+    def test_preset_configs(self):
+        """Test preset configurations are valid."""
+        from mindcore.storage.config import (
+            SEARCH_CONFIG_DEFAULT,
+            SEARCH_CONFIG_RECENCY_FOCUSED,
+            SEARCH_CONFIG_TOPIC_FOCUSED,
+        )
+
+        # All should be valid (no exceptions during import)
+        assert SEARCH_CONFIG_DEFAULT.use_trigram_search is True
+        assert SEARCH_CONFIG_RECENCY_FOCUSED.ranking_weights["recency"] > 0.15
+        assert SEARCH_CONFIG_TOPIC_FOCUSED.ranking_weights["topic"] > 0.25
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
