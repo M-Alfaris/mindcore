@@ -637,7 +637,12 @@ def benchmark(test_type: str, verbose: bool, iterations: int):
 
                     # Hash the results for comparison (sha256 for security)
                     result_hash = hashlib.sha256(
-                        str([m.memory_id for m in result.memories]).encode()
+                        str(
+                            [
+                                m.get("memory_id") if isinstance(m, dict) else m.memory_id
+                                for m in result.memories
+                            ]
+                        ).encode()
                     ).hexdigest()
 
                     if first_result is None:
@@ -772,7 +777,11 @@ def benchmark(test_type: str, verbose: bool, iterations: int):
                 )
 
                 initial_mem = memory.get(drift_id)
-                initial_score = initial_mem.reinforcement_score
+                # Handle both dict and Memory object return types
+                if isinstance(initial_mem, dict):
+                    initial_score = initial_mem.get("reinforcement_score", 0.0)
+                else:
+                    initial_score = initial_mem.reinforcement_score
 
                 # Apply positive and negative reinforcements
                 memory.reinforce(drift_id, signal=0.5)
@@ -780,7 +789,11 @@ def benchmark(test_type: str, verbose: bool, iterations: int):
                 memory.reinforce(drift_id, signal=0.3)
 
                 final_mem = memory.get(drift_id)
-                final_score = final_mem.reinforcement_score
+                # Handle both dict and Memory object return types
+                if isinstance(final_mem, dict):
+                    final_score = final_mem.get("reinforcement_score", 0.0)
+                else:
+                    final_score = final_mem.reinforcement_score
 
                 # Verify scores are bounded
                 score_bounded = -1.0 <= final_score <= 1.0

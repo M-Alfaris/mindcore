@@ -301,3 +301,76 @@ class BaseStorage(ABC):
             memory: New memory that was added
         """
         raise NotImplementedError("Session aggregates not supported by this storage backend")
+
+    # ==========================================================================
+    # Enhanced Search Methods (required for production use)
+    # ==========================================================================
+
+    @abstractmethod
+    def search_ranked(
+        self,
+        query: str,
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        min_importance: float = 0.0,
+        min_similarity: float = 0.1,
+        memory_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search memories with database-native ranking.
+
+        Uses database extensions (pg_trgm, rank_memory) for efficient
+        fuzzy matching and multi-component scoring.
+
+        Args:
+            query: Search query text
+            user_id: Filter by user
+            attention_hints: Topics to prioritize in ranking
+            category_hints: Categories to prioritize
+            min_importance: Minimum importance threshold
+            min_similarity: Minimum similarity score (0-1)
+            memory_types: Filter by memory types
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, score) tuples, sorted by score descending.
+            Score is between 0 and 1.
+        """
+
+    @abstractmethod
+    def search_bm25(
+        self,
+        query: str,
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        min_importance: float = 0.0,
+        memory_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search using BM25 full-text ranking.
+
+        Uses ParadeDB pg_search for BM25 ranking combined with
+        custom scoring signals.
+
+        Args:
+            query: Search query text
+            user_id: Filter by user
+            attention_hints: Topics to prioritize in ranking
+            min_importance: Minimum importance threshold
+            memory_types: Filter by memory types
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, score) tuples, sorted by combined score descending.
+        """
+
+    @property
+    @abstractmethod
+    def search_capabilities(self) -> dict[str, bool]:
+        """Get available search capabilities for this storage backend.
+
+        Returns:
+            Dict with capability names and availability status.
+            Keys: trigram_search, bm25_search, sql_memory_ranking, sql_session_ranking
+        """

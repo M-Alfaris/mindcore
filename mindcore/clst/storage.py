@@ -993,86 +993,40 @@ class CLST:
 
     def score_memories_complex(
         self,
-        memories: list[Memory],
         query: str,
+        user_id: str,
         attention_hints: list[str] | None = None,
+        limit: int = 100,
     ) -> list[tuple[Memory, float]]:
-        """Complex scoring for memories (moved from FLR).
+        """Score and retrieve memories using database-native ranking.
 
-        This is the sophisticated scoring that was previously in FLR.
-        It includes:
-        - Word overlap (simple text matching)
+        Uses PostgreSQL extensions (pg_trgm, rank_memory function) for
+        efficient multi-component scoring:
+        - Trigram similarity (fuzzy matching)
         - Topic match with attention hints
-        - Recency decay
-        - Reinforcement score with exploration bonus
+        - Recency decay (1-week half-life)
+        - Reinforcement score with UCB exploration bonus
         - Importance weighting
         - Popularity/access count
 
         Args:
-            memories: Memories to score
             query: Search query
-            attention_hints: Topics to prioritize
+            user_id: User ID for filtering
+            attention_hints: Topics to prioritize in ranking
+            limit: Maximum results to return
 
         Returns:
             List of (memory, score) tuples, sorted by score descending
+
+        Raises:
+            NotImplementedError: If storage doesn't support search_ranked
         """
-        import math
-
-        attention_hints = attention_hints or []
-        scored = []
-        query_lower = query.lower()
-        query_words = set(query_lower.split())
-
-        for memory in memories:
-            score = 0.0
-
-            # 1. Content similarity (simple word overlap)
-            content_words = set(memory.content.lower().split())
-            overlap = len(query_words & content_words)
-            score += overlap * 0.1  # Up to ~0.5 for good overlap
-
-            # 2. Topic match with attention hints
-            if attention_hints:
-                topic_matches = len(set(memory.topics) & set(attention_hints))
-                score += topic_matches * 0.2  # Strong boost for topic match
-
-            # 3. Recency (decay over time)
-            if memory.created_at:
-                created_at = memory.created_at
-                if created_at.tzinfo is None:
-                    created_at = created_at.replace(tzinfo=timezone.utc)
-                age_hours = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
-                recency_score = max(0, 1 - (age_hours / 168))  # Decay over 1 week
-                score += recency_score * 0.15
-
-            # 4. Reinforcement score
-            reinforcement_score = memory.reinforcement_score
-
-            # Add exploration bonus for less-accessed memories (UCB-like)
-            if memory.access_count < 10:
-                exploration_bonus = 0.1 * math.sqrt(
-                    2 * math.log(max(1, 1000)) / max(1, memory.access_count)
-                )
-                reinforcement_score = min(1.0, reinforcement_score + exploration_bonus)
-
-            score += reinforcement_score * 0.2
-
-            # 5. Importance
-            score += memory.importance * 0.15
-
-            # 6. Access count (popularity)
-            popularity = min(1.0, memory.access_count / 100)
-            score += popularity * 0.1
-
-            # Normalize to 0-1
-            score = min(1.0, max(0.0, score))
-
-            scored.append((memory, score))
-
-        # Sort by score descending
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        return scored
+        return self.storage.search_ranked(
+            query=query,
+            user_id=user_id,
+            attention_hints=attention_hints,
+            limit=limit,
+        )
 
 
 @dataclass

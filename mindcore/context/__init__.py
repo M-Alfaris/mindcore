@@ -47,6 +47,9 @@ Example:
     )
 """
 
+# Import gated version for SVL-enforced context
+from mindcore.svl.gated_storage import GatedContextGateway, GatedContextResult
+
 from .gateway import (
     ContextGateway,
     ContextResult,
@@ -58,6 +61,8 @@ from .gateway import (
 __all__ = [
     "ContextGateway",
     "ContextResult",
+    "GatedContextGateway",
+    "GatedContextResult",
     "QueryMetadata",
     "ResponseMetadata",
 ]

@@ -27,6 +27,13 @@ def styled(text: str, *styles: str) -> str:
     return "".join(styles) + text + Colors.RESET
 
 
+def get_mem_attr(mem, attr: str, default=None):
+    """Get attribute from memory (works with both dict and Memory objects)."""
+    if isinstance(mem, dict):
+        return mem.get(attr, default)
+    return getattr(mem, attr, default)
+
+
 def print_header(title: str):
     """Print a section header."""
     click.echo()
@@ -128,8 +135,10 @@ result = memory.recall(
     click.echo()
 
     for i, mem in enumerate(result.memories, 1):
-        click.echo(f"    {styled(str(i) + '.', Colors.CYAN)} {mem.content}")
-        click.echo(styled(f"       Topics: {', '.join(mem.topics or [])}", Colors.DIM))
+        content = get_mem_attr(mem, "content", "")
+        topics = get_mem_attr(mem, "topics", [])
+        click.echo(f"    {styled(str(i) + '.', Colors.CYAN)} {content}")
+        click.echo(styled(f"       Topics: {', '.join(topics or [])}", Colors.DIM))
 
     pause()
 
@@ -147,12 +156,13 @@ def run_reinforcement_demo(memory):
     result = memory.recall(query="preferences", user_id="demo_user", limit=1)
     if result.memories:
         mem = result.memories[0]
-        old_score = mem.reinforcement_score
+        old_score = get_mem_attr(mem, "reinforcement_score", 0.0)
+        mem_id = get_mem_attr(mem, "memory_id", "")
 
         click.echo("  Applying positive reinforcement (memory was useful):")
-        print_code(f'memory.reinforce("{mem.memory_id[:20]}...", signal=0.8)')
+        print_code(f'memory.reinforce("{mem_id[:20]}...", signal=0.8)')
 
-        new_score = memory.reinforce(mem.memory_id, signal=0.8)
+        new_score = memory.reinforce(mem_id, signal=0.8)
 
         click.echo()
         print_output("Before", f"{old_score:.3f}")
@@ -189,7 +199,8 @@ results = memory.search(
     click.echo()
     click.echo(f"  Found {len(results)} matching memories:")
     for mem in results:
-        click.echo(f"    {styled('→', Colors.CYAN)} {mem.content[:50]}...")
+        content = get_mem_attr(mem, "content", "")
+        click.echo(f"    {styled('→', Colors.CYAN)} {content[:50]}...")
 
     pause()
 
@@ -206,10 +217,10 @@ result = memory.recall(
     limit=3,
 )
 
-# Format for LLM system prompt
-context = "\\n".join([
-    f"- {m.content}" for m in result.memories
-])
+# Format for LLM system prompt (works with both dict and Memory objects)
+def get_content(m):
+    return m.get('content', '') if isinstance(m, dict) else m.content
+context = "\\n".join([f"- {get_content(m)}" for m in result.memories])
 """)
 
     result = memory.recall(
@@ -223,7 +234,8 @@ context = "\\n".join([
     click.echo(styled("  ─" * 25, Colors.DIM))
 
     for mem in result.memories:
-        click.echo(f"    • {mem.content}")
+        content = get_mem_attr(mem, "content", "")
+        click.echo(f"    • {content}")
 
     click.echo(styled("  ─" * 25, Colors.DIM))
     click.echo()

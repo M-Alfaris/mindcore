@@ -948,3 +948,142 @@ class SQLiteStorage(BaseStorage):
             vocabulary_version=row["vocabulary_version"],
             embedding=embedding,
         )
+
+    # ==========================================================================
+    # Enhanced Search Methods (SQLite fallback implementations)
+    # ==========================================================================
+
+    def search_ranked(
+        self,
+        query: str,
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        min_importance: float = 0.0,
+        min_similarity: float = 0.1,
+        memory_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search memories with Python-based ranking (SQLite fallback).
+
+        SQLite doesn't support pg_trgm or custom SQL ranking functions,
+        so this implementation uses basic full-text search with Python
+        scoring for ranking.
+
+        Args:
+            query: Search query text
+            user_id: Filter by user
+            attention_hints: Topics to prioritize in ranking
+            category_hints: Categories to prioritize
+            min_importance: Minimum importance threshold
+            min_similarity: Minimum similarity score (ignored in SQLite)
+            memory_types: Filter by memory types
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, score) tuples, sorted by score descending.
+        """
+        # min_similarity is ignored in SQLite (no trigram support)
+        _ = min_similarity
+
+        # Use basic search to get candidates
+        memories = self.search(
+            query=query,
+            user_id=user_id,
+            topics=attention_hints,
+            categories=category_hints,
+            min_importance=min_importance,
+            memory_types=memory_types,
+            limit=limit * 2,  # Fetch more for re-ranking
+        )
+
+        # Score memories using Python-based ranking
+        scored_results = []
+        query_words = set(query.lower().split()) if query else set()
+        attention_set = set(attention_hints) if attention_hints else set()
+        category_set = set(category_hints) if category_hints else set()
+
+        for memory in memories:
+            score = 0.0
+
+            # Content similarity (word overlap)
+            if query_words:
+                content_words = set(memory.content.lower().split())
+                overlap = len(query_words & content_words)
+                score += 0.15 * min(overlap / len(query_words), 1.0)
+
+            # Topic matching
+            if attention_set:
+                topic_matches = len(attention_set & set(memory.topics))
+                score += 0.25 * min(topic_matches / len(attention_set), 1.0)
+
+            # Category matching
+            if category_set:
+                category_matches = len(category_set & set(memory.categories))
+                score += 0.10 * min(category_matches / len(category_set), 1.0)
+
+            # Importance
+            score += 0.15 * memory.importance
+
+            # Reinforcement
+            score += 0.20 * max(0, memory.reinforcement_score)
+
+            # Recency (decay over 1 week)
+            if memory.created_at:
+                from datetime import timezone
+
+                age_hours = (datetime.now(timezone.utc) - memory.created_at).total_seconds() / 3600
+                recency = 2.71828 ** (-age_hours / 168)  # e^(-t/168)
+                score += 0.15 * recency
+
+            scored_results.append((memory, min(1.0, max(0.0, score))))
+
+        # Sort by score and limit
+        scored_results.sort(key=lambda x: x[1], reverse=True)
+        return scored_results[:limit]
+
+    def search_bm25(
+        self,
+        query: str,
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        min_importance: float = 0.0,
+        memory_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search using BM25 full-text ranking.
+
+        SQLite does not support ParadeDB pg_search extension.
+        This method raises StorageError indicating the feature is unavailable.
+
+        Use search_ranked() instead for SQLite-compatible ranked search.
+
+        Raises:
+            StorageError: Always, as BM25 is not available in SQLite
+        """
+        # Parameters intentionally unused - method always raises
+        _ = (query, user_id, attention_hints, min_importance, memory_types, limit)
+        raise StorageError(
+            "BM25 search (pg_search extension) is not available in SQLite. "
+            "Use search_ranked() for Python-based ranking or switch to PostgreSQL.",
+            details={"storage_type": "sqlite", "feature": "bm25_search"},
+        )
+
+    @property
+    def search_capabilities(self) -> dict[str, bool]:
+        """Get available search capabilities for SQLite storage.
+
+        SQLite has limited search capabilities compared to PostgreSQL.
+        Advanced features like trigram similarity and BM25 are not available.
+
+        Returns:
+            Dict with capability names and availability status.
+        """
+        return {
+            "trigram_search": False,
+            "bm25_search": False,
+            "sql_memory_ranking": False,
+            "sql_session_ranking": False,
+            "vector_search": False,
+            "session_triggers": False,
+        }

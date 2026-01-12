@@ -2,20 +2,34 @@
 
 Primary production storage backend with full-text search and JSON support.
 Includes hierarchical session aggregates for fast weighted metadata queries.
+
+Enhanced Search (optional):
+    - pg_trgm: Fuzzy/trigram similarity matching
+    - ParadeDB pg_search: BM25 full-text ranking
+    - SQL ranking functions: Database-native scoring
+
+See mindcore/storage/schema/ for setup instructions.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mindcore.clst.aggregates import SessionAggregate
 from mindcore.exceptions import MemoryNotFoundError, StorageError
 from mindcore.flr import Memory
 
 from .base import BaseStorage
+
+
+if TYPE_CHECKING:
+    from .config import SearchConfig
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresStorage(BaseStorage):
@@ -53,6 +67,7 @@ class PostgresStorage(BaseStorage):
         pool_size: int = 10,
         max_overflow: int = 20,
         connection_timeout: float = 30.0,
+        search_config: SearchConfig | None = None,
     ):
         """Initialize PostgreSQL storage with connection pool management.
 
@@ -61,6 +76,8 @@ class PostgresStorage(BaseStorage):
             pool_size: Base connection pool size (min connections)
             max_overflow: Additional connections allowed above pool_size
             connection_timeout: Timeout for acquiring connections (seconds)
+            search_config: Configuration for search features (pg_trgm, BM25).
+                If None, uses default SearchConfig.
 
         Raises:
             ImportError: If psycopg is not installed
@@ -75,9 +92,13 @@ class PostgresStorage(BaseStorage):
                 "  pip install 'psycopg[binary,pool]'"
             )
 
+        # Import SearchConfig here to avoid circular imports
+        from .config import SearchConfig
+
         self._pool_size = pool_size
         self._max_overflow = max_overflow
         self._connection_timeout = connection_timeout
+        self._search_config = search_config or SearchConfig()
 
         try:
             # Configure connection for better performance
@@ -103,6 +124,56 @@ class PostgresStorage(BaseStorage):
             )
 
         self._initialize_schema()
+
+        # Check for search extensions after schema init
+        self._has_pg_trgm = self._check_extension("pg_trgm")
+        self._has_pg_search = self._check_extension("pg_search")
+        self._has_rank_memory = self._check_function("rank_memory")
+        self._has_rank_session = self._check_function("rank_session")
+
+        if self._search_config.use_trigram_search and not self._has_pg_trgm:
+            logger.warning(
+                "pg_trgm extension not available. Trigram search disabled. "
+                "See mindcore/storage/schema/README.md for setup."
+            )
+        if self._search_config.use_bm25_search and not self._has_pg_search:
+            logger.warning(
+                "pg_search extension (ParadeDB) not available. BM25 search disabled. "
+                "See mindcore/storage/schema/README.md for setup."
+            )
+        if self._search_config.use_sql_ranking and not self._has_rank_memory:
+            logger.warning(
+                "rank_memory() function not available. SQL ranking disabled. "
+                "See mindcore/storage/schema/ranking_functions.sql for setup."
+            )
+
+    def _check_extension(self, extension_name: str) -> bool:
+        """Check if a PostgreSQL extension is installed."""
+        try:
+            with self._pool.connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_extension WHERE extname = %s",
+                    (extension_name,),
+                )
+                return cur.fetchone() is not None
+        except Exception:
+            return False
+
+    def _check_function(self, function_name: str) -> bool:
+        """Check if a PostgreSQL function exists."""
+        try:
+            with self._pool.connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 1 FROM pg_proc p
+                    JOIN pg_namespace n ON p.pronamespace = n.oid
+                    WHERE p.proname = %s AND n.nspname = 'public'
+                    """,
+                    (function_name,),
+                )
+                return cur.fetchone() is not None
+        except Exception:
+            return False
 
     def _initialize_schema(self) -> None:
         """Initialize database schema."""
@@ -332,7 +403,8 @@ class PostgresStorage(BaseStorage):
             )
 
             # Update session aggregate if session_id is set
-            if memory.session_id:
+            # Skip if database trigger handles this automatically
+            if memory.session_id and not self._has_session_trigger:
                 self._update_session_aggregate_internal(cur, memory.session_id, memory)
 
             conn.commit()
@@ -1094,3 +1166,702 @@ class PostgresStorage(BaseStorage):
         with self._pool.connection() as conn, conn.cursor() as cur:
             self._update_session_aggregate_internal(cur, session_id, memory)
             conn.commit()
+
+    # ==========================================================================
+    # Enhanced Search Methods (pg_trgm, ParadeDB BM25, SQL ranking)
+    # ==========================================================================
+
+    def search_ranked(
+        self,
+        query: str,
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        min_importance: float = 0.0,
+        min_similarity: float = 0.1,
+        memory_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search memories with SQL-based ranking.
+
+        Uses pg_trgm for fuzzy content matching and rank_memory()
+        for multi-component scoring entirely in PostgreSQL.
+
+        Requires pg_trgm extension and rank_memory() function.
+        See mindcore/storage/schema/README.md for setup.
+
+        Args:
+            query: Search query text
+            user_id: Filter by user
+            attention_hints: Topics to prioritize in ranking
+            category_hints: Categories to prioritize (used for filtering)
+            min_importance: Minimum importance threshold
+            min_similarity: Minimum trigram similarity (0-1)
+            memory_types: Filter by memory types
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, score) tuples, sorted by score descending
+
+        Raises:
+            StorageError: If required extensions are not available
+        """
+        if not self._has_pg_trgm:
+            raise StorageError(
+                "pg_trgm extension required for search_ranked(). "
+                "See mindcore/storage/schema/README.md for setup instructions."
+            )
+        if not self._has_rank_memory:
+            raise StorageError(
+                "rank_memory() function required for search_ranked(). "
+                "Run mindcore/storage/schema/ranking_functions.sql to create it."
+            )
+
+        conditions = ["m.user_id = %s"]
+        params: list[Any] = [user_id]
+
+        # Expiration filter
+        conditions.append("(m.expires_at IS NULL OR m.expires_at > NOW())")
+
+        # Importance filter
+        if min_importance > 0:
+            conditions.append("m.importance >= %s")
+            params.append(min_importance)
+
+        # Memory type filter
+        if memory_types:
+            conditions.append("m.memory_type = ANY(%s)")
+            params.append(memory_types)
+
+        # Category filter
+        if category_hints:
+            conditions.append("m.categories ?| %s")
+            params.append(category_hints)
+
+        # Build search condition using trigram OR topic match OR full-text
+        search_conditions = []
+
+        # Trigram similarity on content
+        if query:
+            search_conditions.append("similarity(m.content, %s) >= %s")
+            params.extend([query, min_similarity])
+
+        # Topic match with attention hints
+        if attention_hints:
+            search_conditions.append("m.topics ?| %s")
+            params.append(attention_hints)
+
+        # Full-text search fallback
+        if query:
+            search_conditions.append("m.search_vector @@ plainto_tsquery('english', %s)")
+            params.append(query)
+
+        if search_conditions:
+            conditions.append(f"({' OR '.join(search_conditions)})")
+
+        where_clause = " AND ".join(conditions)
+
+        # Build ranking call
+        attention_array = f"ARRAY{attention_hints!r}" if attention_hints else "ARRAY[]::text[]"
+        weights_json = self._search_config.to_sql_weights_json()
+
+        sql = f"""
+            SELECT m.*,
+                   rank_memory(
+                       m.content, m.topics, %s, {attention_array},
+                       m.importance, m.reinforcement_score, m.created_at, m.access_count,
+                       %s::jsonb
+                   ) AS relevance_score
+            FROM memories m
+            WHERE {where_clause}
+            ORDER BY relevance_score DESC
+            LIMIT %s
+        """
+        params.extend([query or "", weights_json, limit])
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                # Last column is relevance_score
+                memory = self._row_to_memory(row[:-1], cur.description[:-1])
+                score = float(row[-1]) if row[-1] is not None else 0.0
+                results.append((memory, score))
+
+            return results
+
+    def search_bm25(
+        self,
+        query: str,
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        min_importance: float = 0.0,
+        memory_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search using ParadeDB BM25 + custom ranking.
+
+        Combines BM25 text relevance with custom scoring signals
+        (topic match, recency, reinforcement, importance).
+
+        Requires ParadeDB pg_search extension and rank_memory() function.
+        See mindcore/storage/schema/README.md for setup.
+
+        Args:
+            query: Search query text
+            user_id: Filter by user
+            attention_hints: Topics to prioritize in ranking
+            min_importance: Minimum importance threshold
+            memory_types: Filter by memory types
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, score) tuples, sorted by combined score descending
+
+        Raises:
+            StorageError: If required extensions are not available
+        """
+        if not self._has_pg_search:
+            raise StorageError(
+                "ParadeDB pg_search extension required for search_bm25(). "
+                "See mindcore/storage/schema/README.md for setup instructions."
+            )
+        if not self._has_rank_memory:
+            raise StorageError(
+                "rank_memory() function required for search_bm25(). "
+                "Run mindcore/storage/schema/ranking_functions.sql to create it."
+            )
+
+        # Fetch more results for re-ranking
+        fetch_limit = limit * self._search_config.bm25_fetch_multiplier
+
+        conditions = ["m.user_id = %s"]
+        params: list[Any] = [user_id]
+
+        # Expiration filter
+        conditions.append("(m.expires_at IS NULL OR m.expires_at > NOW())")
+
+        # Importance filter
+        if min_importance > 0:
+            conditions.append("m.importance >= %s")
+            params.append(min_importance)
+
+        # Memory type filter
+        if memory_types:
+            conditions.append("m.memory_type = ANY(%s)")
+            params.append(memory_types)
+
+        where_clause = " AND ".join(conditions)
+
+        # Build attention hints array for SQL
+        attention_array = f"ARRAY{attention_hints!r}" if attention_hints else "ARRAY[]::text[]"
+
+        # Custom weights for hybrid scoring (content weight reduced since BM25 handles text)
+        hybrid_weights = {
+            "content": 0.0,  # BM25 handles text relevance
+            "topic": 0.25,
+            "recency": 0.15,
+            "reinforcement": 0.15,
+            "importance": 0.1,
+            "popularity": 0.0,
+        }
+        hybrid_weights_json = json.dumps(hybrid_weights)
+        bm25_weight = self._search_config.bm25_weight
+
+        sql = f"""
+            WITH bm25_results AS (
+                SELECT memory_id, score_bm25
+                FROM memories_bm25.search(
+                    query => paradedb.parse(%s),
+                    limit_rows => %s
+                )
+            )
+            SELECT m.*,
+                   (
+                       -- Normalized BM25 score
+                       (b.score_bm25 / GREATEST(MAX(b.score_bm25) OVER (), 0.001)) * %s +
+                       -- Custom ranking signals
+                       rank_memory(
+                           m.content, m.topics, %s, {attention_array},
+                           m.importance, m.reinforcement_score, m.created_at, m.access_count,
+                           %s::jsonb
+                       ) * (1 - %s)
+                   ) AS combined_score
+            FROM memories m
+            JOIN bm25_results b ON m.memory_id = b.memory_id
+            WHERE {where_clause}
+            ORDER BY combined_score DESC
+            LIMIT %s
+        """
+        params_full = [
+            query,
+            fetch_limit,
+            bm25_weight,
+            query,
+            hybrid_weights_json,
+            bm25_weight,
+            *params,
+            limit,
+        ]
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params_full)
+            rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                # Last column is combined_score
+                memory = self._row_to_memory(row[:-1], cur.description[:-1])
+                score = float(row[-1]) if row[-1] is not None else 0.0
+                results.append((memory, score))
+
+            return results
+
+    def query_sessions_ranked(
+        self,
+        user_id: str,
+        topic_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        min_importance_avg: float | None = None,
+        agent_ids: list[str] | None = None,
+        limit: int = 10,
+    ) -> list[tuple[SessionAggregate, float]]:
+        """Query sessions with SQL-based ranking.
+
+        Uses rank_session() SQL function for database-native scoring.
+        Requires rank_session() function from ranking_functions.sql.
+
+        Args:
+            user_id: Filter by user
+            topic_hints: Topics to match and rank by
+            category_hints: Categories to match and rank by
+            min_importance_avg: Minimum average importance
+            agent_ids: Filter by agents
+            limit: Maximum sessions to return
+
+        Returns:
+            List of (SessionAggregate, score) tuples, sorted by score descending
+
+        Raises:
+            StorageError: If rank_session() function is not available
+        """
+        if not self._has_rank_session:
+            raise StorageError(
+                "rank_session() function required for query_sessions_ranked(). "
+                "Run mindcore/storage/schema/ranking_functions.sql to create it."
+            )
+
+        conditions = ["s.user_id = %s"]
+        params: list[Any] = [user_id]
+
+        if agent_ids:
+            conditions.append("s.agent_id = ANY(%s)")
+            params.append(agent_ids)
+
+        if min_importance_avg is not None:
+            conditions.append("s.importance_avg >= %s")
+            params.append(min_importance_avg)
+
+        where_clause = " AND ".join(conditions)
+
+        # Build hint arrays for SQL
+        topic_array = f"ARRAY{topic_hints!r}" if topic_hints else "ARRAY[]::text[]"
+        category_array = f"ARRAY{category_hints!r}" if category_hints else "ARRAY[]::text[]"
+
+        sql = f"""
+            SELECT s.*,
+                   rank_session(
+                       s.topic_weights, s.category_weights, s.importance_avg,
+                       s.last_activity_at, {topic_array}, {category_array}
+                   ) AS relevance_score
+            FROM session_aggregates s
+            WHERE {where_clause}
+            ORDER BY relevance_score DESC
+            LIMIT %s
+        """
+        params.append(limit)
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+            results = []
+            columns = [desc[0] for desc in cur.description[:-1]]  # Exclude relevance_score
+            for row in rows:
+                data = dict(zip(columns, row[:-1], strict=False))
+                session = self._row_to_session_aggregate(data)
+                score = float(row[-1]) if row[-1] is not None else 0.0
+                results.append((session, score))
+
+            return results
+
+    @property
+    def search_capabilities(self) -> dict[str, bool]:
+        """Get available search capabilities.
+
+        Returns:
+            Dict with capability names and availability status.
+        """
+        return {
+            "trigram_search": self._has_pg_trgm,
+            "bm25_search": self._has_pg_search,
+            "sql_memory_ranking": self._has_rank_memory,
+            "sql_session_ranking": self._has_rank_session,
+            "vector_search": self._has_pgvector,
+            "session_triggers": self._has_session_trigger,
+        }
+
+    @property
+    def _has_pgvector(self) -> bool:
+        """Check if pgvector extension is available."""
+        if not hasattr(self, "_pgvector_available"):
+            self._pgvector_available = self._check_extension("vector")
+        return self._pgvector_available
+
+    @property
+    def _has_session_trigger(self) -> bool:
+        """Check if session aggregate trigger is active."""
+        if not hasattr(self, "_session_trigger_available"):
+            try:
+                with self._pool.connection() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 FROM pg_trigger WHERE tgname = 'trg_memory_session_aggregate'"
+                    )
+                    self._session_trigger_available = cur.fetchone() is not None
+            except Exception:
+                self._session_trigger_available = False
+        return self._session_trigger_available
+
+    # ==========================================================================
+    # Vector Search Methods (pgvector)
+    # ==========================================================================
+
+    def search_vector(
+        self,
+        embedding: list[float],
+        user_id: str,
+        topics: list[str] | None = None,
+        min_importance: float = 0.0,
+        min_similarity: float = 0.5,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Search memories by vector similarity.
+
+        Uses pgvector for efficient approximate nearest neighbor search.
+        Requires pgvector extension and embedding_vector column.
+
+        Args:
+            embedding: Query embedding vector (must match dimension, typically 1536)
+            user_id: Filter by user
+            topics: Optional topic filter
+            min_importance: Minimum importance threshold
+            min_similarity: Minimum cosine similarity (0-1)
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, similarity_score) tuples, sorted by similarity descending
+
+        Raises:
+            StorageError: If pgvector is not available
+        """
+        if not self._has_pgvector:
+            raise StorageError(
+                "pgvector extension required for search_vector(). "
+                "See mindcore/storage/schema/README.md for setup instructions."
+            )
+
+        # Convert embedding to vector string format
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+
+        conditions = ["m.user_id = %s", "m.embedding_vector IS NOT NULL"]
+        params: list[Any] = [user_id]
+
+        # Expiration filter
+        conditions.append("(m.expires_at IS NULL OR m.expires_at > NOW())")
+
+        # Importance filter
+        if min_importance > 0:
+            conditions.append("m.importance >= %s")
+            params.append(min_importance)
+
+        # Topic filter
+        if topics:
+            conditions.append("m.topics ?| %s")
+            params.append(topics)
+
+        # Similarity filter (cosine distance < 1 - min_similarity)
+        conditions.append("1 - (m.embedding_vector <=> %s::vector) >= %s")
+        params.extend([embedding_str, min_similarity])
+
+        where_clause = " AND ".join(conditions)
+
+        sql = f"""
+            SELECT m.*,
+                   1 - (m.embedding_vector <=> %s::vector) AS similarity
+            FROM memories m
+            WHERE {where_clause}
+            ORDER BY m.embedding_vector <=> %s::vector
+            LIMIT %s
+        """
+        params.extend([embedding_str, embedding_str, limit])
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                # Last column is similarity
+                memory = self._row_to_memory(row[:-1], cur.description[:-1])
+                score = float(row[-1]) if row[-1] is not None else 0.0
+                results.append((memory, score))
+
+            return results
+
+    def search_hybrid(
+        self,
+        query: str,
+        embedding: list[float],
+        user_id: str,
+        attention_hints: list[str] | None = None,
+        semantic_weight: float = 0.6,
+        limit: int = 50,
+    ) -> list[tuple[Memory, float]]:
+        """Hybrid search combining vector similarity and keyword relevance.
+
+        Uses Reciprocal Rank Fusion (RRF) to combine semantic and keyword rankings.
+        Requires pgvector extension.
+
+        Args:
+            query: Text query for keyword matching
+            embedding: Query embedding for semantic matching
+            user_id: Filter by user
+            attention_hints: Topics to prioritize
+            semantic_weight: Weight for semantic vs keyword (0-1)
+            limit: Maximum results to return
+
+        Returns:
+            List of (Memory, hybrid_score) tuples
+
+        Raises:
+            StorageError: If pgvector is not available
+        """
+        if not self._has_pgvector:
+            raise StorageError(
+                "pgvector extension required for search_hybrid(). "
+                "See mindcore/storage/schema/README.md for setup instructions."
+            )
+
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        hints_array = f"ARRAY{attention_hints!r}" if attention_hints else "NULL"
+
+        sql = f"""
+            SELECT * FROM search_memories_hybrid(
+                %s::vector,
+                %s,
+                %s,
+                {hints_array}::text[],
+                %s,
+                %s
+            )
+        """
+        params = [embedding_str, query, user_id, limit, semantic_weight]
+
+        try:
+            with self._pool.connection() as conn, conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+
+                results = []
+                for row in rows:
+                    # Columns: memory_id, content, memory_type, topics, importance,
+                    #          semantic_score, keyword_score, hybrid_score
+                    memory = Memory(
+                        memory_id=row[0],
+                        content=row[1],
+                        memory_type=row[2],
+                        topics=row[3] if isinstance(row[3], list) else [],
+                        importance=row[4] or 0.5,
+                        user_id=user_id,
+                    )
+                    score = float(row[7]) if row[7] is not None else 0.0
+                    results.append((memory, score))
+
+                return results
+        except Exception as e:
+            # Fall back to vector-only search if hybrid function not available
+            logger.warning(f"Hybrid search failed, falling back to vector search: {e}")
+            return self.search_vector(
+                embedding=embedding,
+                user_id=user_id,
+                topics=attention_hints,
+                limit=limit,
+            )
+
+    def find_similar_memories(
+        self,
+        memory_id: str,
+        min_similarity: float = 0.8,
+        limit: int = 10,
+    ) -> list[tuple[Memory, float]]:
+        """Find memories similar to a given memory.
+
+        Useful for deduplication, clustering, or "related memories" features.
+
+        Args:
+            memory_id: Source memory ID
+            min_similarity: Minimum similarity threshold
+            limit: Maximum results
+
+        Returns:
+            List of (Memory, similarity) tuples
+        """
+        if not self._has_pgvector:
+            raise StorageError(
+                "pgvector extension required for find_similar_memories(). "
+                "See mindcore/storage/schema/README.md for setup instructions."
+            )
+
+        sql = """
+            SELECT m.*, 1 - (m.embedding_vector <=> src.embedding_vector) AS similarity
+            FROM memories m
+            CROSS JOIN (SELECT embedding_vector, user_id FROM memories WHERE memory_id = %s) src
+            WHERE m.memory_id != %s
+              AND m.user_id = src.user_id
+              AND m.embedding_vector IS NOT NULL
+              AND 1 - (m.embedding_vector <=> src.embedding_vector) >= %s
+            ORDER BY m.embedding_vector <=> src.embedding_vector
+            LIMIT %s
+        """
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, (memory_id, memory_id, min_similarity, limit))
+            rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                memory = self._row_to_memory(row[:-1], cur.description[:-1])
+                score = float(row[-1]) if row[-1] is not None else 0.0
+                results.append((memory, score))
+
+            return results
+
+    def store_embedding(self, memory_id: str, embedding: list[float]) -> None:
+        """Store or update embedding vector for a memory.
+
+        Args:
+            memory_id: Memory to update
+            embedding: Embedding vector (must match configured dimension)
+
+        Raises:
+            MemoryNotFoundError: If memory doesn't exist
+            StorageError: If pgvector is not available
+        """
+        if not self._has_pgvector:
+            raise StorageError(
+                "pgvector extension required for store_embedding(). "
+                "See mindcore/storage/schema/README.md for setup instructions."
+            )
+
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE memories
+                SET embedding_vector = %s::vector,
+                    embedding = %s::jsonb
+                WHERE memory_id = %s
+                """,
+                (embedding_str, json.dumps(embedding), memory_id),
+            )
+            conn.commit()
+
+            if cur.rowcount == 0:
+                raise MemoryNotFoundError(memory_id)
+
+    # ==========================================================================
+    # Materialized View Methods
+    # ==========================================================================
+
+    def refresh_materialized_views(self, critical_only: bool = False) -> dict[str, float]:
+        """Refresh materialized views.
+
+        Args:
+            critical_only: If True, only refresh user_stats and session_stats
+
+        Returns:
+            Dict mapping view name to refresh time in seconds
+        """
+        results = {}
+
+        if critical_only:
+            views = ["mv_user_stats", "mv_session_stats"]
+        else:
+            views = [
+                "mv_user_stats",
+                "mv_session_stats",
+                "mv_topic_analytics",
+                "mv_memory_health",
+                "mv_daily_stats",
+            ]
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            for view in views:
+                try:
+                    import time
+
+                    start = time.perf_counter()
+                    cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}")
+                    conn.commit()
+                    results[view] = time.perf_counter() - start
+                except Exception as e:
+                    logger.warning(f"Failed to refresh {view}: {e}")
+                    results[view] = -1.0
+
+        return results
+
+    def get_user_stats(self, user_id: str) -> dict[str, Any] | None:
+        """Get pre-computed user statistics from materialized view.
+
+        Args:
+            user_id: User to get stats for
+
+        Returns:
+            Dict with user statistics or None if not found
+        """
+        try:
+            with self._pool.connection() as conn, conn.cursor() as cur:
+                cur.execute("SELECT * FROM mv_user_stats WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+
+                if not row:
+                    return None
+
+                columns = [desc[0] for desc in cur.description]
+                return dict(zip(columns, row, strict=False))
+        except Exception as e:
+            logger.warning(f"Failed to get user stats (view may not exist): {e}")
+            return None
+
+    def get_memory_health(self) -> dict[str, Any]:
+        """Get system health metrics from materialized view.
+
+        Returns:
+            Dict with health metrics
+        """
+        try:
+            with self._pool.connection() as conn, conn.cursor() as cur:
+                cur.execute("SELECT * FROM mv_memory_health LIMIT 1")
+                row = cur.fetchone()
+
+                if not row:
+                    return {}
+
+                columns = [desc[0] for desc in cur.description]
+                return dict(zip(columns, row, strict=False))
+        except Exception as e:
+            logger.warning(f"Failed to get memory health (view may not exist): {e}")
+            return {}
