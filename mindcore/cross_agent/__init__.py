@@ -45,6 +45,9 @@ Example:
     )
 """
 
+# Import gated version for SVL-enforced cross-agent operations
+from mindcore.svl.gated_storage import GatedCrossAgentLayer
+
 from .layer import CrossAgentLayer
 from .registry import (
     Agent,
@@ -87,6 +90,7 @@ __all__ = [
     # Main
     "CrossAgentLayer",
     "CrossAgentMemory",
+    "GatedCrossAgentLayer",
     "RouteResult",
     "RoutingStrategy",
     "ShareResult",

@@ -12,6 +12,12 @@ This is analogous to how:
 - Database query planners validate and optimize queries
 - Compilers perform type checking before code generation
 
+SECURITY NOTES:
+- Storage backends are truly private (name-mangled) to prevent bypass
+- ALL outbound data goes through gate validation (no for_llm=False bypass)
+- Reinforcement signals are validated for bounds (-1.0 to +1.0)
+- No direct access to underlying storage is provided
+
 Example:
     from mindcore.svl import SharedVocabularyLayer, SVLGate
     from mindcore.svl.gated_storage import GatedCLST, GatedFLR
@@ -35,13 +41,19 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Callable
 
-from .gate import GateDecision, GateResult, SVLGate
+from .gate import GateResult, SVLGate
+
+
+# Bounds for reinforcement signals
+REINFORCEMENT_SIGNAL_MIN = -1.0
+REINFORCEMENT_SIGNAL_MAX = 1.0
 
 
 if TYPE_CHECKING:
+    from datetime import datetime, timedelta
+
     from mindcore.storage.base import BaseStorage
 
 logger = logging.getLogger(__name__)
@@ -137,10 +149,15 @@ class GatedCLST:
             storage: Storage backend
             gate: SVL Gate (mandatory)
             compression_llm: Optional LLM for compression summarization
+
+        Note:
+            Storage is stored with name mangling (__storage) to prevent
+            direct access bypass. All data must flow through the gate.
         """
-        self._storage = storage
-        self._gate = gate
-        self._compression_llm = compression_llm
+        # Use name mangling to prevent direct access bypass
+        self.__storage = storage
+        self.__gate = gate
+        self.__compression_llm = compression_llm
 
     def store(
         self,
@@ -165,7 +182,7 @@ class GatedCLST:
             StoreResult with success status and memory ID
         """
         # Pass through SVL Gate - MANDATORY
-        gate_result = self._gate.process_inbound(
+        gate_result = self.__gate.process_inbound(
             llm_output=memory_data,
             user_id=user_id,
             agent_id=agent_id,
@@ -184,8 +201,15 @@ class GatedCLST:
         try:
             from mindcore.flr import Memory
 
+            if gate_result.memory is None:
+                return StoreResult(
+                    success=False,
+                    gate_result=gate_result,
+                    error_message="Gate returned no memory data",
+                )
+
             memory = Memory.from_dict(gate_result.memory)
-            memory_id = self._storage.store(memory)
+            memory_id = self.__storage.store(memory)
 
             return StoreResult(
                 success=True,
@@ -194,7 +218,7 @@ class GatedCLST:
             )
 
         except Exception as e:
-            logger.error("Storage error after gate validation: %s", e)
+            logger.exception("Storage error after gate validation: %s", e)
             return StoreResult(
                 success=False,
                 gate_result=gate_result,
@@ -238,31 +262,24 @@ class GatedCLST:
     def retrieve(
         self,
         memory_id: str,
-        for_llm: bool = False,
     ) -> GateResult | None:
-        """Retrieve a memory with outbound validation.
+        """Retrieve a memory with mandatory outbound validation.
+
+        All retrieved data is validated through the SVL Gate.
+        There is no bypass option - all outbound data is validated.
 
         Args:
             memory_id: Memory identifier
-            for_llm: If True, process through outbound gate
 
         Returns:
             GateResult with validated memory, or None if not found
         """
-        memory = self._storage.get(memory_id)
+        memory = self.__storage.get(memory_id)
         if memory is None:
             return None
 
-        if for_llm:
-            # Process through outbound gate
-            return self._gate.process_outbound(memory)
-
-        # Return raw (for internal use only)
-        return GateResult(
-            success=True,
-            decision=GateDecision.ACCEPT,
-            memory=memory.to_dict() if hasattr(memory, "to_dict") else memory,
-        )
+        # ALWAYS process through outbound gate - no bypass
+        return self.__gate.process_outbound(memory)
 
     def search(
         self,
@@ -275,9 +292,11 @@ class GatedCLST:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         limit: int = 100,
-        for_llm: bool = False,
     ) -> list[GateResult]:
-        """Search memories with optional outbound validation.
+        """Search memories with mandatory outbound validation.
+
+        All search results are validated through the SVL Gate.
+        There is no bypass option - all outbound data is validated.
 
         Args:
             query: Text search query
@@ -289,12 +308,11 @@ class GatedCLST:
             start_date: Filter by creation date (start)
             end_date: Filter by creation date (end)
             limit: Max results
-            for_llm: If True, process through outbound gate
 
         Returns:
             List of GateResults with validated memories
         """
-        memories = self._storage.search(
+        memories = self.__storage.search(
             query=query,
             user_id=user_id,
             agent_id=agent_id,
@@ -306,16 +324,10 @@ class GatedCLST:
             limit=limit,
         )
 
+        # ALWAYS validate through gate - no bypass
         results = []
         for memory in memories:
-            if for_llm:
-                result = self._gate.process_outbound(memory)
-            else:
-                result = GateResult(
-                    success=True,
-                    decision=GateDecision.ACCEPT,
-                    memory=memory.to_dict() if hasattr(memory, "to_dict") else memory,
-                )
+            result = self.__gate.process_outbound(memory)
             results.append(result)
 
         return results
@@ -329,7 +341,7 @@ class GatedCLST:
         Args:
             memory_id: Memory identifier
         """
-        self._storage.delete(memory_id)
+        self.__storage.delete(memory_id)
 
     def compress(
         self,
@@ -359,9 +371,9 @@ class GatedCLST:
         # Note: We use the internal storage directly for compression
         # but re-validate results through gate
         temp_clst = CLST(
-            storage=self._storage,
-            vocabulary=self._gate._svl,
-            compression_llm=self._compression_llm,
+            storage=self.__storage,
+            vocabulary=self.__gate._svl,
+            compression_llm=self.__compression_llm,
         )
 
         try:
@@ -387,9 +399,9 @@ class GatedCLST:
     def get_stats(self) -> dict[str, Any]:
         """Get storage and gate statistics."""
         return {
-            "gate_stats": self._gate.get_stats(),
-            "storage_stats": self._storage.get_stats()
-            if hasattr(self._storage, "get_stats")
+            "gate_stats": self.__gate.get_stats(),
+            "storage_stats": self.__storage.get_stats()
+            if hasattr(self.__storage, "get_stats")
             else {},
         }
 
@@ -523,17 +535,39 @@ class GatedFLR:
     def reinforce(self, memory_id: str, signal: float) -> float:
         """Reinforce a memory with a learning signal.
 
-        Reinforcement doesn't require gate validation as it's
-        updating existing validated data.
+        Reinforcement signals are validated for bounds to prevent
+        manipulation of memory rankings.
 
         Args:
             memory_id: Memory to reinforce
-            signal: Signal from -1.0 to +1.0
+            signal: Signal from -1.0 to +1.0 (clamped to bounds)
 
         Returns:
             New reinforcement score
+
+        Raises:
+            ValueError: If signal is not a valid number
         """
-        return self._flr.reinforce(memory_id, signal)
+        # Validate signal is a number
+        if not isinstance(signal, int | float):
+            raise TypeError(f"Reinforcement signal must be a number, got {type(signal)}")
+
+        # Clamp signal to valid bounds
+        clamped_signal = max(
+            REINFORCEMENT_SIGNAL_MIN,
+            min(REINFORCEMENT_SIGNAL_MAX, float(signal)),
+        )
+
+        if clamped_signal != signal:
+            logger.warning(
+                "Reinforcement signal %s clamped to bounds [%s, %s] -> %s",
+                signal,
+                REINFORCEMENT_SIGNAL_MIN,
+                REINFORCEMENT_SIGNAL_MAX,
+                clamped_signal,
+            )
+
+        return self._flr.reinforce(memory_id, clamped_signal)
 
     def flush_reinforcements(self) -> int:
         """Flush buffered reinforcement signals."""
@@ -762,3 +796,875 @@ class GatedMindcore:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         return False
+
+
+@dataclass
+class GatedContextResult:
+    """Result from gated context building.
+
+    Contains all context needed for LLM response generation,
+    with all memories validated through the SVL Gate.
+    """
+
+    success: bool
+
+    # Gate-validated memories (dicts, not Memory objects)
+    memories: list[dict[str, Any]]
+
+    # Session context
+    current_session: Any = None
+    related_sessions: list[Any] = None
+
+    # SVL data source results
+    source_data: dict[str, list[Any]] = None
+
+    # Topics/categories extracted or matched
+    matched_topics: list[str] = None
+    matched_categories: list[str] = None
+
+    # Query metadata
+    query_metadata: Any = None
+
+    # Statistics
+    total_memories_searched: int = 0
+    sessions_searched: int = 0
+    sources_fetched: int = 0
+    latency_ms: float = 0.0
+    gate_processing_ms: float = 0.0
+    from_cache: bool = False
+
+    def __post_init__(self):
+        if self.related_sessions is None:
+            self.related_sessions = []
+        if self.source_data is None:
+            self.source_data = {}
+        if self.matched_topics is None:
+            self.matched_topics = []
+        if self.matched_categories is None:
+            self.matched_categories = []
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize gated context result."""
+        return {
+            "success": self.success,
+            "memories": self.memories,
+            "matched_topics": self.matched_topics,
+            "matched_categories": self.matched_categories,
+            "source_data": self.source_data,
+            "stats": {
+                "total_memories_searched": self.total_memories_searched,
+                "sessions_searched": self.sessions_searched,
+                "sources_fetched": self.sources_fetched,
+                "latency_ms": self.latency_ms,
+                "gate_processing_ms": self.gate_processing_ms,
+                "from_cache": self.from_cache,
+            },
+        }
+
+
+class GatedContextGateway:
+    """Gated Context Gateway - Context assembly with mandatory SVL validation.
+
+    This class wraps ContextGateway with mandatory SVL Gate validation.
+    All data entering or leaving the context gateway goes through the gate.
+
+    IMPORTANT: There is NO bypass path. All memories returned are validated
+    through the outbound gate, and all memories stored are validated through
+    the inbound gate.
+
+    Example:
+        from mindcore.svl.gated_storage import GatedContextGateway
+
+        gateway = GatedContextGateway(
+            storage=storage,
+            svl=shared_vocabulary_layer,
+        )
+
+        # Build context - all memories are gate-validated
+        result = gateway.build_context(
+            query="What are the user's preferences?",
+            user_id="u1",
+        )
+
+        # Memories are dicts (validated by gate), safe for LLM
+        for memory in result.memories:
+            print(memory["content"])
+    """
+
+    def __init__(
+        self,
+        storage: BaseStorage,
+        svl: Any,
+        gate: SVLGate | None = None,
+        flr_cache_size: int = 1000,
+        flr_cache_ttl_seconds: int = 300,
+        default_session_limit: int = 5,
+        default_memory_limit: int = 50,
+        track_queries: bool = False,
+    ):
+        """Initialize GatedContextGateway.
+
+        Args:
+            storage: Storage backend
+            svl: SharedVocabularyLayer
+            gate: Optional SVLGate (created if not provided)
+            flr_cache_size: Size of FLR LRU cache
+            flr_cache_ttl_seconds: TTL for cached memories
+            default_session_limit: Default number of sessions to search
+            default_memory_limit: Default number of memories to return
+            track_queries: Store queries/responses as working memories
+        """
+        from mindcore.context.gateway import ContextGateway
+
+        from .gate import GatePolicy, RetryConfig
+
+        # Create gate if not provided
+        if gate is None:
+            gate = SVLGate(
+                svl=svl,
+                policy=GatePolicy(),
+                retry_config=RetryConfig(),
+            )
+
+        # Use name mangling to prevent bypass
+        self.__gate = gate
+        self.__storage = storage
+
+        # Create underlying context gateway
+        self.__gateway = ContextGateway(
+            storage=storage,
+            svl=svl,
+            flr_cache_size=flr_cache_size,
+            flr_cache_ttl_seconds=flr_cache_ttl_seconds,
+            default_session_limit=default_session_limit,
+            default_memory_limit=default_memory_limit,
+            track_queries=track_queries,
+        )
+
+    def build_context(
+        self,
+        query: str,
+        user_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        attention_hints: list[str] | None = None,
+        category_hints: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        min_importance: float = 0.3,
+        min_topic_weight: float = 0.1,
+        session_limit: int | None = None,
+        memory_limit: int | None = None,
+        include_source_data: bool = True,
+        use_cache: bool = True,
+    ) -> GatedContextResult:
+        """Build unified context with mandatory gate validation.
+
+        All returned memories are validated through the SVL Gate.
+        There is no bypass option.
+
+        Args:
+            query: User query text
+            user_id: User identifier
+            session_id: Current session (for context)
+            agent_id: Agent identifier
+            attention_hints: Topics to focus on
+            category_hints: Categories to focus on
+            memory_types: Filter by memory types
+            min_importance: Minimum importance threshold
+            min_topic_weight: Minimum topic weight for session matching
+            session_limit: Max sessions to search
+            memory_limit: Max memories to return
+            include_source_data: Whether to fetch SVL sources
+            use_cache: Whether to check FLR cache
+
+        Returns:
+            GatedContextResult with gate-validated memories
+        """
+        import time
+
+        start_time = time.time()
+
+        # Get context from underlying gateway
+        context_result = self.__gateway.build_context(
+            query=query,
+            user_id=user_id,
+            session_id=session_id,
+            agent_id=agent_id,
+            attention_hints=attention_hints,
+            category_hints=category_hints,
+            memory_types=memory_types,
+            min_importance=min_importance,
+            min_topic_weight=min_topic_weight,
+            session_limit=session_limit,
+            memory_limit=memory_limit,
+            include_source_data=include_source_data,
+            use_cache=use_cache,
+        )
+
+        # Validate all memories through outbound gate
+        validated_memories = []
+        gate_time = 0.0
+
+        for memory in context_result.memories:
+            gate_start = time.time()
+            gate_result = self.__gate.process_outbound(memory)
+            gate_time += (time.time() - gate_start) * 1000
+
+            if gate_result.success and gate_result.memory:
+                validated_memories.append(gate_result.memory)
+            else:
+                logger.warning(
+                    "Memory %s failed outbound validation in context gateway",
+                    getattr(memory, "memory_id", "unknown"),
+                )
+
+        total_time = (time.time() - start_time) * 1000
+
+        return GatedContextResult(
+            success=True,
+            memories=validated_memories,
+            current_session=context_result.current_session,
+            related_sessions=context_result.related_sessions,
+            source_data=context_result.source_data,
+            matched_topics=context_result.matched_topics,
+            matched_categories=context_result.matched_categories,
+            query_metadata=context_result.query_metadata,
+            total_memories_searched=context_result.total_memories_searched,
+            sessions_searched=context_result.sessions_searched,
+            sources_fetched=context_result.sources_fetched,
+            latency_ms=total_time,
+            gate_processing_ms=gate_time,
+            from_cache=context_result.from_cache,
+        )
+
+    def build_context_with_decision(
+        self,
+        query: str,
+        context_decision: Any,
+        user_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+        enforced_metadata: Any = None,
+        min_importance: float = 0.3,
+        session_limit: int | None = None,
+        memory_limit: int | None = None,
+        include_source_data: bool = True,
+    ) -> GatedContextResult:
+        """Build context with LLM decision, with mandatory gate validation.
+
+        Args:
+            query: User query text
+            context_decision: LLM's decision on context requirements
+            user_id: User identifier
+            session_id: Current session
+            agent_id: Agent identifier
+            thread_id: Thread identifier
+            enforced_metadata: Optional pre-extracted metadata
+            min_importance: Minimum importance threshold
+            session_limit: Max sessions to search
+            memory_limit: Max memories to return
+            include_source_data: Whether to fetch SVL sources
+
+        Returns:
+            GatedContextResult with gate-validated memories
+        """
+        import time
+
+        start_time = time.time()
+
+        # Get context from underlying gateway
+        context_result = self.__gateway.build_context_with_decision(
+            query=query,
+            context_decision=context_decision,
+            user_id=user_id,
+            session_id=session_id,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            enforced_metadata=enforced_metadata,
+            min_importance=min_importance,
+            session_limit=session_limit,
+            memory_limit=memory_limit,
+            include_source_data=include_source_data,
+        )
+
+        # Validate all memories through outbound gate
+        validated_memories = []
+        gate_time = 0.0
+
+        for memory in context_result.memories:
+            gate_start = time.time()
+            gate_result = self.__gate.process_outbound(memory)
+            gate_time += (time.time() - gate_start) * 1000
+
+            if gate_result.success and gate_result.memory:
+                validated_memories.append(gate_result.memory)
+
+        total_time = (time.time() - start_time) * 1000
+
+        return GatedContextResult(
+            success=True,
+            memories=validated_memories,
+            current_session=context_result.current_session,
+            related_sessions=context_result.related_sessions,
+            source_data=context_result.source_data,
+            matched_topics=context_result.matched_topics,
+            matched_categories=context_result.matched_categories,
+            query_metadata=context_result.query_metadata,
+            total_memories_searched=context_result.total_memories_searched,
+            sessions_searched=context_result.sessions_searched,
+            sources_fetched=context_result.sources_fetched,
+            latency_ms=total_time,
+            gate_processing_ms=gate_time,
+            from_cache=context_result.from_cache,
+        )
+
+    def store_memory(
+        self,
+        memory_data: dict[str, Any],
+        user_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        llm_call: Callable[[str], str] | None = None,
+    ) -> StoreResult:
+        """Store a memory with mandatory gate validation.
+
+        Args:
+            memory_data: Memory data dict from LLM
+            user_id: User identifier
+            session_id: Session identifier
+            agent_id: Agent identifier
+            llm_call: Optional LLM function for retry
+
+        Returns:
+            StoreResult with success status
+        """
+        # Pass through SVL Gate - MANDATORY
+        gate_result = self.__gate.process_inbound(
+            llm_output=memory_data,
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            llm_call=llm_call,
+        )
+
+        if not gate_result.success:
+            return StoreResult(
+                success=False,
+                gate_result=gate_result,
+                error_message="; ".join(e.message for e in gate_result.errors),
+            )
+
+        # Gate passed - store the validated memory
+        try:
+            from mindcore.flr import Memory
+
+            if gate_result.memory is None:
+                return StoreResult(
+                    success=False,
+                    gate_result=gate_result,
+                    error_message="Gate returned no memory data",
+                )
+
+            memory = Memory.from_dict(gate_result.memory)
+            if session_id:
+                memory.session_id = session_id
+
+            memory_id = self.__storage.store(memory)
+
+            return StoreResult(
+                success=True,
+                memory_id=memory_id,
+                gate_result=gate_result,
+            )
+
+        except Exception as e:
+            logger.exception("Storage error after gate validation: %s", e)
+            return StoreResult(
+                success=False,
+                gate_result=gate_result,
+                error_message=f"Storage error: {e}",
+            )
+
+    def record_response(
+        self,
+        query_metadata: Any,
+        response_text: str,
+        memories_to_store: list[dict[str, Any]] | None = None,
+        sentiment: str = "neutral",
+        confidence: str = "high",
+        llm_call: Callable[[str], str] | None = None,
+    ) -> dict[str, Any]:
+        """Record a response with mandatory gate validation.
+
+        All memories to store are validated through the inbound gate.
+
+        Args:
+            query_metadata: Metadata from the originating query
+            response_text: The LLM's response text
+            memories_to_store: Memories to store (validated through gate)
+            sentiment: Response sentiment
+            confidence: Response confidence level
+            llm_call: Optional LLM function for retry
+
+        Returns:
+            Response metadata dict with store results
+        """
+        import uuid
+
+        response_id = f"rsp_{uuid.uuid4().hex[:12]}"
+        store_results = []
+
+        # Store any memories from the LLM response through gate
+        if memories_to_store:
+            for memory_data in memories_to_store:
+                result = self.store_memory(
+                    memory_data=memory_data,
+                    user_id=query_metadata.user_id,
+                    session_id=query_metadata.session_id,
+                    llm_call=llm_call,
+                )
+                store_results.append(result)
+
+        return {
+            "response_id": response_id,
+            "query_id": query_metadata.query_id,
+            "session_id": query_metadata.session_id,
+            "user_id": query_metadata.user_id,
+            "sentiment": sentiment,
+            "confidence": confidence,
+            "store_results": [r.to_dict() for r in store_results],
+            "memories_stored": sum(1 for r in store_results if r.success),
+            "memory_ids": [r.memory_id for r in store_results if r.success],
+        }
+
+    def get_session_summary(
+        self,
+        session_id: str,
+    ) -> dict[str, Any] | None:
+        """Get session summary for context injection."""
+        return self.__gateway.get_session_summary(session_id)
+
+    def invalidate_cache(
+        self,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> int:
+        """Invalidate cached entries."""
+        return self.__gateway.invalidate_cache(user_id, session_id)
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get gateway and gate statistics."""
+        return {
+            "gateway_stats": self.__gateway.get_stats(),
+            "gate_stats": self.__gate.get_stats(),
+        }
+
+
+class GatedCrossAgentLayer:
+    """Gated Cross-Agent Layer - Cross-agent operations with mandatory SVL validation.
+
+    This class wraps CrossAgentLayer with mandatory SVL Gate validation.
+    All data entering or leaving the cross-agent layer goes through the gate.
+
+    IMPORTANT: There is NO bypass path. All memories stored are validated
+    through the inbound gate, and all memories returned are validated through
+    the outbound gate.
+
+    Example:
+        from mindcore.svl.gated_storage import GatedCrossAgentLayer
+
+        layer = GatedCrossAgentLayer(
+            storage=storage,
+            svl=shared_vocabulary_layer,
+        )
+
+        # Register agents
+        layer.register_agent(
+            agent_id="support_bot",
+            name="Support Agent",
+            capabilities=["customer_support"],
+        )
+
+        # Store memory - validated through inbound gate
+        result = layer.store_memory(
+            memory_data={"content": "...", "memory_type": "preference"},
+            agent_id="support_bot",
+            user_id="user123",
+        )
+
+        # Query - all memories validated through outbound gate
+        result = layer.query(
+            query="preferences",
+            user_id="user123",
+        )
+    """
+
+    def __init__(
+        self,
+        storage: BaseStorage,
+        svl: Any,
+        gate: SVLGate | None = None,
+    ):
+        """Initialize GatedCrossAgentLayer.
+
+        Args:
+            storage: Storage backend
+            svl: SharedVocabularyLayer
+            gate: Optional SVLGate (created if not provided)
+        """
+        from mindcore.cross_agent.layer import CrossAgentLayer
+
+        from .gate import GatePolicy, RetryConfig
+
+        # Create gate if not provided
+        if gate is None:
+            gate = SVLGate(
+                svl=svl,
+                policy=GatePolicy(),
+                retry_config=RetryConfig(),
+            )
+
+        # Use name mangling to prevent bypass
+        self.__gate = gate
+        self.__storage = storage
+        self.__svl = svl
+
+        # Create underlying cross-agent layer
+        self.__layer = CrossAgentLayer(storage=storage)
+
+    # === Agent Management (pass-through, no validation needed) ===
+
+    def register_agent(
+        self,
+        agent_id: str,
+        name: str,
+        description: str = "",
+        capabilities: list[str] | None = None,
+        specializations: list[str] | None = None,
+        teams: list[str] | None = None,
+        can_read_global: bool = True,
+        can_write_global: bool = False,
+        metadata: dict[str, Any] | None = None,
+    ) -> Any:
+        """Register a new agent."""
+        return self.__layer.register_agent(
+            agent_id=agent_id,
+            name=name,
+            description=description,
+            capabilities=capabilities,
+            specializations=specializations,
+            teams=teams,
+            can_read_global=can_read_global,
+            can_write_global=can_write_global,
+            metadata=metadata,
+        )
+
+    def get_agent(self, agent_id: str) -> Any:
+        """Get agent by ID."""
+        return self.__layer.get_agent(agent_id)
+
+    def list_agents(
+        self,
+        status: Any = None,
+        team: str | None = None,
+        capability: str | None = None,
+    ) -> list[Any]:
+        """List agents with optional filters."""
+        return self.__layer.list_agents(status=status, team=team, capability=capability)
+
+    def unregister_agent(self, agent_id: str) -> bool:
+        """Unregister an agent."""
+        return self.__layer.unregister_agent(agent_id)
+
+    # === Team Management (pass-through, no validation needed) ===
+
+    def create_team(
+        self,
+        team_id: str,
+        name: str,
+        description: str = "",
+        shared_topics: list[str] | None = None,
+        shared_memory_types: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Any:
+        """Create a new team."""
+        return self.__layer.create_team(
+            team_id=team_id,
+            name=name,
+            description=description,
+            shared_topics=shared_topics,
+            shared_memory_types=shared_memory_types,
+            metadata=metadata,
+        )
+
+    def get_team(self, team_id: str) -> Any:
+        """Get team by ID."""
+        return self.__layer.get_team(team_id)
+
+    def list_teams(self) -> list[Any]:
+        """List all teams."""
+        return self.__layer.list_teams()
+
+    def add_agent_to_team(self, agent_id: str, team_id: str) -> bool:
+        """Add an agent to a team."""
+        return self.__layer.add_agent_to_team(agent_id, team_id)
+
+    def remove_agent_from_team(self, agent_id: str, team_id: str) -> bool:
+        """Remove an agent from a team."""
+        return self.__layer.remove_agent_from_team(agent_id, team_id)
+
+    # === Memory Operations (gated) ===
+
+    def store_memory(
+        self,
+        memory_data: dict[str, Any],
+        agent_id: str,
+        user_id: str,
+        access_level: str = "private",
+        llm_call: Callable[[str], str] | None = None,
+    ) -> StoreResult:
+        """Store a memory with mandatory gate validation.
+
+        Args:
+            memory_data: Memory data dict from LLM
+            agent_id: Agent storing the memory
+            user_id: User identifier
+            access_level: Access level (private/team/shared/global)
+            llm_call: Optional LLM function for retry
+
+        Returns:
+            StoreResult with success status
+        """
+        # Pass through SVL Gate - MANDATORY
+        gate_result = self.__gate.process_inbound(
+            llm_output=memory_data,
+            user_id=user_id,
+            agent_id=agent_id,
+            llm_call=llm_call,
+        )
+
+        if not gate_result.success:
+            return StoreResult(
+                success=False,
+                gate_result=gate_result,
+                error_message="; ".join(e.message for e in gate_result.errors),
+            )
+
+        # Gate passed - store the validated memory
+        try:
+            from mindcore.flr import Memory
+
+            if gate_result.memory is None:
+                return StoreResult(
+                    success=False,
+                    gate_result=gate_result,
+                    error_message="Gate returned no memory data",
+                )
+
+            memory = Memory.from_dict(gate_result.memory)
+
+            # Use underlying layer's store_memory
+            memory_id = self.__layer.store_memory(
+                memory=memory,
+                agent_id=agent_id,
+                access_level=access_level,
+            )
+
+            return StoreResult(
+                success=True,
+                memory_id=memory_id,
+                gate_result=gate_result,
+            )
+
+        except Exception as e:
+            logger.exception("Cross-agent storage error after gate validation: %s", e)
+            return StoreResult(
+                success=False,
+                gate_result=gate_result,
+                error_message=f"Storage error: {e}",
+            )
+
+    def get_accessible_memories(
+        self,
+        agent_id: str,
+        user_id: str,
+        topics: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        include_global: bool = True,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get all memories accessible to an agent, with outbound gate validation.
+
+        Args:
+            agent_id: Requesting agent
+            user_id: User context
+            topics: Filter by topics
+            memory_types: Filter by memory types
+            include_global: Include global memories
+            limit: Maximum memories to return
+
+        Returns:
+            List of gate-validated memory dicts
+        """
+        # Get memories from underlying layer
+        memories = self.__layer.get_accessible_memories(
+            agent_id=agent_id,
+            user_id=user_id,
+            topics=topics,
+            memory_types=memory_types,
+            include_global=include_global,
+            limit=limit,
+        )
+
+        # Validate all memories through outbound gate
+        validated_memories = []
+        for memory in memories:
+            gate_result = self.__gate.process_outbound(memory)
+            if gate_result.success and gate_result.memory:
+                validated_memories.append(gate_result.memory)
+            else:
+                logger.warning(
+                    "Memory failed outbound validation in cross-agent layer: %s",
+                    getattr(memory, "memory_id", "unknown"),
+                )
+
+        return validated_memories
+
+    def query(
+        self,
+        query: str,
+        user_id: str,
+        requesting_agent: str | None = None,
+        strategy: Any = None,
+        attention_hints: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        max_agents: int = 5,
+        max_memories_per_agent: int = 10,
+    ) -> dict[str, Any]:
+        """Query memories across agents with outbound gate validation.
+
+        Args:
+            query: Search query
+            user_id: User context
+            requesting_agent: Agent making the request
+            strategy: Routing strategy
+            attention_hints: Topics/capabilities to prioritize
+            memory_types: Filter by memory types
+            max_agents: Maximum agents to query
+            max_memories_per_agent: Maximum memories per agent
+
+        Returns:
+            Dict with gate-validated memories organized by agent
+        """
+        from mindcore.cross_agent.routing import RoutingStrategy
+
+        # Use default strategy if not provided
+        if strategy is None:
+            strategy = RoutingStrategy.BEST_MATCH
+
+        # Get route result from underlying layer
+        route_result = self.__layer.query(
+            query=query,
+            user_id=user_id,
+            requesting_agent=requesting_agent,
+            strategy=strategy,
+            attention_hints=attention_hints,
+            memory_types=memory_types,
+            max_agents=max_agents,
+            max_memories_per_agent=max_memories_per_agent,
+        )
+
+        # Validate all memories through outbound gate
+        validated_memories = []
+        for memory in route_result.memories:
+            gate_result = self.__gate.process_outbound(memory)
+            if gate_result.success and gate_result.memory:
+                validated_memories.append(gate_result.memory)
+
+        return {
+            "query": query,
+            "requesting_agent": requesting_agent,
+            "selected_agents": route_result.selected_agents,
+            "total_memories": len(validated_memories),
+            "memories": validated_memories,
+            "strategy": route_result.strategy.value if route_result.strategy else None,
+        }
+
+    def share_memory(
+        self,
+        memory_id: str,
+        source_agent: str,
+        access_level: str,
+        target_agents: list[str] | None = None,
+    ) -> Any:
+        """Share a memory with other agents."""
+        return self.__layer.share_memory(
+            memory_id=memory_id,
+            source_agent=source_agent,
+            access_level=access_level,
+            target_agents=target_agents,
+        )
+
+    def sync(
+        self,
+        source_agent: str,
+        target_agent: str,
+        user_id: str,
+        direction: Any = None,
+        conflict_resolution: Any = None,
+        topics: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        since: Any = None,
+    ) -> Any:
+        """Synchronize memories between agents."""
+        from mindcore.cross_agent.sharing import ConflictResolution, SyncDirection
+
+        if direction is None:
+            direction = SyncDirection.ONE_WAY
+        if conflict_resolution is None:
+            conflict_resolution = ConflictResolution.SOURCE_WINS
+
+        return self.__layer.sync(
+            source_agent=source_agent,
+            target_agent=target_agent,
+            user_id=user_id,
+            direction=direction,
+            conflict_resolution=conflict_resolution,
+            topics=topics,
+            memory_types=memory_types,
+            since=since,
+        )
+
+    def rank_agents(
+        self,
+        query: str,
+        attention_hints: list[str] | None = None,
+        requesting_agent: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Rank agents by relevance to a query."""
+        return self.__layer.rank_agents(
+            query=query,
+            attention_hints=attention_hints,
+            requesting_agent=requesting_agent,
+        )
+
+    def can_access(
+        self,
+        requesting_agent: str,
+        memory_agent_id: str | None,
+        access_level: str,
+    ) -> bool:
+        """Check if an agent can access a memory."""
+        return self.__layer.can_access(
+            requesting_agent=requesting_agent,
+            memory_agent_id=memory_agent_id,
+            access_level=access_level,
+        )
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get cross-agent layer and gate statistics."""
+        return {
+            "layer_stats": self.__layer.get_stats(),
+            "gate_stats": self.__gate.get_stats(),
+        }

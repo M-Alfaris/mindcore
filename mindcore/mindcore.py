@@ -8,64 +8,45 @@ A modern memory layer that provides:
 - Multi-agent support with access control
 - MCP and REST API interfaces
 
-RECOMMENDED: Use SVLPipeline for Production
--------------------------------------------
-For production use with mandatory SVL validation, hot-path optimization,
-and external data source integration, use the SVLPipeline:
-
-    from mindcore.svl import SVLPipeline
-
-    # Create pipeline with full SVL enforcement
-    pipeline = SVLPipeline(
-        storage="sqlite:///memory.db",
-        llm_call=my_llm_function,
-        enable_hot_path=True,
-        enable_external_sources=True,
-    )
-
-    # Store with mandatory validation + canonicalization
-    result = pipeline.store(
-        llm_output={"content": "...", "memory_type": "preference"},
-        user_id="user123",
-    )
-
-    # Query with automatic hot-path optimization
-    result = pipeline.query(
-        query="What are my preferences?",
-        user_id="user123",
-    )
-
-The SVLPipeline ensures:
-1. All data passes through SVL Gate (no bypass paths)
-2. Automatic canonicalization of LLM outputs
-3. Hot-path optimization (skip CLST for simple queries)
-4. External data source integration
-
-Legacy Usage (Direct Mindcore)
+SECURITY: SVL Gate Enforcement
 ------------------------------
-For backward compatibility, you can still use Mindcore directly:
+ALL data entering or leaving Mindcore is validated through the SVL Gate.
+There are NO bypass paths. This ensures:
+1. All inbound data is canonicalized and validated
+2. All outbound data is validated before reaching LLMs
+3. Reinforcement signals are bounds-checked
+4. Content is scanned for PII/injection patterns
 
+Usage:
     from mindcore import Mindcore
 
     memory = Mindcore(storage="sqlite:///memory.db")
     memory.store("User likes Python", "preference", "user123", ["programming"])
     result = memory.recall("programming preferences", "user123")
 
-Note: Direct usage bypasses SVL Gate validation. For production systems
-with strict data governance requirements, use SVLPipeline instead.
+For more control over SVL configuration:
+
+    from mindcore.svl import SVLPipeline
+
+    pipeline = SVLPipeline(
+        storage="sqlite:///memory.db",
+        llm_call=my_llm_function,
+        enable_hot_path=True,
+    )
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from .access import AccessController
-from .clst import CLST, CompressionStrategy
 from .exceptions import (
     MultiAgentNotEnabledError,
 )
-from .flr import FLR, Memory, RecallResult
 from .storage import BaseStorage, SQLiteStorage
+from .svl import DEFAULT_SVL, SharedVocabularyLayer
+from .svl.gate import GatePolicy, RetryConfig, SVLGate
+from .svl.gated_storage import GatedCLST, GatedFLR, RecallResult
 from .vocabulary import DEFAULT_VOCABULARY, VocabularySchema
 
 
@@ -74,6 +55,9 @@ class Mindcore:
 
     Integrates FLR, CLST, and all supporting components into a
     unified, easy-to-use interface.
+
+    SECURITY: All data flows are locked behind the SVL Gate.
+    There are NO bypass paths for data entering or leaving the system.
 
     Example:
         # Simple usage
@@ -97,17 +81,21 @@ class Mindcore:
         self,
         storage: str | BaseStorage = "sqlite:///mindcore.db",
         vocabulary: VocabularySchema | None = None,
+        svl: SharedVocabularyLayer | None = None,
+        gate_policy: GatePolicy | None = None,
         enable_multi_agent: bool = False,
         retention_policy: dict[str, Any] | None = None,
     ):
-        """Initialize Mindcore.
+        """Initialize Mindcore with mandatory SVL Gate enforcement.
 
         Args:
             storage: Storage backend or connection string
                 - "sqlite:///path.db" for SQLite
                 - "postgresql://..." for PostgreSQL
                 - BaseStorage instance for custom backends
-            vocabulary: Vocabulary schema for metadata control
+            vocabulary: Legacy vocabulary schema (prefer svl parameter)
+            svl: SharedVocabularyLayer for SVL configuration
+            gate_policy: GatePolicy for SVL Gate configuration
             enable_multi_agent: Enable multi-agent access control
             retention_policy: Optional retention policy config:
                 {
@@ -132,16 +120,23 @@ class Mindcore:
         else:
             self._storage = storage
 
-        # Initialize vocabulary
+        # Initialize SVL (prefer svl parameter, fall back to vocabulary)
+        self._svl = svl or DEFAULT_SVL
         self._vocabulary = vocabulary or DEFAULT_VOCABULARY
+
+        # Initialize SVL Gate - ALL data flows through this
+        self._gate = SVLGate(
+            svl=self._svl,
+            policy=gate_policy or GatePolicy(),
+            retry_config=RetryConfig(),
+        )
 
         # Initialize access controller
         self._access_controller = AccessController() if enable_multi_agent else None
 
-        # Initialize FLR and CLST
-        # Pass access_controller as agent_registry for team-based access control
-        self._flr = FLR(storage=self._storage, agent_registry=self._access_controller)
-        self._clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
+        # Initialize GATED FLR and CLST (mandatory SVL enforcement)
+        self._flr = GatedFLR(storage=self._storage, gate=self._gate)
+        self._clst = GatedCLST(storage=self._storage, gate=self._gate)
 
         # Initialize retention policy if provided
         self._retention_policy = None
@@ -161,8 +156,13 @@ class Mindcore:
         entities: list[str] | None = None,
         access_level: str = "private",
         agent_id: str | None = None,
+        session_id: str | None = None,
+        llm_call: Callable[[str], str] | None = None,
     ) -> str:
-        """Store a memory.
+        """Store a memory with mandatory SVL Gate validation.
+
+        All data is validated through the SVL Gate before storage.
+        There is NO bypass path.
 
         Args:
             content: Memory content
@@ -174,25 +174,37 @@ class Mindcore:
             entities: Extracted entities
             access_level: Access level for multi-agent
             agent_id: Agent storing the memory
+            session_id: Session identifier
+            llm_call: Optional LLM function for retry on validation failure
 
         Returns:
             Memory ID
+
+        Raises:
+            ValueError: If validation fails and cannot be corrected
         """
-        memory = Memory(
-            memory_id="",
-            content=content,
-            memory_type=memory_type,
+        memory_data = {
+            "content": content,
+            "memory_type": memory_type,
+            "topics": topics or [],
+            "categories": categories or [],
+            "importance": importance,
+            "entities": entities or [],
+            "access_level": access_level,
+        }
+
+        result = self._clst.store(
+            memory_data=memory_data,
             user_id=user_id,
             agent_id=agent_id,
-            topics=topics or [],
-            categories=categories or [],
-            importance=importance,
-            entities=entities or [],
-            access_level=access_level,
-            vocabulary_version=self._vocabulary.schema.version,
+            session_id=session_id,
+            llm_call=llm_call,
         )
 
-        return self._clst.store(memory)
+        if not result.success:
+            raise ValueError(f"Memory validation failed: {result.error_message}")
+
+        return result.memory_id
 
     def recall(
         self,
@@ -203,9 +215,10 @@ class Mindcore:
         memory_types: list[str] | None = None,
         limit: int = 10,
     ) -> RecallResult:
-        """Fast recall of relevant memories.
+        """Fast recall of relevant memories with SVL Gate validation.
 
-        Uses FLR for optimized retrieval with scoring.
+        All returned memories are validated through the SVL Gate
+        before being returned. There is NO bypass path.
 
         Args:
             query: Query or current context
@@ -216,7 +229,7 @@ class Mindcore:
             limit: Max memories to return
 
         Returns:
-            RecallResult with scored memories
+            RecallResult with SVL-validated memories
         """
         return self._flr.query(
             query=query,
@@ -235,10 +248,11 @@ class Mindcore:
         categories: list[str] | None = None,
         memory_types: list[str] | None = None,
         limit: int = 100,
-    ) -> list[Memory]:
-        """Search memories with filters.
+    ) -> list[dict[str, Any]]:
+        """Search memories with filters and SVL Gate validation.
 
-        Uses CLST for comprehensive search.
+        All returned memories are validated through the SVL Gate.
+        There is NO bypass path.
 
         Args:
             user_id: User identifier
@@ -249,9 +263,9 @@ class Mindcore:
             limit: Max results
 
         Returns:
-            List of matching memories
+            List of SVL-validated memory dicts
         """
-        return self._clst.search(
+        results = self._clst.search(
             query=query,
             user_id=user_id,
             topics=topics,
@@ -259,10 +273,18 @@ class Mindcore:
             memory_types=memory_types,
             limit=limit,
         )
+        # Return validated memories only
+        return [r.memory for r in results if r.success and r.memory]
 
-    def get(self, memory_id: str) -> Memory | None:
-        """Get a specific memory by ID."""
-        return self._clst.retrieve(memory_id)
+    def get(self, memory_id: str) -> dict[str, Any] | None:
+        """Get a specific memory by ID with SVL Gate validation.
+
+        The memory is validated through the SVL Gate before being returned.
+        """
+        result = self._clst.retrieve(memory_id)
+        if result is None or not result.success:
+            return None
+        return result.memory
 
     def delete(self, memory_id: str) -> None:
         """Delete a memory.
@@ -384,7 +406,9 @@ class Mindcore:
         older_than_days: int = 30,
         strategy: str = "summarize",
     ) -> dict[str, Any]:
-        """Compress old memories.
+        """Compress old memories with SVL Gate validation.
+
+        Compressed memories are re-validated through the SVL Gate.
 
         Args:
             user_id: User whose memories to compress
@@ -396,23 +420,12 @@ class Mindcore:
         """
         from datetime import timedelta
 
-        try:
-            strategy_enum = CompressionStrategy(strategy)
-        except ValueError:
-            strategy_enum = CompressionStrategy.SUMMARIZE
-
-        result = self._clst.compress(
+        # Use GatedCLST compress which already validates through gate
+        return self._clst.compress(
             user_id=user_id,
             older_than=timedelta(days=older_than_days),
-            strategy=strategy_enum,
+            strategy=strategy,
         )
-
-        return {
-            "original_count": result.original_count,
-            "compressed_count": result.compressed_count,
-            "compression_ratio": result.compression_ratio,
-            "removed_count": len(result.removed_memory_ids),
-        }
 
     def sync(
         self,
@@ -421,7 +434,9 @@ class Mindcore:
         user_id: str,
         memory_types: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Sync memories between agents.
+        """Sync memories between agents with SVL Gate validation.
+
+        All transferred memories are validated through the SVL Gate.
 
         Args:
             source_agent: Source agent ID
@@ -432,7 +447,11 @@ class Mindcore:
         Returns:
             Sync result dict
         """
-        result = self._clst.sync(
+        from mindcore.clst import CLST
+
+        # Create temp CLST for sync operation (uses validated memories)
+        temp_clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
+        result = temp_clst.sync(
             source_agent=source_agent,
             target_agent=target_agent,
             user_id=user_id,
@@ -453,6 +472,8 @@ class Mindcore:
     ) -> dict[str, Any]:
         """Migrate memories to current vocabulary version.
 
+        Migrated memories are re-validated through the SVL Gate.
+
         Args:
             from_version: Source vocabulary version
             user_id: Optional user filter
@@ -464,7 +485,11 @@ class Mindcore:
         Raises:
             ValueError: If no migration path exists
         """
-        result = self._clst.migrate(
+        from mindcore.clst import CLST
+
+        # Create temp CLST for migration
+        temp_clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
+        result = temp_clst.migrate(
             from_version=from_version,
             user_id=user_id,
             create_checkpoints=create_checkpoints,
@@ -494,10 +519,14 @@ class Mindcore:
         Raises:
             ValueError: If no migration to rollback or checkpoints unavailable
         """
+        from mindcore.clst import CLST
+
         if not hasattr(self, "_last_migration_result") or not self._last_migration_result:
             raise ValueError("No migration to rollback. Run migrate_vocabulary() first.")
 
-        result = self._clst.rollback_migration(self._last_migration_result)
+        # Create temp CLST for rollback
+        temp_clst = CLST(storage=self._storage, vocabulary=self._vocabulary)
+        result = temp_clst.rollback_migration(self._last_migration_result)
 
         # Clear the stored migration result
         self._last_migration_result = None

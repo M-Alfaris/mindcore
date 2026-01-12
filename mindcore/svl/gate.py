@@ -159,8 +159,9 @@ class RetryConfig:
     # Timeouts
     llm_timeout_seconds: float = 30.0
 
-    # Quality thresholds
-    min_quality_score: float = 0.3  # Below this, reject even with fallback
+    # Quality thresholds - raised to 0.5 for stricter quality control
+    # Data below this quality is rejected even with fallback
+    min_quality_score: float = 0.5
 
 
 @dataclass
@@ -190,6 +191,12 @@ class GatePolicy:
 
     # Require topics/categories to be from vocabulary
     enforce_vocabulary: bool = True
+
+    # Minimum vocabulary configuration - prevents empty vocabulary bypass
+    # When True, raises error if vocabulary has no topics or categories defined
+    require_minimum_vocabulary: bool = True
+    min_topics_required: int = 1
+    min_categories_required: int = 0  # Categories are optional by default
 
     # Outbound policies
     redact_sensitive_fields: list[str] = field(
@@ -253,10 +260,17 @@ class SVLGate:
             svl: SharedVocabularyLayer for vocabulary access
             policy: Gate policy configuration
             retry_config: Retry strategy configuration
+
+        Raises:
+            ValueError: If vocabulary doesn't meet minimum requirements
         """
         self._svl = svl
         self._policy = policy or GatePolicy()
         self._retry_config = retry_config or RetryConfig()
+
+        # Validate minimum vocabulary requirements
+        if self._policy.require_minimum_vocabulary:
+            self._validate_vocabulary_requirements()
 
         # Statistics
         self._stats = {
@@ -272,6 +286,32 @@ class SVLGate:
 
         # Build canonicalization maps for fuzzy matching
         self._build_canonicalization_maps()
+
+    def _validate_vocabulary_requirements(self) -> None:
+        """Validate that vocabulary meets minimum requirements.
+
+        Prevents the empty vocabulary bypass where validation is skipped
+        when no topics/categories are defined.
+
+        Raises:
+            ValueError: If vocabulary doesn't meet minimum requirements
+        """
+        topics = self._svl.schema.get_all_topics()
+        categories = self._svl.schema.get_all_categories()
+
+        if len(topics) < self._policy.min_topics_required:
+            raise ValueError(
+                f"Vocabulary must have at least {self._policy.min_topics_required} "
+                f"topic(s) defined. Found {len(topics)}. "
+                "Set GatePolicy.require_minimum_vocabulary=False to disable this check."
+            )
+
+        if len(categories) < self._policy.min_categories_required:
+            raise ValueError(
+                f"Vocabulary must have at least {self._policy.min_categories_required} "
+                f"category/categories defined. Found {len(categories)}. "
+                "Set GatePolicy.require_minimum_vocabulary=False to disable this check."
+            )
 
     def _build_canonicalization_maps(self) -> None:
         """Build maps for fuzzy matching and canonicalization."""

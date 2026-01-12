@@ -565,7 +565,12 @@ class TestCLIWithRealMindcore:
             # Reinforce
             memory.reinforce(mid, signal=0.5)
             retrieved = memory.get(mid)
-            assert retrieved.reinforcement_score != 0.0
+            # Handle both dict and Memory object return types
+            if isinstance(retrieved, dict):
+                reinf_score = retrieved.get("reinforcement_score", 0.0)
+            else:
+                reinf_score = retrieved.reinforcement_score
+            assert reinf_score != 0.0
 
             memory.close()
         finally:

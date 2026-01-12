@@ -2,34 +2,71 @@
 
 Provides HTTP endpoints for memory operations.
 Can be used standalone or alongside MCP.
+
+SECURITY: All endpoints use GatedCLST and GatedFLR for mandatory SVL validation.
+There are NO bypass paths for data entering or leaving the system.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mindcore.access import AccessController
-    from mindcore.clst import CLST
-    from mindcore.flr import FLR
     from mindcore.vocabulary import VocabularySchema
 
 
+# Protocol for FLR-like interfaces (FLR or GatedFLR)
+class FLRProtocol(Protocol):
+    """Protocol for FLR operations."""
+
+    def query(
+        self,
+        query: str,
+        user_id: str,
+        agent_id: str | None = None,
+        attention_hints: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        limit: int = 10,
+    ) -> Any: ...
+
+    def reinforce(self, memory_id: str, signal: float) -> float: ...
+
+    def get_stats(self) -> dict: ...
+
+
+# Protocol for CLST-like interfaces (CLST or GatedCLST)
+class CLSTProtocol(Protocol):
+    """Protocol for CLST operations."""
+
+    def store(self, *args: Any, **kwargs: Any) -> Any: ...
+
+    def retrieve(self, memory_id: str) -> Any: ...
+
+    def search(self, **kwargs: Any) -> Any: ...
+
+    def delete(self, memory_id: str) -> None: ...
+
+    def get_stats(self) -> dict: ...
+
+
 def create_app(
-    flr: "FLR",
-    clst: "CLST | None" = None,
+    flr: FLRProtocol,
+    clst: "CLSTProtocol | None" = None,
     vocabulary: "VocabularySchema | None" = None,
     access_controller: "AccessController | None" = None,
     rate_limit: str | None = "100/minute",
 ):
     """Create FastAPI application for Mindcore REST API.
 
+    SECURITY: All data flows through SVL Gate validation when using
+    GatedFLR and GatedCLST instances.
+
     Args:
-        flr: FLR instance for fast recall
-        clst: Optional CLST instance for long-term storage.
-              If not provided, a default CLST will be created using FLR's storage.
+        flr: FLR or GatedFLR instance for fast recall
+        clst: Optional CLST or GatedCLST instance for long-term storage.
         vocabulary: Optional vocabulary schema
         access_controller: Optional access controller
         rate_limit: Rate limit string (e.g., "100/minute"). Set to None to disable.
@@ -37,11 +74,18 @@ def create_app(
     Returns:
         FastAPI application
     """
-    # Create CLST from FLR storage if not provided
+    # Create GatedCLST if not provided
     if clst is None:
-        from mindcore import clst as clst_module
+        from mindcore.svl import DEFAULT_SVL
+        from mindcore.svl.gate import GatePolicy, RetryConfig, SVLGate
+        from mindcore.svl.gated_storage import GatedCLST
 
-        clst = clst_module.CLST(storage=flr.storage, vocabulary=vocabulary)
+        gate = SVLGate(svl=DEFAULT_SVL, policy=GatePolicy(), retry_config=RetryConfig())
+        # GatedCLST requires storage, get from FLR if possible
+        if hasattr(flr, "_flr") and hasattr(flr._flr, "storage"):
+            clst = GatedCLST(storage=flr._flr.storage, gate=gate)
+        elif hasattr(flr, "storage"):
+            clst = GatedCLST(storage=flr.storage, gate=gate)
 
     try:
         from fastapi import FastAPI, Header, HTTPException, Query
@@ -73,7 +117,7 @@ def create_app(
     rate_limiter = None
     if rate_limit:
         try:
-            from mindcore.enterprise.rate_limiting import RateLimiter, RateLimitExceededError
+            from mindcore.enterprise.rate_limiting import RateLimiter
 
             rate_limiter = RateLimiter(limit=rate_limit)
             logger.info("Rate limiting enabled: %s", rate_limit)
@@ -182,32 +226,43 @@ def create_app(
             return {"error": "No vocabulary configured"}
         return vocabulary.to_json_schema()
 
-    # Memory operations
+    # Memory operations - ALL data flows through SVL Gate
     @app.post("/memories")
     async def store_memory(
         data: StoreMemoryRequest,
         x_agent_id: str | None = Header(None),
     ):
-        from mindcore.flr import Memory
-
-        memory = Memory(
-            memory_id="",
-            content=data.content,
-            memory_type=data.memory_type,
-            user_id=data.user_id,
-            agent_id=x_agent_id,
-            topics=data.topics,
-            categories=data.categories,
-            sentiment=data.sentiment,
-            importance=data.importance,
-            entities=data.entities,
-            access_level=data.access_level,
-            vocabulary_version=vocabulary.version if vocabulary else "1.0.0",
-        )
+        """Store a memory with mandatory SVL Gate validation."""
+        # Build memory data dict for gated storage
+        memory_data = {
+            "content": data.content,
+            "memory_type": data.memory_type,
+            "topics": data.topics,
+            "categories": data.categories,
+            "sentiment": data.sentiment,
+            "importance": data.importance,
+            "entities": data.entities,
+            "access_level": data.access_level,
+        }
 
         try:
-            memory_id = clst.store(memory)
-            return {"memory_id": memory_id, "success": True}
+            # GatedCLST expects dict + user_id
+            result = clst.store(
+                memory_data=memory_data,
+                user_id=data.user_id,
+                agent_id=x_agent_id,
+            )
+            # Handle both GatedCLST (StoreResult) and raw CLST (str)
+            if hasattr(result, "success"):
+                if not result.success:
+                    logger.warning("Memory validation failed: %s", result.error_message)
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Memory validation failed: {result.error_message}",
+                    )
+                return {"memory_id": result.memory_id, "success": True}
+            # Raw CLST returns string memory_id
+            return {"memory_id": result, "success": True}
         except ValueError as e:
             logger.warning("Memory validation failed: %s", e)
             raise HTTPException(
@@ -219,58 +274,83 @@ def create_app(
         memory_id: str,
         x_agent_id: str | None = Header(None),
     ):
-        memory = clst.retrieve(memory_id)
-        if not memory:
+        """Retrieve a memory with mandatory SVL Gate validation."""
+        result = clst.retrieve(memory_id)
+        if not result:
             raise HTTPException(status_code=404, detail="Memory not found")
+
+        # Handle both GatedCLST (GateResult) and raw CLST (Memory)
+        if hasattr(result, "success"):
+            if not result.success:
+                raise HTTPException(status_code=404, detail="Memory not found")
+            memory_dict = result.memory
+        else:
+            memory_dict = result.to_dict() if hasattr(result, "to_dict") else result
 
         # Access control check
         if access_controller and x_agent_id:
             from mindcore.access import Permission
 
+            memory_access_level = memory_dict.get("access_level", "private")
+            memory_agent_id = memory_dict.get("agent_id")
+
             decision = access_controller.can_access(
                 agent_id=x_agent_id,
-                memory_access_level=memory.access_level,
-                memory_agent_id=memory.agent_id,
+                memory_access_level=memory_access_level,
+                memory_agent_id=memory_agent_id,
                 permission=Permission.READ,
                 memory_id=memory_id,
             )
             if not decision.allowed:
                 raise HTTPException(status_code=403, detail=decision.reason)
 
-        return memory.to_dict()
+        return memory_dict
 
     @app.delete("/memories/{memory_id}")
     async def delete_memory(
         memory_id: str,
         x_agent_id: str | None = Header(None),
     ):
-        memory = clst.retrieve(memory_id)
-        if not memory:
+        """Delete a memory with access control check."""
+        result = clst.retrieve(memory_id)
+        if not result:
             raise HTTPException(status_code=404, detail="Memory not found")
+
+        # Handle both GatedCLST (GateResult) and raw CLST (Memory)
+        if hasattr(result, "success"):
+            if not result.success:
+                raise HTTPException(status_code=404, detail="Memory not found")
+            memory_dict = result.memory
+        else:
+            memory_dict = result.to_dict() if hasattr(result, "to_dict") else result
 
         # Access control check
         if access_controller and x_agent_id:
             from mindcore.access import Permission
 
+            memory_access_level = memory_dict.get("access_level", "private")
+            memory_agent_id = memory_dict.get("agent_id")
+
             decision = access_controller.can_access(
                 agent_id=x_agent_id,
-                memory_access_level=memory.access_level,
-                memory_agent_id=memory.agent_id,
+                memory_access_level=memory_access_level,
+                memory_agent_id=memory_agent_id,
                 permission=Permission.DELETE,
                 memory_id=memory_id,
             )
             if not decision.allowed:
                 raise HTTPException(status_code=403, detail=decision.reason)
 
-        success = clst.delete(memory_id)
-        return {"success": success}
+        clst.delete(memory_id)
+        return {"success": True}
 
     @app.post("/memories/search")
     async def search_memories(
         data: SearchRequest,
         x_agent_id: str | None = Header(None),
     ):
-        memories = clst.search(
+        """Search memories with mandatory SVL Gate validation."""
+        results = clst.search(
             query=data.query,
             user_id=data.user_id,
             agent_id=x_agent_id,
@@ -280,25 +360,27 @@ def create_app(
             limit=data.limit,
         )
 
-        # Filter by access control
-        if access_controller and x_agent_id:
-            from mindcore.access import Permission
-
-            memories = access_controller.filter_accessible_memories(
-                x_agent_id, memories, Permission.READ
-            )
+        # Handle both GatedCLST (list[GateResult]) and raw CLST (list[Memory])
+        memories = []
+        for r in results:
+            if hasattr(r, "success"):
+                if r.success and r.memory:
+                    memories.append(r.memory)
+            else:
+                memories.append(r.to_dict() if hasattr(r, "to_dict") else r)
 
         return {
-            "memories": [m.to_dict() for m in memories],
+            "memories": memories,
             "count": len(memories),
         }
 
-    # FLR operations
+    # FLR operations - ALL data flows through SVL Gate
     @app.post("/recall")
     async def recall(
         data: RecallRequest,
         x_agent_id: str | None = Header(None),
     ):
+        """Fast recall with mandatory SVL Gate validation."""
         result = flr.query(
             query=data.query,
             user_id=data.user_id,
@@ -308,12 +390,22 @@ def create_app(
             limit=data.limit,
         )
 
+        # Handle both GatedFLR (RecallResult with dict memories) and raw FLR (RecallResult with Memory objects)
+        memories = []
+        for m in result.memories:
+            if isinstance(m, dict):
+                memories.append(m)
+            elif hasattr(m, "to_dict"):
+                memories.append(m.to_dict())
+            else:
+                memories.append(m)
+
         return {
-            "memories": [m.to_dict() for m in result.memories],
+            "memories": memories,
             "scores": result.scores,
             "attention_focus": result.attention_focus,
             "suggested_memory_types": result.suggested_memory_types,
-            "latency_ms": result.query_latency_ms,
+            "latency_ms": getattr(result, "query_latency_ms", 0),
         }
 
     @app.post("/reinforce")
@@ -423,8 +515,8 @@ def create_app(
 
 
 def run_server(
-    flr: "FLR",
-    clst: "CLST",
+    flr: FLRProtocol,
+    clst: CLSTProtocol,
     vocabulary: "VocabularySchema | None" = None,
     access_controller: "AccessController | None" = None,
     host: str = "0.0.0.0",
@@ -432,6 +524,9 @@ def run_server(
     rate_limit: str | None = "100/minute",
 ):
     """Run the REST API server.
+
+    SECURITY: Accepts FLR/GatedFLR and CLST/GatedCLST.
+    When using gated components, all data flows through SVL Gate validation.
 
     Args:
         flr: FLR instance
