@@ -1,465 +1,312 @@
-# Mindcore Quick Start Guide
+# SAGE Quick Start Guide
 
-Get started with Mindcore in minutes. Choose your path based on your use case.
+Get started with Mindcore SAGE in minutes.
 
 ## Table of Contents
 
-- [Simple Mode (Single Agent)](#simple-mode-single-agent)
-- [Multi-Agent Mode](#multi-agent-mode)
-- [Adding Vector Search](#adding-vector-search)
-- [Full Setup with All Features](#full-setup-with-all-features)
-- [Migration Path](#migration-path)
+- [Installation](#installation)
+- [Option 1: SQLite (Zero Setup)](#option-1-sqlite-zero-setup)
+- [Option 2: PostgreSQL (Production)](#option-2-postgresql-production)
+- [Option 3: Full Pipeline with SVL](#option-3-full-pipeline-with-svl)
+- [Auto-Configure External Sources](#auto-configure-external-sources)
+- [Next Steps](#next-steps)
 
 ---
 
-## Simple Mode (Single Agent)
-
-The fastest way to get started. Zero configuration, works out of the box.
-
-### Installation
+## Installation
 
 ```bash
 pip install mindcore
 ```
 
-### Basic Usage
+Verify installation:
 
-```python
-from mindcore import KnowledgeStore
-
-# Create store - just works!
-store = KnowledgeStore()
-
-# Store a message
-item = store.add_message(
-    user_id="user123",
-    text="How do I reset my password?",
-    role="user"
-)
-
-# Get context for a query
-context = store.get_context(
-    user_id="user123",
-    query="password reset"
-)
-
-print(context["recent_messages"])
-```
-
-### With Conversation Threading
-
-```python
-from mindcore import KnowledgeStore
-
-store = KnowledgeStore()
-
-# Store messages in a thread
-thread_id = "support-ticket-123"
-
-store.add_message(
-    user_id="user123",
-    text="I can't log in to my account",
-    role="user",
-    thread_id=thread_id
-)
-
-store.add_message(
-    user_id="user123",
-    text="I'll help you reset your password. What email is your account under?",
-    role="assistant",
-    thread_id=thread_id
-)
-
-# Get context for the thread
-context = store.get_context(
-    user_id="user123",
-    thread_id=thread_id,
-    query="account access"
-)
-```
-
-### Storing Documents
-
-```python
-# Add knowledge base articles
-store.add_document(
-    content="To reset your password, go to Settings > Security > Reset Password...",
-    title="Password Reset Guide",
-    source="https://docs.example.com/password-reset"
-)
-
-# Documents are searchable via semantic search (if enabled)
+```bash
+mindcore version
 ```
 
 ---
 
-## Multi-Agent Mode
+## Option 1: SQLite (Zero Setup)
 
-For systems with multiple AI agents that need privacy and knowledge sharing.
-
-### Enable Multi-Agent Mode
+Perfect for development and testing. No database setup required.
 
 ```python
-from mindcore import KnowledgeStore
+from mindcore.v2.storage import SQLiteStorage
+from mindcore.v2.flr import Memory
 
-# Enable multi-agent mode
-store = KnowledgeStore(
-    multi_agent=True,
-    organization_id="my-company"
+# Create storage (in-memory for testing)
+storage = SQLiteStorage(":memory:")
+
+# Or persistent file
+# storage = SQLiteStorage("mindcore.db")
+
+# Store a memory
+memory = Memory(
+    content="User prefers dark mode and brief responses",
+    memory_type="preference",
+    user_id="user_123",
+    topics=["settings", "ui"],
+    importance=0.8,
 )
 
-# Register agents
-support_agent = store.register_agent(
-    name="Support Agent",
-    groups=["support-team", "customer-facing"]
+memory_id = storage.store(memory)
+print(f"Stored: {memory_id}")
+
+# Search memories
+results = storage.search(
+    user_id="user_123",
+    query="user preferences",
+    limit=5,
 )
 
-billing_agent = store.register_agent(
-    name="Billing Agent",
-    groups=["billing-team", "customer-facing"]
-)
-
-print(f"Support Agent ID: {support_agent.agent_id}")
-print(f"API Key: {support_agent.api_key}")  # Store securely!
-```
-
-### Store Messages with Visibility
-
-```python
-# Private message (only Support Agent can see)
-store.add_message(
-    user_id="user123",
-    text="Internal note: Customer seems frustrated",
-    role="assistant",
-    agent_id=support_agent.agent_id,
-    visibility="private"
-)
-
-# Shared message (all customer-facing agents can see)
-store.add_message(
-    user_id="user123",
-    text="Customer is asking about refund policy",
-    role="assistant",
-    agent_id=support_agent.agent_id,
-    visibility="shared",
-    sharing_groups=["customer-facing"]
-)
-
-# Public message (all agents in organization can see)
-store.add_message(
-    user_id="user123",
-    text="General product inquiry",
-    role="user",
-    visibility="public"
-)
-```
-
-### Share Knowledge Between Agents
-
-```python
-# Share a specific item with another agent
-store.share_with_agent(
-    item_id="msg-abc123",
-    target_agent_id=billing_agent.agent_id,
-    sharing_agent_id=support_agent.agent_id,
-    can_reshare=False  # Target can't share further
-)
-
-# Share with a group
-store.share_with_group(
-    item_id="doc-xyz789",
-    group_name="support-team",
-    sharing_agent_id=support_agent.agent_id
-)
-```
-
-### Access Control in Queries
-
-```python
-# Get context respecting access control
-context = store.get_context(
-    user_id="user123",
-    query="refund status",
-    agent_id=billing_agent.agent_id,  # Only sees what billing_agent can access
-    include_shared=True,
-    include_public=True
-)
+for mem in results:
+    print(f"[{mem.importance:.1f}] {mem.content}")
 ```
 
 ---
 
-## Adding Vector Search
+## Option 2: PostgreSQL (Production)
 
-Enable semantic search for finding relevant content by meaning.
+PostgreSQL with SAGE scoring functions for production workloads.
 
-### With OpenAI Embeddings
+### Setup Database
+
+```bash
+# Using Docker (recommended)
+cd examples/
+docker-compose up -d
+
+# Or use existing PostgreSQL and run:
+mindcore init --postgres postgresql://user:pass@localhost/mindcore
+```
+
+### Connect and Query
 
 ```python
-from mindcore import KnowledgeStore
+from mindcore.v2.storage import PostgresStorage
 
-store = KnowledgeStore(
-    enable_vector_search=True,
-    embedding_provider="openai",  # Requires OPENAI_API_KEY
-    vector_store_type="memory"    # In-memory for development
+# Connect
+storage = PostgresStorage("postgresql://mindcore:mindcore@localhost/mindcore")
+
+# Initialize schema (first time only)
+storage.initialize_full_schema()
+
+# Store a memory
+from mindcore.v2.flr import Memory
+
+memory = Memory(
+    content="Customer asked about order #12345",
+    memory_type="episodic",
+    user_id="user_456",
+    session_id="session_abc",
+    topics=["orders", "shipping"],
+    importance=0.7,
 )
 
-# Add documents
-store.add_document(
-    content="Our refund policy allows returns within 30 days...",
-    title="Refund Policy"
+memory_id = storage.store(memory)
+
+# SAGE scored search (scoring in PostgreSQL!)
+results = storage.search_scored(
+    user_id="user_456",
+    query="order shipping",
+    topics=["orders"],
+    limit=10,
 )
 
-# Semantic search
-results = store.search(
-    query="Can I return something I bought last week?",
-    k=5
+for memory, score in results:
+    print(f"[{score:.3f}] {memory.content}")
+
+# Find relevant sessions
+sessions = storage.find_relevant_sessions(
+    user_id="user_456",
+    topics=["orders"],
+    limit=5,
 )
 ```
 
-### With Local Embeddings (No API Key)
+### Fuzzy Search (Typo Tolerance)
 
 ```python
-from mindcore import KnowledgeStore
-
-store = KnowledgeStore(
-    enable_vector_search=True,
-    embedding_provider="sentence_transformers",  # Runs locally!
-    embedding_config={"model_name": "all-MiniLM-L6-v2"},
-    vector_store_type="memory"
+# Handles typos via pg_trgm
+results = storage.search_fuzzy(
+    user_id="user_456",
+    query="shiping",  # typo in "shipping"
+    similarity_threshold=0.3,
+    limit=10,
 )
-```
 
-### With Chroma (Persistent)
-
-```python
-store = KnowledgeStore(
-    enable_vector_search=True,
-    embedding_provider="openai",
-    vector_store_type="chroma",
-    vector_store_config={
-        "collection_name": "my_knowledge",
-        "persist_directory": "./data/chroma"
-    }
-)
+for memory, similarity, score in results:
+    print(f"[sim={similarity:.2f}] {memory.content}")
 ```
 
 ---
 
-## Full Setup with All Features
+## Option 3: Full Pipeline with SVL
 
-Production-ready configuration with all features enabled.
+Use the SVL kernel for metadata validation and the full SAGE pipeline.
 
 ```python
-from mindcore import KnowledgeStore
+from mindcore.v2.storage import SQLiteStorage
+from mindcore.v2.svl import SharedVocabularyLayer, SVLPipeline
 
-store = KnowledgeStore(
-    # Database
-    database_path="mindcore.db",     # SQLite for simplicity
-    # use_postgresql=True,           # Or PostgreSQL for production
-    # postgresql_url="postgresql://user:pass@localhost/mindcore",
+# 1. Create storage
+storage = SQLiteStorage(":memory:")
 
-    # Multi-agent
-    multi_agent=True,
-    organization_id="my-company",
+# 2. Create SVL vocabulary (the kernel)
+svl = SharedVocabularyLayer(domains=["customer_service"])
 
-    # Vector search
-    enable_vector_search=True,
-    vector_store_type="chroma",
-    vector_store_config={
-        "collection_name": "knowledge",
-        "persist_directory": "./data/vectors"
+# 3. Create pipeline
+pipeline = SVLPipeline(
+    storage=storage,
+    vocabulary=svl,
+    use_simple_flr=True,  # Deterministic hot path
+)
+
+# 4. Store via pipeline (SVL validates metadata)
+result = pipeline.store(
+    llm_output={
+        "content": "User wants to cancel subscription",
+        "memory_type": "episodic",
+        "topics": ["billing", "cancellation"],
+        "importance": 0.8,
+        "sentiment": "negative",
     },
-    embedding_provider="openai",
-
-    # Caching
-    enable_cache=True,
-    cache_type="disk",  # Survives restarts
-
-    # Enrichment
-    enable_enrichment=True,  # Auto-extract topics, sentiment, etc.
-    llm_provider="openai"
+    user_id="user_789",
+    session_id="session_xyz",
 )
 
-# Register agents
-support = store.register_agent(name="Support", groups=["support"])
-sales = store.register_agent(name="Sales", groups=["sales"])
+print(f"Stored: {result.memory_id}")
 
-# Store enriched messages
-store.add_message(
-    user_id="user123",
-    text="I need help with billing for order #12345",
-    role="user",
-    agent_id=support.agent_id,
-    visibility="shared",
-    sharing_groups=["support", "billing"]
+# 5. Query via pipeline
+query_result = pipeline.query(
+    query="subscription cancellation",
+    user_id="user_789",
+    limit=5,
 )
 
-# Semantic search with access control
-results = store.search(
-    query="order billing issues",
-    agent_id=support.agent_id,
-    k=10
-)
+print(f"Found: {len(query_result.memories)} memories")
+print(f"CLST needed: {query_result.clst_decision.needs_clst}")
 
-# Health check
-status = store.health_check()
-print(status)
-# {'database': True, 'cache': True, 'vector_store': True, 'enrichment': True, 'access_control': True}
+# 6. Get stats
+stats = pipeline.get_stats()
+print(f"Hot path ratio: {stats['hot_path_ratio']:.1%}")
 ```
 
 ---
 
-## Migration Path
+## Auto-Configure External Sources
 
-### From Simple to Multi-Agent
-
-```python
-# Step 1: Start simple
-store = KnowledgeStore()
-
-# ... use for a while ...
-
-# Step 2: When you need multi-agent, create new store
-store = KnowledgeStore(
-    multi_agent=True,
-    organization_id="my-company",
-    database_path="mindcore.db"  # Same database!
-)
-
-# Existing data is preserved, new data gets agent/visibility fields
-```
-
-### From Memory to Persistent Vector Store
+Connect topics to database tables with zero configuration.
 
 ```python
-# Step 1: Start with in-memory
-store = KnowledgeStore(
-    enable_vector_search=True,
-    vector_store_type="memory"
+from mindcore.v2.svl import SVLPipeline
+
+pipeline = SVLPipeline(storage=storage, vocabulary=svl)
+
+# Simple: topic "orders" → table "orders"
+pipeline.auto_configure_database(
+    "postgresql://localhost/mydb",
+    topics=["orders", "products", "users"],
 )
 
-# Step 2: Move to Chroma for persistence
-store = KnowledgeStore(
-    enable_vector_search=True,
-    vector_store_type="chroma",
-    vector_store_config={
-        "persist_directory": "./data/chroma"
-    }
+# Or use presets
+pipeline.auto_configure_database(
+    "postgresql://localhost/mydb",
+    preset="ecommerce",  # orders, products, customers, cart, etc.
 )
 
-# Re-index existing documents if needed
+# Or auto-discover tables
+pipeline.auto_configure_database(
+    "postgresql://localhost/mydb",
+    auto_discover=True,
+)
+
+# With customization
+pipeline.auto_configure_database(
+    "postgresql://localhost/mydb",
+    topics=["orders"],
+    overrides={
+        "orders": {
+            "table": "customer_orders",
+            "query_template": "SELECT * FROM customer_orders WHERE user_id = :user_id",
+        },
+    },
+)
 ```
 
 ---
 
-## Context Manager Support
-
-```python
-# Automatic cleanup with context manager
-with KnowledgeStore() as store:
-    store.add_message(
-        user_id="user123",
-        text="Hello!",
-        role="user"
-    )
-# Resources automatically cleaned up
-```
-
----
-
-## Properties and Status
-
-```python
-store = KnowledgeStore(multi_agent=True, enable_vector_search=True)
-
-# Check mode
-print(store.mode)           # StoreMode.MULTI_AGENT
-print(store.is_multi_agent) # True
-print(store.has_vector_search) # True
-
-# Default agent
-print(store.default_agent.name)  # "Default Agent"
-
-# Health check
-status = store.health_check()
-```
-
----
-
-## Advanced: Casbin RBAC/ABAC
-
-For enterprise scenarios requiring fine-grained access control, Mindcore integrates with [Casbin](https://casbin.org/) - a powerful authorization library.
+## CLI Commands
 
 ```bash
-pip install mindcore[rbac]
+# Initialize database
+mindcore init                                           # SQLite (default)
+mindcore init --postgres postgresql://localhost/mydb    # PostgreSQL
+
+# Check database
+mindcore check                                          # SQLite
+mindcore check --postgres postgresql://localhost/mydb   # PostgreSQL
+
+# Show version
+mindcore version
 ```
+
+---
+
+## Next Steps
+
+- **[README](../README.md)** - Full architecture documentation
+- **[examples/quickstart.py](../examples/quickstart.py)** - Runnable examples
+- **[examples/docker-compose.yml](../examples/docker-compose.yml)** - PostgreSQL setup
+
+---
+
+## Common Patterns
+
+### Store LLM Response
 
 ```python
-from mindcore.core import get_casbin_access_control
+result = pipeline.store(
+    llm_output={
+        "content": response_text,
+        "memory_type": "episodic",
+        "topics": extracted_topics,
+        "importance": calculated_importance,
+    },
+    user_id=user_id,
+    session_id=session_id,
+)
+```
 
-# Get Casbin-powered access control
-CasbinACM = get_casbin_access_control()
+### Build Context for LLM
 
-# Create with built-in RBAC model
-acm = CasbinACM.with_rbac()
-
-# Register agents and assign roles
-agent, api_key = acm.register_agent(
-    agent_id="support-agent",
-    name="Support Agent",
-    owner_id="acme-corp"
+```python
+query_result = pipeline.query(
+    query=user_message,
+    user_id=user_id,
+    session_id=session_id,
+    limit=10,
 )
 
-# Assign roles
-acm.add_role_for_agent("support-agent", "support")
-acm.add_role_for_agent("admin-agent", "admin")
+context = "\n".join([
+    f"- {m.content}" for m in query_result.memories
+])
 
-# Add policies
-acm.add_policy("support", "customer-data", "read")
-acm.add_policy("admin", "customer-data", "write")
+llm_prompt = f"""
+Context:
+{context}
 
-# Check access
-acm.enforce("support-agent", "customer-data", "read")  # True
-acm.enforce("support-agent", "customer-data", "write")  # False
-
-# Multi-tenant RBAC
-acm = CasbinACM.with_rbac_domains()
-acm.add_role_for_agent("agent-1", "admin", domain="tenant-a")
-acm.enforce("agent-1", "tenant-a", "resource", "write")  # True
-acm.enforce("agent-1", "tenant-b", "resource", "write")  # False
+User: {user_message}
+"""
 ```
 
----
+### Reinforce Memory (Feedback Loop)
 
-## Optional Dependencies
+```python
+# Positive feedback
+storage.update_reinforcement(memory_id, signal=0.3)
 
-Install only what you need:
-
-```bash
-# Core (messages, cache, database)
-pip install mindcore
-
-# With vector stores
-pip install mindcore[vectors]      # Chroma + SentenceTransformers
-pip install mindcore[chroma]       # Just Chroma
-pip install mindcore[pinecone]     # Pinecone
-pip install mindcore[pgvector]     # PostgreSQL pgvector
-
-# With Casbin RBAC
-pip install mindcore[rbac]
-
-# With async support
-pip install mindcore[async]
-
-# Everything
-pip install mindcore[all]
+# Negative feedback
+storage.update_reinforcement(memory_id, signal=-0.2)
 ```
-
----
-
-## What's Next?
-
-- **[Vector Stores Guide](../config/README.md#vector-stores-configuration)** - Deep dive into vector databases
-- **[External Connectors](../config/README.md#configuring-external-connectors)** - Connect to orders, billing, etc.
-- **[API Server](./dashboard.md)** - Run Mindcore as a service
-- **[Casbin Docs](https://casbin.org/docs/overview)** - Advanced RBAC/ABAC patterns

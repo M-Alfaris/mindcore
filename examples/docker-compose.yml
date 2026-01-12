@@ -1,0 +1,50 @@
+# Mindcore SAGE - PostgreSQL Development Setup
+#
+# Usage:
+#   docker-compose up -d      # Start PostgreSQL
+#   docker-compose down       # Stop PostgreSQL
+#   docker-compose down -v    # Stop and remove data
+#
+# Connection:
+#   postgresql://mindcore:mindcore@localhost:5432/mindcore
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindcore-postgres
+    environment:
+      POSTGRES_USER: mindcore
+      POSTGRES_PASSWORD: mindcore
+      POSTGRES_DB: mindcore
+    ports:
+      - "5432:5432"
+    volumes:
+      - mindcore_data:/var/lib/postgresql/data
+      # Initialize with pg_trgm extension
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mindcore"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mindcore-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mindcore.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - admin  # Only start with: docker-compose --profile admin up
+
+volumes:
+  mindcore_data:
