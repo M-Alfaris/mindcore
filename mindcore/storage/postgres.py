@@ -1,7 +1,14 @@
-"""PostgreSQL storage backend for Mindcore v2.
+"""PostgreSQL storage backend for SAGE (Structured Augmented Generation Engine).
 
-Primary production storage backend with full-text search and JSON support.
-Includes hierarchical session aggregates for fast weighted metadata queries.
+PostgreSQL-first architecture where core logic lives in SQL:
+- Scoring via sage_score() function
+- Session aggregates via triggers
+- Full-text search via tsvector
+- Fuzzy matching via pg_trgm
+
+SVL acts as the KERNEL/COMPILER:
+- Standard metadata: Enforced by system (message_type, intent, importance, etc.)
+- User metadata: Assigned by user (topics, categories, custom tags)
 
 Enhanced Search (optional):
     - pg_trgm: Fuzzy/trigram similarity matching
@@ -17,6 +24,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mindcore.clst.aggregates import SessionAggregate
@@ -24,6 +32,9 @@ from mindcore.exceptions import MemoryNotFoundError, StorageError
 from mindcore.flr import Memory
 
 from .base import BaseStorage
+
+# Path to SQL files
+_SQL_DIR = Path(__file__).parent
 
 
 if TYPE_CHECKING:
@@ -737,37 +748,245 @@ class PostgresStorage(BaseStorage):
             rows = cur.fetchall()
             return [self._row_to_memory(row, cur.description) for row in rows]
 
-    def update_reinforcement(self, memory_id: str, signal: float) -> None:
-        """Update reinforcement score with bounds checking.
+    # =========================================================================
+    # SAGE SCORING METHODS (PostgreSQL-first)
+    # =========================================================================
 
-        The reinforcement score is bounded to [-1.0, 1.0] to prevent
-        unbounded accumulation.
+    def search_scored(
+        self,
+        user_id: str,
+        query: str | None = None,
+        topics: list[str] | None = None,
+        categories: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        min_importance: float | None = None,
+        session_id: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[tuple[Memory, float]]:
+        """Search memories using SAGE scoring function in PostgreSQL.
+
+        This is the primary search method - scoring happens in SQL, not Python.
+
+        Args:
+            user_id: User identifier
+            query: Full-text search query
+            topics: Filter by topics
+            categories: Filter by categories
+            memory_types: Filter by memory types
+            min_importance: Minimum importance threshold
+            session_id: Filter by session
+            limit: Maximum results
+            offset: Pagination offset
+
+        Returns:
+            List of (Memory, sage_score) tuples sorted by score
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM search_memories_scored(
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                """,
+                (
+                    user_id,
+                    query,
+                    topics,
+                    categories,
+                    memory_types,
+                    min_importance,
+                    session_id,
+                    limit,
+                    offset,
+                ),
+            )
+            rows = cur.fetchall()
+            columns = [desc[0] for desc in cur.description]
+
+            results = []
+            for row in rows:
+                data = dict(zip(columns, row, strict=False))
+                score = data.pop("sage_score", 0.0)
+                memory = Memory(
+                    memory_id=data["memory_id"],
+                    content=data["content"],
+                    memory_type=data["memory_type"],
+                    user_id=user_id,
+                    topics=data.get("topics", []),
+                    categories=data.get("categories", []),
+                    importance=data.get("importance", 0.5),
+                    sentiment=data.get("sentiment", "neutral"),
+                    reinforcement_score=data.get("reinforcement_score", 0.0),
+                    session_id=data.get("session_id"),
+                    created_at=data.get("created_at"),
+                )
+                results.append((memory, score))
+
+            return results
+
+    def search_fuzzy(
+        self,
+        user_id: str,
+        query: str,
+        similarity_threshold: float = 0.3,
+        limit: int = 20,
+    ) -> list[tuple[Memory, float, float]]:
+        """Fuzzy search using pg_trgm similarity.
+
+        Finds memories even with typos or partial matches.
+
+        Args:
+            user_id: User identifier
+            query: Search query (can contain typos)
+            similarity_threshold: Minimum similarity (0-1)
+            limit: Maximum results
+
+        Returns:
+            List of (Memory, similarity, sage_score) tuples
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM search_memories_fuzzy(%s, %s, %s, %s)
+                """,
+                (user_id, query, similarity_threshold, limit),
+            )
+            rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                memory = self.get(row[0])  # memory_id
+                if memory:
+                    results.append((memory, row[2], row[3]))  # similarity, sage_score
+
+            return results
+
+    def find_relevant_sessions(
+        self,
+        user_id: str,
+        topics: list[str] | None = None,
+        categories: list[str] | None = None,
+        min_importance: float | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Find relevant sessions by topic/category weights.
+
+        Hierarchical retrieval: find sessions first, then drill down.
+
+        Args:
+            user_id: User identifier
+            topics: Topic hints to match
+            categories: Category hints to match
+            min_importance: Minimum average importance
+            limit: Maximum results
+
+        Returns:
+            List of session info dicts with relevance scores
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM find_relevant_sessions(%s, %s, %s, %s, %s)
+                """,
+                (user_id, topics, categories, min_importance, limit),
+            )
+            rows = cur.fetchall()
+            columns = [desc[0] for desc in cur.description]
+
+            return [dict(zip(columns, row, strict=False)) for row in rows]
+
+    def update_reinforcement(self, memory_id: str, signal: float) -> float:
+        """Update reinforcement score using PostgreSQL function.
+
+        The reinforcement score is bounded to [-1.0, 1.0] and
+        access_count/last_accessed are updated automatically.
 
         Args:
             memory_id: Memory identifier
-            signal: Reinforcement signal to add (will be clamped)
+            signal: Reinforcement signal to add
+
+        Returns:
+            New reinforcement score
 
         Raises:
             MemoryNotFoundError: If memory doesn't exist
-            ValueError: If signal is not a valid number
+            TypeError: If signal is not a valid number
         """
         if not isinstance(signal, int | float):
             raise TypeError(f"Signal must be a number, got {type(signal).__name__}")
 
         with self._pool.connection() as conn, conn.cursor() as cur:
-            # Update with bounds clamping using SQL GREATEST/LEAST
-            cur.execute(
-                """
-                    UPDATE memories
-                    SET reinforcement_score = GREATEST(-1.0, LEAST(1.0, reinforcement_score + %s))
-                    WHERE memory_id = %s
-                """,
-                (float(signal), memory_id),
-            )
+            cur.execute("SELECT update_reinforcement(%s, %s)", (memory_id, float(signal)))
+            result = cur.fetchone()
             conn.commit()
 
-            if cur.rowcount == 0:
+            if result is None or result[0] is None:
                 raise MemoryNotFoundError(memory_id)
+
+            return result[0]
+
+    def cleanup_expired(self) -> int:
+        """Clean up expired memories using PostgreSQL function.
+
+        Returns:
+            Number of memories deleted
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT cleanup_expired_memories()")
+            result = cur.fetchone()
+            conn.commit()
+            return result[0] if result else 0
+
+    def archive_inactive_sessions(self, days_inactive: int = 30) -> int:
+        """Archive sessions that have been inactive.
+
+        Args:
+            days_inactive: Days of inactivity before archiving
+
+        Returns:
+            Number of sessions archived
+        """
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT archive_inactive_sessions(%s)", (days_inactive,))
+            result = cur.fetchone()
+            conn.commit()
+            return result[0] if result else 0
+
+    def initialize_functions(self) -> None:
+        """Initialize SQL functions from functions.sql.
+
+        Call this once during setup to create all PostgreSQL functions.
+        """
+        functions_sql = _SQL_DIR / "functions.sql"
+        if not functions_sql.exists():
+            raise FileNotFoundError(f"SQL functions file not found: {functions_sql}")
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(functions_sql.read_text())
+            conn.commit()
+
+    def initialize_full_schema(self) -> None:
+        """Initialize full schema from schema.sql and functions.sql.
+
+        Call this for fresh database setup.
+        """
+        schema_sql = _SQL_DIR / "schema.sql"
+        functions_sql = _SQL_DIR / "functions.sql"
+
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            # Create extensions
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+
+            # Execute schema
+            if schema_sql.exists():
+                cur.execute(schema_sql.read_text())
+
+            # Execute functions
+            if functions_sql.exists():
+                cur.execute(functions_sql.read_text())
+
+            conn.commit()
 
     def store_transfer(self, transfer_id: str, data: list[dict]) -> None:
         """Store transfer data."""
