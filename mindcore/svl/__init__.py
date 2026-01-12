@@ -230,6 +230,15 @@ from .sources import (
     create_source,
 )
 
+# Domain Sources - PostgreSQL-centric management
+from .domain_sources import (
+    AuditSummary,
+    DomainSourceManager,
+    DomainSourceType,
+    PreferenceExtraction,
+    SourceFetchResult,
+)
+
 
 __all__ = [
     "CUSTOMER_SERVICE_DOMAIN",
@@ -356,4 +365,10 @@ __all__ = [
     "get_preset_topics",
     "create_preset_sources",
     "quick_setup_database",
+    # Domain Sources - PostgreSQL-centric management
+    "DomainSourceManager",
+    "DomainSourceType",
+    "SourceFetchResult",
+    "PreferenceExtraction",
+    "AuditSummary",
 ]

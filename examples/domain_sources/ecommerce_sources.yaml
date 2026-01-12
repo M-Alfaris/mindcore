@@ -1,0 +1,216 @@
+# E-commerce Domain Sources Configuration
+# Copy this file and customize for your setup
+#
+# Topics are automatically mapped to these sources.
+# When a user query contains "orders", the orders_table source is triggered.
+
+version: "1.0"
+description: "E-commerce domain sources for Mindcore"
+
+# Environment variable references (set these in your environment)
+# DATABASE_URL=postgresql://user:pass@localhost/ecommerce
+# SHIPPING_API_KEY=your_shipping_api_key
+# PAYMENT_API_KEY=your_payment_api_key
+
+sources:
+  # =============================================================================
+  # DATABASE TABLES
+  # =============================================================================
+
+  - name: orders_table
+    type: table
+    description: "User order history"
+    topics:
+      - orders
+      - purchases
+      - transactions
+      - order_status
+    connection: ${DATABASE_URL}
+    query: |
+      SELECT
+        order_id,
+        status,
+        total_amount,
+        currency,
+        items,
+        shipping_address,
+        tracking_number,
+        created_at,
+        updated_at
+      FROM orders
+      WHERE user_id = :user_id
+      ORDER BY created_at DESC
+      LIMIT :limit
+    params:
+      user_id: user_id
+      limit: 10
+    cache_ttl_seconds: 60
+    trigger: on_query
+
+  - name: products_table
+    type: table
+    description: "Product catalog"
+    topics:
+      - products
+      - catalog
+      - inventory
+      - items
+    connection: ${DATABASE_URL}
+    query: |
+      SELECT
+        product_id,
+        name,
+        description,
+        price,
+        category,
+        in_stock,
+        rating
+      FROM products
+      WHERE category = ANY(:categories)
+         OR product_id = ANY(:product_ids)
+      LIMIT :limit
+    params:
+      categories: categories
+      product_ids: product_ids
+      limit: 20
+    cache_ttl_seconds: 300
+
+  - name: user_preferences_table
+    type: table
+    description: "User preferences and settings"
+    topics:
+      - preferences
+      - settings
+      - notifications
+    connection: ${DATABASE_URL}
+    query: |
+      SELECT
+        notification_preferences,
+        display_preferences,
+        communication_preferences,
+        payment_preferences,
+        updated_at
+      FROM user_preferences
+      WHERE user_id = :user_id
+    params:
+      user_id: user_id
+    cache_ttl_seconds: 120
+
+  - name: support_tickets_table
+    type: table
+    description: "User support history"
+    topics:
+      - support
+      - tickets
+      - issues
+      - complaints
+    connection: ${DATABASE_URL}
+    query: |
+      SELECT
+        ticket_id,
+        subject,
+        status,
+        priority,
+        category,
+        created_at,
+        resolved_at
+      FROM support_tickets
+      WHERE user_id = :user_id
+      ORDER BY created_at DESC
+      LIMIT :limit
+    params:
+      user_id: user_id
+      limit: 5
+    cache_ttl_seconds: 30
+
+  # =============================================================================
+  # EXTERNAL APIS
+  # =============================================================================
+
+  - name: shipping_tracker_api
+    type: api
+    description: "Real-time shipping tracking"
+    topics:
+      - shipping
+      - delivery
+      - tracking
+    url: https://api.shippo.com/tracks/{carrier}/{tracking_number}
+    method: GET
+    headers:
+      Authorization: ShippoToken ${SHIPPING_API_KEY}
+      Content-Type: application/json
+    url_params:
+      carrier: shipping_carrier
+      tracking_number: tracking_number
+    response_path: tracking_status
+    cache_ttl_seconds: 300
+    timeout_seconds: 10
+
+  - name: payment_status_api
+    type: api
+    description: "Payment transaction status"
+    topics:
+      - payment
+      - billing
+      - refund
+    url: https://api.stripe.com/v1/payment_intents/{payment_id}
+    method: GET
+    headers:
+      Authorization: Bearer ${PAYMENT_API_KEY}
+    url_params:
+      payment_id: payment_intent_id
+    cache_ttl_seconds: 60
+
+  - name: inventory_api
+    type: api
+    description: "Real-time inventory levels"
+    topics:
+      - stock
+      - availability
+    url: https://inventory.internal.com/api/v1/stock
+    method: POST
+    headers:
+      X-API-Key: ${INVENTORY_API_KEY}
+    body_template:
+      product_ids: []
+    body_params:
+      product_ids: product_ids
+    response_path: data.stock_levels
+    cache_ttl_seconds: 30
+
+# =============================================================================
+# POSTGRESQL FUNCTIONS (Recommended for complex queries)
+# =============================================================================
+#
+# For complex aggregations, create PostgreSQL functions and call them:
+#
+# CREATE OR REPLACE FUNCTION get_user_order_summary(p_user_id TEXT)
+# RETURNS TABLE (
+#     total_orders INT,
+#     total_spent DECIMAL,
+#     avg_order_value DECIMAL,
+#     favorite_category TEXT,
+#     last_order_date TIMESTAMP
+# ) AS $$
+# BEGIN
+#     RETURN QUERY
+#     SELECT
+#         COUNT(*)::INT,
+#         SUM(total_amount),
+#         AVG(total_amount),
+#         MODE() WITHIN GROUP (ORDER BY category),
+#         MAX(created_at)
+#     FROM orders
+#     WHERE user_id = p_user_id;
+# END;
+# $$ LANGUAGE plpgsql;
+#
+# Then add this source:
+#
+#   - name: order_summary_fn
+#     type: table
+#     topics: [order_summary, stats, analytics]
+#     connection: ${DATABASE_URL}
+#     query: SELECT * FROM get_user_order_summary(:user_id)
+#     params:
+#       user_id: user_id
