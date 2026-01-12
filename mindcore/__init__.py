@@ -122,7 +122,7 @@ from .storage import (
     SQLiteStorage,
 )
 
-# SVL (Shared Vocabulary Layer)
+# SVL (Structured Validation Layer)
 from .svl import (
     DEFAULT_SVL,
     AccessLevel,
@@ -131,12 +131,13 @@ from .svl import (
     Migration,
     MigrationCheckpoint,
     Sentiment,
-    SharedVocabularyLayer,
+    StructuredValidationLayer,
+    SharedVocabularyLayer,  # Backwards compatibility alias
 )
 
 # Legacy alias
 from .svl import DEFAULT_SVL as DEFAULT_VOCABULARY
-from .svl import SharedVocabularyLayer as VocabularySchema
+from .svl import StructuredValidationLayer as VocabularySchema
 from .utils import (
     LogCategory,
     configure_logging,
@@ -186,7 +187,8 @@ __all__ = [
     "RoutingStrategy",
     "SQLiteStorage",
     "Sentiment",
-    "SharedVocabularyLayer",
+    "StructuredValidationLayer",
+    "SharedVocabularyLayer",  # Backwards compatibility alias
     "StorageConnectionError",
     "StorageError",
     "SyncDirection",

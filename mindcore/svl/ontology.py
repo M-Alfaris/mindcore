@@ -1,4 +1,4 @@
-"""SVL Ontology - Core semantic definitions for the Shared Vocabulary Layer.
+"""SVL Ontology - Core semantic definitions for the Structured Validation Layer.
 
 The ontology defines all standardized values for memory metadata including:
 - Message types and intents

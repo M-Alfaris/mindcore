@@ -9,12 +9,12 @@ CLST handles:
 - Cross-agent memory sync
 - Memory transfer between instances
 - Vocabulary version migrations
-- Signal processing from SimpleFLR (complex scoring happens here)
+- Signal processing from DeterministicRecall (complex scoring happens here)
 - Signal history persistence (audit trail)
 - Session segmentation (topic/time-based splitting)
 
 Signal Processing Flow:
-    SimpleFLR collects signals → CLST.process_signals() applies weights → Storage updated
+    DeterministicRecall collects signals → CLST.process_signals() applies weights → Storage updated
     → SignalStore records history (audit trail)
 
 Session Segmentation Flow:
@@ -23,10 +23,10 @@ Session Segmentation Flow:
 
 Example:
     from mindcore.clst import CLST, SessionManager, SignalStore
-    from mindcore.flr import SimpleFLR
+    from mindcore.flr import DeterministicRecall
 
-    # SimpleFLR handles hot path, CLST handles cold path
-    simple_flr = SimpleFLR(storage=storage)
+    # DeterministicRecall handles hot path, CLST handles cold path
+    flr = DeterministicRecall(storage=storage)
     clst = CLST(storage=storage, vocabulary=vocab)
 
     # Session management
@@ -36,7 +36,7 @@ Example:
     signal_store = SignalStore(db_path="signals.db")
 
     # Query hot path
-    result = simple_flr.query(user_id="user123", topics=["orders"])
+    result = flr.query(user_id="user123", topics=["orders"])
 
     if result.clst_decision.needs_clst:
         # Query cold path with complex scoring

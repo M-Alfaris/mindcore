@@ -1,4 +1,4 @@
-"""Tests for the Shared Vocabulary Layer (SVL)."""
+"""Tests for the Structured Validation Layer (SVL)."""
 
 import pytest
 
@@ -438,7 +438,7 @@ class TestSharedVocabularyLayer:
         svl = SharedVocabularyLayer(domains=["customer_service"])
         instructions = svl.get_prompt_instructions()
 
-        assert "Shared Vocabulary Layer" in instructions
+        assert "Structured Validation Layer" in instructions
         assert "message_type" in instructions
         assert "customer_service" in instructions
 

@@ -1,4 +1,4 @@
-"""Shared Vocabulary Layer (SVL) - The unified semantic system for MindCore.
+"""Structured Validation Layer (SVL) - The unified semantic system for MindCore.
 
 SVL is the single vocabulary system for MindCore, replacing VocabularySchema.
 It provides:
@@ -10,9 +10,9 @@ It provides:
 6. Data source mapping for automatic context enrichment
 
 Example:
-    from mindcore.svl import SharedVocabularyLayer, TableSource
+    from mindcore.svl import StructuredValidationLayer, TableSource
 
-    svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
+    svl = StructuredValidationLayer(domains=["customer_service", "ecommerce"])
 
     # Map topics to data sources
     svl.map_source("orders", TableSource(
@@ -128,6 +128,8 @@ from .layer import (
     MigrationCheckpoint,
     Sentiment,
     # Main class
+    StructuredValidationLayer,
+    # Backwards compatibility alias
     SharedVocabularyLayer,
     # Schema
     SVLSchema,
@@ -300,7 +302,8 @@ __all__ = [
     "SVLSchema",
     "SemanticMetadata",
     "Sentiment",
-    "SharedVocabularyLayer",
+    "StructuredValidationLayer",
+    "SharedVocabularyLayer",  # Backwards compatibility alias
     "SourceDefinition",
     "SourceDiscovery",
     "SourceMapping",

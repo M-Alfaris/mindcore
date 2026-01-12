@@ -59,7 +59,7 @@ Mindcore provides **three foundational protocols** that standardize AI agent mem
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                      │                                       │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    SVL (Shared Vocabulary Layer)                     │   │
+│  │                    SVL (Structured Validation Layer)                 │   │
 │  │              Unified semantic system with migrations                 │   │
 │  │     validate() | map_source() | enrich() | migrate_memory()         │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -173,6 +173,99 @@ result = memory.recall(
 # Sales agent now knows about the refund!
 ```
 
+### AI Agent Integration
+
+Mindcore provides deterministic memory for AI agents through multiple integration patterns:
+
+#### 1. Direct SDK Integration (Recommended)
+
+For Python-based agents, import mindcore directly:
+
+```python
+from mindcore import Mindcore
+
+class MyAgent:
+    def __init__(self):
+        self.memory = Mindcore(storage="postgresql://localhost/mindcore")
+
+    def process_message(self, user_id: str, message: str, llm_response: dict):
+        # Store the interaction
+        self.memory.store(
+            content=message,
+            memory_type="episodic",
+            user_id=user_id,
+            topics=llm_response.get("topics", []),
+            metadata={
+                "is_preference": llm_response.get("is_preference", False),
+                "preferences": llm_response.get("preferences", []),
+            }
+        )
+
+        # Recall relevant context for next response
+        context = self.memory.recall(
+            query=message,
+            user_id=user_id,
+            limit=10,
+        )
+        return context.memories
+```
+
+#### 2. MCP Server (For MCP-Compatible Agents)
+
+Run mindcore as an MCP server for agents that support Model Context Protocol:
+
+```bash
+# Start MCP server
+mindcore mcp --storage postgresql://localhost/mindcore
+```
+
+Exposes tools: `store_memory`, `search_memories`, `recall`, `reinforce`, `get_schema`
+
+#### 3. REST API (Language-Agnostic)
+
+For agents in any language:
+
+```bash
+# Start REST server
+mindcore serve --storage postgresql://localhost/mindcore --port 8080
+```
+
+```bash
+# Store memory
+curl -X POST http://localhost:8080/memories \
+  -H "Content-Type: application/json" \
+  -d '{"content": "User prefers dark mode", "user_id": "user_123", "memory_type": "preference"}'
+
+# Recall memories
+curl -X POST http://localhost:8080/recall \
+  -d '{"query": "user preferences", "user_id": "user_123", "limit": 5}'
+```
+
+#### 4. Federation (Multi-Agent Systems)
+
+For coordinated multi-agent deployments:
+
+```python
+from mindcore.federation import quick_setup
+
+# Setup organization
+federation = quick_setup(
+    org_id="acme-corp",
+    departments={"support": ["tier-1", "tier-2"], "sales": ["inbound"]},
+)
+
+# Create agents that share memory
+support_agent = federation.create_agent(
+    agent_id="support-bot-001",
+    agent_type="support-bot",
+    department="support",
+    team="tier-1",
+)
+
+# Agents can now share memories based on access levels
+support_agent.remember(content="...", access_level="team")
+```
+
 ---
 
 ## The Three Protocols
@@ -274,15 +367,15 @@ if migration_result.can_rollback:
 | `SUMMARIZE` | LLM-based summarization (requires LLM) |
 | `EXTRACT` | Extract key facts (requires LLM) |
 
-### SVL (Shared Vocabulary Layer)
+### SVL (Structured Validation Layer)
 
 The **semantic foundation** that ensures consistent metadata across all agents.
 
 ```python
-from mindcore import SharedVocabularyLayer, Migration, TableSource
+from mindcore import StructuredValidationLayer, Migration, TableSource
 
 # Create vocabulary with domain
-svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
+svl = StructuredValidationLayer(domains=["customer_service", "ecommerce"])
 
 # Add custom vocabulary
 svl.add_topics("product_feedback", "feature_request")
@@ -624,9 +717,9 @@ mindcore/
 │   ├── storage.py              # CLST, CompressionResult, SyncResult
 │   └── aggregates.py           # SessionAggregate, WeightCalculator
 │
-├── svl/                        # Shared Vocabulary Layer
+├── svl/                        # Structured Validation Layer
 │   ├── __init__.py
-│   ├── layer.py                # SharedVocabularyLayer, Migration
+│   ├── layer.py                # StructuredValidationLayer, Migration
 │   ├── ontology.py             # MessageType, Intent, Sentiment enums
 │   ├── domains.py              # Pre-built domain vocabularies
 │   ├── sources.py              # TableSource, APISource, MCPSource
@@ -717,7 +810,7 @@ class CLST:
 ### SVL
 
 ```python
-class SharedVocabularyLayer:
+class StructuredValidationLayer:
     def add_domain(domain_name) -> None
     def add_topics(*topics) -> None
     def add_custom_field(name, field_type, ...) -> None
@@ -950,10 +1043,10 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 ### Programmatic Configuration
 
 ```python
-from mindcore import Mindcore, SharedVocabularyLayer
+from mindcore import Mindcore, StructuredValidationLayer
 
 # Custom vocabulary
-svl = SharedVocabularyLayer(
+svl = StructuredValidationLayer(
     domains=["customer_service"],
     version="1.0.0",
 )

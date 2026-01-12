@@ -1,4 +1,4 @@
-"""Mindcore v2 Exceptions - Standardized error handling.
+"""Mindcore Exceptions - Standardized error handling.
 
 All mindcore operations that fail raise exceptions rather than returning
 False/None. This follows the "fail hard" philosophy for predictable behavior.

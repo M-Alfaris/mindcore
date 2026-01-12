@@ -1,9 +1,9 @@
-"""Mindcore v2 - Universal Memory Layer for AI Agents.
+"""Mindcore - Universal Memory Layer for AI Agents.
 
 A modern memory layer that provides:
 - FLR (Fast Learning Recall) for inference-time memory access
 - CLST (Cognitive Long-term Storage Transfer) for durable storage
-- SVL (Semantic Validation Layer) as mandatory kernel for all data flows
+- SVL (Structured Validation Layer) as mandatory kernel for all data flows
 - Structured output integration with LLM JSON schemas
 - Multi-agent support with access control
 - MCP and REST API interfaces
@@ -44,7 +44,7 @@ from .exceptions import (
     MultiAgentNotEnabledError,
 )
 from .storage import BaseStorage, SQLiteStorage
-from .svl import DEFAULT_SVL, SharedVocabularyLayer
+from .svl import DEFAULT_SVL, StructuredValidationLayer
 from .svl.gate import GatePolicy, RetryConfig, SVLGate
 from .svl.gated_storage import GatedCLST, GatedFLR, RecallResult
 from .vocabulary import DEFAULT_VOCABULARY, VocabularySchema
@@ -81,7 +81,7 @@ class Mindcore:
         self,
         storage: str | BaseStorage = "sqlite:///mindcore.db",
         vocabulary: VocabularySchema | None = None,
-        svl: SharedVocabularyLayer | None = None,
+        svl: StructuredValidationLayer | None = None,
         gate_policy: GatePolicy | None = None,
         enable_multi_agent: bool = False,
         retention_policy: dict[str, Any] | None = None,
@@ -94,7 +94,7 @@ class Mindcore:
                 - "postgresql://..." for PostgreSQL
                 - BaseStorage instance for custom backends
             vocabulary: Legacy vocabulary schema (prefer svl parameter)
-            svl: SharedVocabularyLayer for SVL configuration
+            svl: StructuredValidationLayer for SVL configuration
             gate_policy: GatePolicy for SVL Gate configuration
             enable_multi_agent: Enable multi-agent access control
             retention_policy: Optional retention policy config:
@@ -776,7 +776,7 @@ def create_pipeline(
         llm_call: LLM function for context decisions and retries
         enable_hot_path: Enable hot-path optimization
         enable_external_sources: Enable external data source fetching
-        vocabulary: Optional SharedVocabularyLayer
+        vocabulary: Optional StructuredValidationLayer
 
     Returns:
         SVLPipeline instance

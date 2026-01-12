@@ -1,6 +1,6 @@
 # Mindcore Testing Suite
 
-Comprehensive testing environment for validating all Mindcore v2 features.
+Comprehensive testing environment for validating all Mindcore features.
 
 ## Quick Start
 

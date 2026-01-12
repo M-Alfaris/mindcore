@@ -9,7 +9,7 @@
 |-----------|----------|---------|
 | `mindcore/flr/` | Core | Fast Local Recall - hot path with reinforcement learning |
 | `mindcore/clst/` | Core | Cognitive Long-term Storage Transfer - cold path with aggregates |
-| `mindcore/svl/` | Core | Shared Vocabulary Layer - LLM-enforced metadata extraction |
+| `mindcore/svl/` | Core | Structured Validation Layer - LLM-enforced metadata extraction |
 | `mindcore/context/` | Core | Context Gateway - unified context assembly |
 | `mindcore/federation/` | Core | Multi-agent memory federation with access control |
 | `mindcore/cross_agent/` | Core | Cross-agent memory sharing and routing |
@@ -326,7 +326,7 @@ This reduces search space dramatically and eliminates need for per-memory embedd
 
 ---
 
-### 3.3 SVL (Shared Vocabulary Layer)
+### 3.3 SVL (Structured Validation Layer)
 
 **Location:** `mindcore/svl/`
 
@@ -339,7 +339,7 @@ Semantic spine of MindCore - standardized vocabulary for consistent metadata wit
 | `ontology.py` | Core semantic definitions and schema |
 | `domains.py` | Domain-specific vocabularies (ecommerce, healthcare, etc.) |
 | `sources.py` | Data source mapping (Table, API, MCP) |
-| `layer.py` | SharedVocabularyLayer main class |
+| `layer.py` | StructuredValidationLayer main class |
 | `enforced_metadata.py` | LLM-enforced metadata extraction with HistoricalContextNeeded |
 | `llm_providers.py` | Provider configs for OpenAI, Claude, Gemini |
 | `registry.py` | SVL registry for multi-domain management |
@@ -961,11 +961,11 @@ mindcore/
 │   ├── aggregates.py               # Session aggregates with weights
 │   └── __init__.py
 │
-├── svl/                            # Shared Vocabulary Layer
+├── svl/                            # Structured Validation Layer
 │   ├── ontology.py                 # Core semantic definitions
 │   ├── domains.py                  # Domain vocabularies
 │   ├── sources.py                  # Data source mapping
-│   ├── layer.py                    # SharedVocabularyLayer
+│   ├── layer.py                    # StructuredValidationLayer
 │   ├── enforced_metadata.py        # LLM-enforced metadata extraction
 │   ├── llm_providers.py            # OpenAI/Claude/Gemini configs
 │   ├── registry.py                 # SVL registry

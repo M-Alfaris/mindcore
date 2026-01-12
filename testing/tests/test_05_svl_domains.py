@@ -1,6 +1,6 @@
 """Test 05: SVL Domain Tests.
 
-Tests Shared Vocabulary Layer (SVL) domain functionality:
+Tests Structured Validation Layer (SVL) domain functionality:
 - Domain vocabulary creation
 - Schema validation
 - Topic and category management

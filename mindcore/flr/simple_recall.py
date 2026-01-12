@@ -1,4 +1,4 @@
-"""SimpleFLR - Simplified Fast Learning Recall.
+"""DeterministicRecall - Fast deterministic cache layer for FLR.
 
 A deterministic, fast cache layer that:
 1. Performs O(1) LRU cache lookups
@@ -6,12 +6,12 @@ A deterministic, fast cache layer that:
 3. Determines if CLST is needed based on metadata hints
 4. Passes reinforcement signals to CLST (doesn't process them)
 
-This replaces the complex probabilistic FLR for the hot path.
+This provides the hot path for fast memory access.
 
 Example:
-    from mindcore.flr import SimpleFLR
+    from mindcore.flr import DeterministicRecall
 
-    flr = SimpleFLR(storage=storage)
+    flr = DeterministicRecall(storage=storage)
 
     # Fast cache query
     result = flr.query(
@@ -325,12 +325,12 @@ class SimpleRecallResult:
 
 
 # =============================================================================
-# SimpleFLR - The Deterministic Cache Layer
+# DeterministicRecall - The Deterministic Cache Layer
 # =============================================================================
 
 
-class SimpleFLR:
-    """Simplified Fast Learning Recall - Deterministic cache layer.
+class DeterministicRecall:
+    """Deterministic cache layer for fast memory recall.
 
     This is a streamlined FLR that:
     1. Provides O(1) LRU cache lookup
@@ -338,13 +338,13 @@ class SimpleFLR:
     3. Determines if CLST is needed based on metadata hints
     4. Collects reinforcement signals to pass to CLST
 
-    The key difference from FLR:
+    The key difference from probabilistic approaches:
     - NO probabilistic scoring (word overlap, recency decay, exploration)
     - NO complex reinforcement processing
     - Just cache lookup + deterministic filter + CLST decision
 
     Example:
-        flr = SimpleFLR(storage=storage)
+        flr = DeterministicRecall(storage=storage)
 
         result = flr.query(
             user_id="user123",
@@ -696,3 +696,7 @@ class SimpleFLR:
             "clst_decisions_skipped": 0,
             "signals_collected": 0,
         }
+
+
+# Backwards compatibility alias
+SimpleFLR = DeterministicRecall

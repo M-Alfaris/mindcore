@@ -4,19 +4,19 @@ A protocol for rapid retrieval, inference-time memory access, and short-term
 contextual recall among AI agents.
 
 FLR Modes:
-- SimpleFLR (recommended): Deterministic cache layer that passes signals to CLST
+- DeterministicRecall (recommended): Deterministic cache layer that passes signals to CLST
 - FLR (legacy): Complex probabilistic scoring with reinforcement processing
 
-SimpleFLR Design:
+DeterministicRecall Design:
 - O(1) LRU cache lookup
 - Deterministic filtering (topics, session, recency)
 - Metadata-based CLST decision (is_clst_needed, confidence, priority)
 - Collects signals and passes them to CLST for complex processing
 
-Example (SimpleFLR - recommended):
-    from mindcore.flr import SimpleFLR
+Example (DeterministicRecall - recommended):
+    from mindcore.flr import DeterministicRecall
 
-    flr = SimpleFLR(storage=storage)
+    flr = DeterministicRecall(storage=storage)
 
     result = flr.query(
         user_id="user123",
@@ -94,13 +94,14 @@ from .reinforcement import (
     process_signal_batch,
 )
 
-# SimpleFLR (recommended - deterministic cache layer)
+# DeterministicRecall (recommended - deterministic cache layer)
 from .simple_recall import (
     CachedMemory,
     CLSTDecision,
     CLSTDecisionPolicy,
     CLSTNeedLevel,
-    SimpleFLR,
+    DeterministicRecall,
+    SimpleFLR,  # Backwards compatibility alias
     SimpleRecallResult,
     make_clst_decision,
 )
@@ -112,8 +113,9 @@ from .usage_detector import (
 
 
 __all__ = [
-    # SimpleFLR (recommended)
-    "SimpleFLR",
+    # DeterministicRecall (recommended)
+    "DeterministicRecall",
+    "SimpleFLR",  # Backwards compatibility alias
     "SimpleRecallResult",
     "CachedMemory",
     "CLSTDecision",

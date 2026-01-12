@@ -1,4 +1,4 @@
-"""Tests for Mindcore v2 architecture."""
+"""Tests for Mindcore architecture."""
 
 import os
 import tempfile

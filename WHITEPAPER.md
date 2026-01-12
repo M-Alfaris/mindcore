@@ -12,7 +12,7 @@
 
 MindCore is an open-source memory protocol stack that solves the fundamental challenge of memory fragmentation in AI agent systems. As organizations deploy multiple AI agents across customer support, sales, and internal operations, each agent traditionally builds isolated, incompatible memory systems—leading to months of infrastructure work, inconsistent metadata schemas, and zero cross-agent learning.
 
-MindCore introduces three foundational protocols: **FLR** (Fast Learning Recall) for inference-time memory access with reinforcement learning, **CLST** (Cognitive Long-term Storage Transfer) for persistent hierarchical storage with session aggregation, and **SVL** (Shared Vocabulary Layer) for LLM-enforced metadata standardization. Together, these protocols enable organizations to "build once, deploy endlessly"—new agents inherit organizational knowledge from day one, benefiting from shared vocabulary, accumulated memories, and cross-agent reinforcement signals.
+MindCore introduces three foundational protocols: **FLR** (Fast Learning Recall) for inference-time memory access with reinforcement learning, **CLST** (Cognitive Long-term Storage Transfer) for persistent hierarchical storage with session aggregation, and **SVL** (Structured Validation Layer) for LLM-enforced metadata standardization. Together, these protocols enable organizations to "build once, deploy endlessly"—new agents inherit organizational knowledge from day one, benefiting from shared vocabulary, accumulated memories, and cross-agent reinforcement signals.
 
 The framework achieves <160ms context assembly without embeddings through hierarchical weighted metadata retrieval, provides deterministic and traceable operations via controlled vocabulary and structured outputs, and includes enterprise-grade features for audit logging, encryption, compliance, and multi-agent federation. MindCore works with any LLM provider (OpenAI, Anthropic, Google, local models) and is MIT licensed with no vendor lock-in.
 
@@ -310,7 +310,7 @@ Result: 10-100x search space reduction, no embeddings required
 | `SUMMARIZE` | LLM-based summarization | Long-term archival |
 | `EXTRACT` | Extract key facts only | Knowledge base |
 
-### 4.3 SVL: Shared Vocabulary Layer (Semantic Foundation)
+### 4.3 SVL: Structured Validation Layer (Semantic Foundation)
 
 SVL is the semantic spine that ensures consistent metadata across all agents and memories.
 
@@ -2258,7 +2258,7 @@ federation:
 |------|------------|
 | **CLST** | Cognitive Long-term Storage Transfer. The persistent storage protocol for hierarchical memory organization with session aggregation and compression. |
 | **FLR** | Fast Learning Recall. The inference-time memory access protocol with reinforcement learning, caching, and 6-factor scoring. |
-| **SVL** | Shared Vocabulary Layer. The semantic foundation that enforces consistent metadata through controlled vocabulary and LLM structured outputs. |
+| **SVL** | Structured Validation Layer. The semantic foundation that enforces consistent metadata through controlled vocabulary and LLM structured outputs. |
 | **Session Aggregate** | A weighted summary of all memories in a session, containing topic/category weights, importance statistics, and dominant values for efficient hierarchical retrieval. |
 | **Reinforcement Signal** | Feedback applied to memories indicating relevance, usefulness, or correctness. Signals decay over time and influence future retrieval rankings. |
 | **Access Level** | Permission scope for memory visibility: private (agent only), team, department, organization, or global. |

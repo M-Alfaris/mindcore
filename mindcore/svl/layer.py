@@ -1,4 +1,4 @@
-"""SharedVocabularyLayer - The unified semantic system for MindCore.
+"""StructuredValidationLayer - The unified semantic system for MindCore.
 
 SVL is the single vocabulary system for MindCore, providing:
 1. Universal ontology (message types, intents, temporal, emotional, etc.)
@@ -416,17 +416,17 @@ class SVLSchema:
 
 
 # =============================================================================
-# Main SharedVocabularyLayer Class
+# Main StructuredValidationLayer Class
 # =============================================================================
 
 
-class SharedVocabularyLayer:
-    """The unified semantic vocabulary layer for MindCore.
+class StructuredValidationLayer:
+    """The unified semantic validation layer for MindCore.
 
     SVL manages all vocabulary, semantic metadata, and data source mappings.
 
     Example:
-        svl = SharedVocabularyLayer(domains=["customer_service", "ecommerce"])
+        svl = StructuredValidationLayer(domains=["customer_service", "ecommerce"])
 
         # Map topics to data sources
         svl.map_source("orders", TableSource(
@@ -1393,7 +1393,7 @@ export interface AgentResponse {{
         topics = self.schema.get_all_topics()
         categories = self.schema.get_all_categories()
 
-        return f"""## Shared Vocabulary Layer (SVL) v{self.schema.version}
+        return f"""## Structured Validation Layer (SVL) v{self.schema.version}
 
 When storing memories, use these standardized values:
 
@@ -1545,7 +1545,7 @@ When storing memories, use these standardized values:
 # Default Instance
 # =============================================================================
 
-DEFAULT_SVL = SharedVocabularyLayer(
+DEFAULT_SVL = StructuredValidationLayer(
     schema=SVLSchema(
         version="1.0.0",
         topics=[
@@ -1595,3 +1595,6 @@ DEFAULT_SVL = SharedVocabularyLayer(
     ),
     domains=["customer_service"],
 )
+
+# Backwards compatibility alias
+SharedVocabularyLayer = StructuredValidationLayer
