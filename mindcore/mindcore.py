@@ -43,11 +43,16 @@ from .access import AccessController
 from .exceptions import (
     MultiAgentNotEnabledError,
 )
+from .flr import Memory
 from .storage import BaseStorage, SQLiteStorage
 from .svl import DEFAULT_SVL, SharedVocabularyLayer
 from .svl.gate import GatePolicy, RetryConfig, SVLGate
 from .svl.gated_storage import GatedCLST, GatedFLR, RecallResult
 from .vocabulary import DEFAULT_VOCABULARY, VocabularySchema
+
+
+# Type alias for storage to support both SQLite and PostgreSQL
+StorageType = BaseStorage
 
 
 class Mindcore:
@@ -105,7 +110,8 @@ class Mindcore:
                     "default_max_age_days": 365,           # Default
                 }
         """
-        # Initialize storage
+        # Initialize storage (typed as BaseStorage to support both SQLite and PostgreSQL)
+        self._storage: BaseStorage
         if isinstance(storage, str):
             if storage.startswith("sqlite:///"):
                 db_path = storage[10:]  # Remove "sqlite:///"
@@ -135,7 +141,12 @@ class Mindcore:
         self._access_controller = AccessController() if enable_multi_agent else None
 
         # Initialize GATED FLR and CLST (mandatory SVL enforcement)
-        self._flr = GatedFLR(storage=self._storage, gate=self._gate)
+        # Pass access_controller to GatedFLR for team-based access control
+        self._flr = GatedFLR(
+            storage=self._storage,
+            gate=self._gate,
+            agent_registry=self._access_controller,
+        )
         self._clst = GatedCLST(storage=self._storage, gate=self._gate)
 
         # Initialize retention policy if provided
@@ -204,6 +215,8 @@ class Mindcore:
         if not result.success:
             raise ValueError(f"Memory validation failed: {result.error_message}")
 
+        # memory_id is guaranteed to be set when success is True
+        assert result.memory_id is not None, "memory_id should be set on success"
         return result.memory_id
 
     def recall(
@@ -248,7 +261,7 @@ class Mindcore:
         categories: list[str] | None = None,
         memory_types: list[str] | None = None,
         limit: int = 100,
-    ) -> list[dict[str, Any]]:
+    ) -> list[Memory]:
         """Search memories with filters and SVL Gate validation.
 
         All returned memories are validated through the SVL Gate.
@@ -263,7 +276,7 @@ class Mindcore:
             limit: Max results
 
         Returns:
-            List of SVL-validated memory dicts
+            List of SVL-validated Memory objects
         """
         results = self._clst.search(
             query=query,
@@ -273,18 +286,21 @@ class Mindcore:
             memory_types=memory_types,
             limit=limit,
         )
-        # Return validated memories only
-        return [r.memory for r in results if r.success and r.memory]
+        # Return validated memories as Memory objects
+        return [Memory.from_dict(r.memory) for r in results if r.success and r.memory]
 
-    def get(self, memory_id: str) -> dict[str, Any] | None:
+    def get(self, memory_id: str) -> Memory | None:
         """Get a specific memory by ID with SVL Gate validation.
 
         The memory is validated through the SVL Gate before being returned.
+
+        Returns:
+            Memory object, or None if not found
         """
         result = self._clst.retrieve(memory_id)
-        if result is None or not result.success:
+        if result is None or not result.success or result.memory is None:
             return None
-        return result.memory
+        return Memory.from_dict(result.memory)
 
     def delete(self, memory_id: str) -> None:
         """Delete a memory.

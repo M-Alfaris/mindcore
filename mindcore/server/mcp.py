@@ -431,7 +431,7 @@ class MCPServer:
             importance=importance,
             access_level=access_level,
             entities=entities or [],
-            vocabulary_version=self.vocabulary.version if self.vocabulary else "1.0.0",
+            vocabulary_version=self.vocabulary.schema.version if self.vocabulary else "1.0.0",
         )
 
         memory_id = self.clst.store(memory)
@@ -601,6 +601,6 @@ class MCPServer:
 
             return self.to_json_rpc_response(request_id, result)
 
-        except Exception as e:
-            logger.error("JSON-RPC request failed for method '%s': %s", method, e)
+        except Exception:
+            logger.exception("JSON-RPC request failed for method '%s'", method)
             return self.to_json_rpc_response(request_id, None, "Internal server error")

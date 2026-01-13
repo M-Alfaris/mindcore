@@ -246,14 +246,16 @@ def create_app(
         }
 
         try:
-            # GatedCLST expects dict + user_id
-            result = clst.store(
-                memory_data=memory_data,
-                user_id=data.user_id,
-                agent_id=x_agent_id,
-            )
-            # Handle both GatedCLST (StoreResult) and raw CLST (str)
-            if hasattr(result, "success"):
+            # Check if we have GatedCLST (has memory_data parameter) or raw CLST (has Memory parameter)
+            from mindcore.svl.gated_storage import GatedCLST
+
+            if isinstance(clst, GatedCLST):
+                # GatedCLST expects dict + user_id
+                result = clst.store(
+                    memory_data=memory_data,
+                    user_id=data.user_id,
+                    agent_id=x_agent_id,
+                )
                 if not result.success:
                     logger.warning("Memory validation failed: %s", result.error_message)
                     raise HTTPException(
@@ -261,8 +263,25 @@ def create_app(
                         detail=f"Memory validation failed: {result.error_message}",
                     )
                 return {"memory_id": result.memory_id, "success": True}
-            # Raw CLST returns string memory_id
-            return {"memory_id": result, "success": True}
+            # Raw CLST expects Memory object
+            import uuid
+
+            from mindcore.flr import Memory
+
+            memory = Memory(
+                memory_id=f"mem_{uuid.uuid4().hex[:12]}",
+                content=data.content,
+                memory_type=data.memory_type,
+                user_id=data.user_id,
+                topics=data.topics or [],
+                categories=data.categories or [],
+                sentiment=data.sentiment,
+                importance=data.importance,
+                entities=data.entities or [],
+                access_level=data.access_level,
+            )
+            memory_id = clst.store(memory)
+            return {"memory_id": memory_id, "success": True}
         except ValueError as e:
             logger.warning("Memory validation failed: %s", e)
             raise HTTPException(

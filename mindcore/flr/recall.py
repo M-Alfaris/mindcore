@@ -137,7 +137,11 @@ class Memory:
 
         # Apply decay if configured
         if self.importance_decay_rate > 0.0:
-            age = now - self.created_at
+            # Ensure created_at is timezone-aware for comparison
+            created_at = self.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            age = now - created_at
             months_elapsed = age.total_seconds() / (30 * 24 * 60 * 60)  # Approximate months
             decay_factor = (1 - self.importance_decay_rate) ** months_elapsed
             base = base * decay_factor
@@ -148,6 +152,9 @@ class Memory:
             # Check if boost has expired
             if "expires_at" in boost:
                 expires_at = datetime.fromisoformat(boost["expires_at"])
+                # Ensure expires_at is timezone-aware for comparison
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
                 if expires_at < now:
                     continue  # Skip expired boost
             boost_total += boost.get("amount", 0.0)
@@ -695,9 +702,9 @@ class FLR:
             self._reinforcement_buffer.pop(memory_id, None)
             # If we got the score from storage, fetch it
             if new_score == 0.0:
-                memory = self.storage.get(memory_id)
-                if memory:
-                    new_score = memory.reinforcement_score
+                stored_memory = self.storage.get(memory_id)
+                if stored_memory:
+                    new_score = stored_memory.reinforcement_score
         except Exception:
             # Keep in buffer for later flush if storage fails
             pass
@@ -781,9 +788,9 @@ class FLR:
             self._robust_reinforcement_buffer.pop(memory_id, None)
 
             if new_score == 0.0:
-                memory = self.storage.get(memory_id)
-                if memory:
-                    new_score = memory.reinforcement_score
+                stored_memory = self.storage.get(memory_id)
+                if stored_memory:
+                    new_score = stored_memory.reinforcement_score
         except Exception:
             # Keep in buffer for later flush
             pass
@@ -960,11 +967,11 @@ class FLR:
 
         # Also check storage for working memories not in a context
         try:
-            memory = self.storage.get(memory_id)
-            if memory and memory.memory_type == "working":
+            stored_memory = self.storage.get(memory_id)
+            if stored_memory and stored_memory.memory_type == "working":
                 # Promote by updating the memory type
-                memory.memory_type = "episodic"
-                self.storage.update(memory)
+                stored_memory.memory_type = "episodic"
+                self.storage.update(stored_memory)
                 return True
         except Exception:
             pass
@@ -1485,4 +1492,4 @@ class FLR:
             raise RuntimeError(
                 "User cache warming requires smart cache. Initialize FLR with use_smart_cache=True"
             )
-        return self._smart_cache.warm_for_user(user_id, importance_threshold)
+        return self._smart_cache.warm_user(user_id, min_importance=importance_threshold)

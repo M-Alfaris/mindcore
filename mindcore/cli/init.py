@@ -598,7 +598,7 @@ def configure_llm(integration_mode: dict | None = None) -> dict:
         default="5",
     )
 
-    config = {"provider": None, "api_key": None, "model": None}
+    config: dict[str, str | None] = {"provider": None, "api_key": None, "model": None}
 
     if choice == "1":
         config["provider"] = "openai"

@@ -647,7 +647,7 @@ def create_default_validator(
     Returns:
         Configured ContentValidator instance
     """
-    validators = []
+    validators: list[BaseValidator] = []
 
     if detect_pii:
         validators.append(PIIDetector(action=pii_action))
