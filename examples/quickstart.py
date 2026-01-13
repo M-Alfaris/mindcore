@@ -13,16 +13,17 @@ For SQLite (development only):
     No setup needed - just run this script!
 """
 
-from mindcore.v2.storage import SQLiteStorage
-from mindcore.v2.flr import Memory
+from mindcore.flr import Memory
+from mindcore.storage import SQLiteStorage
+
 
 # =============================================================================
 # OPTION 1: SQLite (Zero Setup - Great for Testing)
 # =============================================================================
 
+
 def quickstart_sqlite():
     """Quickstart with SQLite - no database setup needed."""
-
     print("=== SAGE Quickstart (SQLite) ===\n")
 
     # 1. Create storage (in-memory for this example)
@@ -55,7 +56,7 @@ def quickstart_sqlite():
 
     # 4. Reinforce a memory (positive feedback)
     storage.update_reinforcement(memory_id, signal=0.3)
-    print(f"\nReinforced memory with +0.3 signal")
+    print("\nReinforced memory with +0.3 signal")
 
     # 5. Get memory back
     retrieved = storage.get(memory_id)
@@ -69,16 +70,16 @@ def quickstart_sqlite():
 # OPTION 2: PostgreSQL (Production Ready)
 # =============================================================================
 
+
 def quickstart_postgres():
     """Quickstart with PostgreSQL - requires running database.
 
     Run: docker-compose up -d
     """
-
     print("=== SAGE Quickstart (PostgreSQL) ===\n")
 
     try:
-        from mindcore.v2.storage import PostgresStorage
+        from mindcore.storage import PostgresStorage
     except ImportError:
         print("Install psycopg: pip install 'psycopg[binary,pool]'")
         return
@@ -144,13 +145,13 @@ def quickstart_postgres():
 # OPTION 3: Full SAGE Pipeline with SVL
 # =============================================================================
 
+
 def quickstart_sage_pipeline():
     """Full SAGE pipeline with SVL kernel validation."""
-
     print("=== SAGE Pipeline Quickstart ===\n")
 
-    from mindcore.v2.storage import SQLiteStorage
-    from mindcore.v2.svl import SharedVocabularyLayer, SVLPipeline
+    from mindcore.storage import SQLiteStorage
+    from mindcore.svl import SharedVocabularyLayer, SVLPipeline
 
     # 1. Create storage
     storage = SQLiteStorage(":memory:")
@@ -195,7 +196,7 @@ def quickstart_sage_pipeline():
 
     # 6. Get pipeline stats
     stats = pipeline.get_stats()
-    print(f"\nPipeline stats:")
+    print("\nPipeline stats:")
     print(f"  Total queries: {stats['total_queries']}")
     print(f"  Hot path ratio: {stats['hot_path_ratio']:.1%}")
 

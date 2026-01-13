@@ -1,6 +1,6 @@
-# SAGE Quick Start Guide
+# Mindcore Quick Start Guide
 
-Get started with Mindcore SAGE in minutes.
+Get started with Mindcore in minutes.
 
 ## Table of Contents
 
@@ -32,8 +32,8 @@ mindcore version
 Perfect for development and testing. No database setup required.
 
 ```python
-from mindcore.v2.storage import SQLiteStorage
-from mindcore.v2.flr import Memory
+from mindcore.storage import SQLiteStorage
+from mindcore.flr import Memory
 
 # Create storage (in-memory for testing)
 storage = SQLiteStorage(":memory:")
@@ -68,7 +68,7 @@ for mem in results:
 
 ## Option 2: PostgreSQL (Production)
 
-PostgreSQL with SAGE scoring functions for production workloads.
+PostgreSQL with Mindcore scoring functions for production workloads.
 
 ### Setup Database
 
@@ -84,7 +84,7 @@ mindcore init --postgres postgresql://user:pass@localhost/mindcore
 ### Connect and Query
 
 ```python
-from mindcore.v2.storage import PostgresStorage
+from mindcore.storage import PostgresStorage
 
 # Connect
 storage = PostgresStorage("postgresql://mindcore:mindcore@localhost/mindcore")
@@ -93,7 +93,7 @@ storage = PostgresStorage("postgresql://mindcore:mindcore@localhost/mindcore")
 storage.initialize_full_schema()
 
 # Store a memory
-from mindcore.v2.flr import Memory
+from mindcore.flr import Memory
 
 memory = Memory(
     content="Customer asked about order #12345",
@@ -106,7 +106,7 @@ memory = Memory(
 
 memory_id = storage.store(memory)
 
-# SAGE scored search (scoring in PostgreSQL!)
+# Mindcore scored search (scoring in PostgreSQL!)
 results = storage.search_scored(
     user_id="user_456",
     query="order shipping",
@@ -144,11 +144,11 @@ for memory, similarity, score in results:
 
 ## Option 3: Full Pipeline with SVL
 
-Use the SVL kernel for metadata validation and the full SAGE pipeline.
+Use the SVL kernel for metadata validation and the full Mindcore pipeline.
 
 ```python
-from mindcore.v2.storage import SQLiteStorage
-from mindcore.v2.svl import SharedVocabularyLayer, SVLPipeline
+from mindcore.storage import SQLiteStorage
+from mindcore.svl import SharedVocabularyLayer, SVLPipeline
 
 # 1. Create storage
 storage = SQLiteStorage(":memory:")
@@ -200,7 +200,7 @@ print(f"Hot path ratio: {stats['hot_path_ratio']:.1%}")
 Connect topics to database tables with zero configuration.
 
 ```python
-from mindcore.v2.svl import SVLPipeline
+from mindcore.svl import SVLPipeline
 
 pipeline = SVLPipeline(storage=storage, vocabulary=svl)
 
