@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any, Callable, Generator
 
 
 if TYPE_CHECKING:
@@ -148,7 +148,7 @@ class CLST:
         self,
         storage: BaseStorage,
         vocabulary: VocabularySchema | None = None,
-        compression_llm: callable | None = None,
+        compression_llm: Callable[..., Any] | None = None,
     ):
         """Initialize CLST.
 

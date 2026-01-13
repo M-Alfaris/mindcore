@@ -535,14 +535,14 @@ class TestReinforcementBounds:
         assert -1.0 <= get_mem_attr(retrieved, "reinforcement_score", 0.0) <= 1.0
 
     def test_reinforcement_invalid_signal_raises(self, memory):
-        """Test that invalid signal types raise ValueError."""
+        """Test that invalid signal types raise TypeError."""
         memory_id = memory.store(
             content="Test memory",
             memory_type="semantic",
             user_id="user123",
         )
 
-        with pytest.raises(ValueError, match="Reinforcement signal must be a number"):
+        with pytest.raises(TypeError, match="Reinforcement signal must be a number"):
             memory.reinforce(memory_id, signal="not a number")
 
     def test_memory_apply_reinforcement_diminishing_returns(self):

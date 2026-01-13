@@ -272,8 +272,8 @@ class SVLGate:
         if self._policy.require_minimum_vocabulary:
             self._validate_vocabulary_requirements()
 
-        # Statistics
-        self._stats = {
+        # Statistics - using Any for values since we have mixed int and dict types
+        self._stats: dict[str, Any] = {
             "total_inbound": 0,
             "total_outbound": 0,
             "accepted": 0,

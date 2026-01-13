@@ -54,6 +54,7 @@ REINFORCEMENT_SIGNAL_MAX = 1.0
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
 
+    from mindcore.flr import Memory
     from mindcore.storage.base import BaseStorage
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class RecallResult:
     """Result of a gated recall operation."""
 
     success: bool
-    memories: list[dict[str, Any]]
+    memories: list[Memory]
     scores: list[float]
     query_latency_ms: float
     gate_processing_ms: float
@@ -98,6 +99,7 @@ class RecallResult:
         return {
             "success": self.success,
             "memory_count": len(self.memories),
+            "memories": [m.to_dict() for m in self.memories],
             "scores": self.scores,
             "query_latency_ms": self.query_latency_ms,
             "gate_processing_ms": self.gate_processing_ms,
@@ -435,6 +437,7 @@ class GatedFLR:
         cache_size: int = 1000,
         cache_ttl_seconds: int = 300,
         embedding_fn: Callable | None = None,
+        agent_registry: Any | None = None,
     ):
         """Initialize GatedFLR.
 
@@ -444,6 +447,7 @@ class GatedFLR:
             cache_size: Max memories in hot cache
             cache_ttl_seconds: Cache TTL
             embedding_fn: Optional function to generate embeddings
+            agent_registry: Optional agent registry for team-based access control
         """
         from mindcore.flr import FLR
 
@@ -453,6 +457,7 @@ class GatedFLR:
             cache_size=cache_size,
             cache_ttl_seconds=cache_ttl_seconds,
             embedding_fn=embedding_fn,
+            agent_registry=agent_registry,
         )
 
     def query(
@@ -501,8 +506,10 @@ class GatedFLR:
         )
 
         # Process each memory through outbound gate
-        validated_memories = []
-        validated_scores = []
+        from mindcore.flr import Memory as FLRMemory
+
+        validated_memories: list[FLRMemory] = []
+        validated_scores: list[float] = []
         gate_time = 0.0
 
         for memory, score in zip(flr_result.memories, flr_result.scores, strict=False):
@@ -510,8 +517,10 @@ class GatedFLR:
             gate_result = self._gate.process_outbound(memory)
             gate_time += (time.time() - gate_start) * 1000
 
-            if gate_result.success:
-                validated_memories.append(gate_result.memory)
+            if gate_result.success and gate_result.memory is not None:
+                # Convert dict back to Memory object for consistent API
+                memory_obj = FLRMemory.from_dict(gate_result.memory)
+                validated_memories.append(memory_obj)
                 validated_scores.append(score)
             else:
                 logger.warning(

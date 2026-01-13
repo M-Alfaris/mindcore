@@ -1,10 +1,38 @@
 """LlamaIndex integration for Mindcore.
 
 Provides memory adapters that integrate Mindcore with LlamaIndex chat engines
-and agents.
+and agents. Updated for LlamaIndex 2025 patterns.
 
-Example:
-    from llama_index.core import VectorStoreIndex
+This module provides two integration approaches:
+
+1. MindcoreMemoryBlock - Implements BaseMemoryBlock for use with the new
+   LlamaIndex Memory class. This is the recommended approach for 2025+.
+
+2. MindcoreIndexMemory - Legacy memory interface for backwards compatibility
+   with older ChatMemoryBuffer patterns (deprecated in LlamaIndex).
+
+Example (Modern - Memory class with memory blocks):
+    from llama_index.core.memory import Memory
+    from mindcore.integrations import MindcoreMemoryBlock
+
+    memory = Memory.from_defaults(
+        session_id="my_session",
+        token_limit=40000,
+        memory_blocks=[
+            MindcoreMemoryBlock(
+                storage="postgresql://localhost/mindcore",
+                user_id="user_123",
+                priority=1,
+            ),
+        ],
+    )
+
+    agent = FunctionAgent.from_tools(
+        tools=[...],
+        memory=memory,
+    )
+
+Example (Legacy):
     from mindcore.integrations import MindcoreIndexMemory
 
     memory = MindcoreIndexMemory(
@@ -20,22 +48,211 @@ Example:
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable
 
 from mindcore import Mindcore
 
 
-class MindcoreIndexMemory:
-    """LlamaIndex-compatible memory backed by Mindcore.
+if TYPE_CHECKING:
+    from mindcore.flr import Memory
 
-    Implements a memory interface compatible with LlamaIndex chat engines
-    while delegating all storage and retrieval to Mindcore's FLR/CLST protocols.
 
-    Benefits over LlamaIndex's built-in memory:
+@dataclass
+class MindcoreMemoryBlock:
+    """LlamaIndex 2025 compatible memory block backed by Mindcore.
+
+    Implements the BaseMemoryBlock interface for use with the new
+    LlamaIndex Memory class and agent memory system.
+
+    This is the recommended integration for LlamaIndex 2025+.
+
+    Benefits:
     - PostgreSQL-first with deterministic scoring
-    - No vector embeddings required (faster, cheaper)
-    - Session aggregates for hierarchical retrieval
+    - Semantic search for relevant context retrieval
     - Cross-agent memory sharing
+    - Full audit trail
+    - Priority-based memory truncation
+
+    Example:
+        from llama_index.core.memory import Memory
+
+        memory = Memory.from_defaults(
+            session_id="my_session",
+            memory_blocks=[
+                MindcoreMemoryBlock(
+                    storage="postgresql://localhost/mindcore",
+                    user_id="user_123",
+                    priority=1,
+                ),
+            ],
+        )
+
+    Attributes:
+        priority: Priority level for truncation (0 = never truncate)
+    """
+
+    storage: str = "sqlite:///mindcore.db"
+    user_id: str = "default"
+    session_id: str | None = None
+    priority: int = 1  # 0 = never truncate, 1+ = truncation order
+    token_limit: int = 4000
+    tokenizer_fn: Callable[[str], list] | None = None
+    _mindcore: Mindcore | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Initialize Mindcore connection."""
+        self._mindcore = Mindcore(storage=self.storage)
+
+    @property
+    def mindcore(self) -> Mindcore:
+        """Get Mindcore instance."""
+        if self._mindcore is None:
+            self._mindcore = Mindcore(storage=self.storage)
+        return self._mindcore
+
+    async def _aget(
+        self,
+        messages: list[dict[str, str]] | None = None,
+        **block_kwargs: Any,
+    ) -> str:
+        """Async retrieval of relevant memories.
+
+        This is called by the Memory class to get context for the agent.
+
+        Args:
+            messages: Recent chat messages for context
+            **block_kwargs: Additional keyword arguments
+
+        Returns:
+            Formatted string of relevant memories
+        """
+        # Extract query from recent messages if available
+        query = ""
+        if messages:
+            # Use the last user message as query context
+            for msg in reversed(messages):
+                role = msg.get("role", "")
+                if role in ("user", "human"):
+                    query = msg.get("content", "")
+                    break
+
+        if query:
+            # Semantic search based on query
+            result = self.mindcore.recall(
+                query=query,
+                user_id=self.user_id,
+                limit=10,
+            )
+            memories = result.memories if hasattr(result, "memories") else []
+        else:
+            # Return recent memories
+            memories = self.mindcore.search(
+                user_id=self.user_id,
+                memory_types=["episodic", "semantic"],
+                limit=10,
+            )
+
+        # Filter by session if set
+        if self.session_id:
+            memories = [m for m in memories if m.session_id == self.session_id]
+
+        # Format memories as context string
+        if not memories:
+            return ""
+
+        lines = ["Relevant context from memory:"]
+        for mem in memories:
+            lines.append(f"- {mem.content}")
+
+        return "\n".join(lines)
+
+    async def _aput(self, messages: list[dict[str, str]]) -> None:
+        """Async storage of messages to memory.
+
+        This is called by the Memory class to persist messages.
+
+        Args:
+            messages: Messages to store
+        """
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if content:
+                self.mindcore.store(
+                    content=content,
+                    memory_type="episodic",
+                    user_id=self.user_id,
+                    topics=["chat", role],
+                    importance=0.6 if role in ("assistant", "ai") else 0.5,
+                    session_id=self.session_id,
+                )
+
+    async def atruncate(self, content: str, tokens_to_truncate: int) -> str:
+        """Truncate content when memory exceeds token limit.
+
+        Args:
+            content: Current content string
+            tokens_to_truncate: Number of tokens to remove
+
+        Returns:
+            Truncated content string
+        """
+        if not content:
+            return ""
+
+        # Simple truncation: remove from the beginning (oldest context)
+        lines = content.split("\n")
+
+        # Estimate tokens per line (rough: 1 token per 4 chars)
+        tokens_removed = 0
+        truncated_lines = []
+
+        for line in reversed(lines):
+            line_tokens = len(line) // 4
+            if tokens_removed < tokens_to_truncate:
+                tokens_removed += line_tokens
+            else:
+                truncated_lines.insert(0, line)
+
+        return "\n".join(truncated_lines)
+
+    def get(
+        self,
+        messages: list[dict[str, str]] | None = None,
+        **block_kwargs: Any,
+    ) -> str:
+        """Sync retrieval of relevant memories.
+
+        Args:
+            messages: Recent chat messages for context
+            **block_kwargs: Additional keyword arguments
+
+        Returns:
+            Formatted string of relevant memories
+        """
+        import asyncio
+
+        return asyncio.get_event_loop().run_until_complete(self._aget(messages, **block_kwargs))
+
+    def put(self, messages: list[dict[str, str]]) -> None:
+        """Sync storage of messages to memory.
+
+        Args:
+            messages: Messages to store
+        """
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(self._aput(messages))
+
+
+class MindcoreIndexMemory:
+    """Legacy LlamaIndex memory interface backed by Mindcore.
+
+    This class provides backwards compatibility with older LlamaIndex
+    ChatMemoryBuffer patterns. For new implementations, prefer
+    MindcoreMemoryBlock with the Memory class.
 
     Example:
         memory = MindcoreIndexMemory(
@@ -43,12 +260,7 @@ class MindcoreIndexMemory:
             user_id="user_123",
         )
 
-        # Use with chat engine
         chat_engine = index.as_chat_engine(memory=memory)
-
-        # Or use directly
-        memory.put("user_123", {"role": "user", "content": "Hello"})
-        messages = memory.get_all()
     """
 
     def __init__(
@@ -89,13 +301,22 @@ class MindcoreIndexMemory:
 
         # Store in Mindcore
         return self._mindcore.store(
-            content=f"{role.capitalize()}: {content}",
+            content=content,
             memory_type="episodic",
             user_id=self._user_id,
             topics=["chat", role],
             importance=0.6 if role == "assistant" else 0.5,
             session_id=self._session_id,
         )
+
+    def put_messages(self, messages: list[dict[str, str]]) -> None:
+        """Store multiple chat messages (LlamaIndex 2025 interface).
+
+        Args:
+            messages: List of message dicts to store
+        """
+        for msg in messages:
+            self.put(msg)
 
     def get(self, limit: int = 10) -> list[dict[str, str]]:
         """Get recent chat messages (LlamaIndex interface).
@@ -150,9 +371,9 @@ class MindcoreIndexMemory:
                 limit=1000,
             )
             for mem in memories:
-                if mem.get("session_id") == self._session_id:
+                if mem.session_id == self._session_id:
                     try:
-                        self._mindcore.delete(mem["memory_id"])
+                        self._mindcore.delete(mem.memory_id)
                     except Exception:
                         pass
 
@@ -174,22 +395,31 @@ class MindcoreIndexMemory:
             session_id=self._session_id,
         )
 
-    def _memories_to_messages(self, memories: list[dict[str, Any]]) -> list[dict[str, str]]:
+    def _memories_to_messages(self, memories: list[Memory]) -> list[dict[str, str]]:
         """Convert Mindcore memories to LlamaIndex message format."""
         messages = []
         for mem in memories:
-            content = mem.get("content", "")
+            content = mem.content
 
-            # Parse role from content prefix
+            # Check for stored role in topics
+            role = "user"
+            if "assistant" in mem.topics:
+                role = "assistant"
+            elif "system" in mem.topics:
+                role = "system"
+
+            # Parse role from content prefix as fallback
             if content.startswith("User: "):
-                messages.append({"role": "user", "content": content[6:]})
+                role = "user"
+                content = content[6:]
             elif content.startswith("Assistant: "):
-                messages.append({"role": "assistant", "content": content[11:]})
+                role = "assistant"
+                content = content[11:]
             elif content.startswith("System: "):
-                messages.append({"role": "system", "content": content[8:]})
-            else:
-                # Default to user message
-                messages.append({"role": "user", "content": content})
+                role = "system"
+                content = content[8:]
+
+            messages.append({"role": role, "content": content})
 
         return messages
 
@@ -226,7 +456,7 @@ class MindcoreIndexMemory:
         self,
         query: str,
         limit: int = 5,
-    ) -> list[dict[str, Any]]:
+    ) -> list[Memory]:
         """Search for relevant context based on query.
 
         This is useful for context-aware chat engines that need
@@ -273,7 +503,7 @@ class MindcoreIndexMemory:
             if memories:
                 parts.append("Relevant context:")
                 for mem in memories:
-                    parts.append(f"- {mem.get('content', '')}")
+                    parts.append(f"- {mem.content}")
                 parts.append("")
 
         # Add chat history

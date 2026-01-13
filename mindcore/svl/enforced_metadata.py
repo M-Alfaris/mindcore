@@ -37,7 +37,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 
 logger = logging.getLogger(__name__)
@@ -533,7 +533,7 @@ Respond with valid JSON only."""
                 },
                 "temporal_qualifier": {
                     "type": ["string", "null"],
-                    "enum": temporal + [None] if temporal else None,
+                    "enum": [*temporal, None] if temporal else None,
                     "description": "Temporal qualifier if applicable",
                 },
                 "domain_label": {
@@ -1159,7 +1159,7 @@ successful retrievals. Use this to improve assignment quality.
         # Fallback: append at end
         return base_prompt + "\n" + feedback_section
 
-    def set_feedback_source(self, feedback_getter: callable) -> None:
+    def set_feedback_source(self, feedback_getter: Callable[..., Any]) -> None:
         """Set a callback to automatically get feedback for prompts.
 
         This allows the MetadataExtractor to automatically enhance

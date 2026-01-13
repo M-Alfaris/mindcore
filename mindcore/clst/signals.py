@@ -180,13 +180,19 @@ class SignalStore:
         self._conn: sqlite3.Connection | None = None
         self._init_db()
 
+    @property
+    def _connection(self) -> sqlite3.Connection:
+        """Get the database connection, asserting it's initialized."""
+        assert self._conn is not None, "Database connection not initialized"
+        return self._conn
+
     def _init_db(self) -> None:
         """Initialize database schema."""
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
 
         with self._conn:
-            self._conn.execute("""
+            self._connection.execute("""
                 CREATE TABLE IF NOT EXISTS signals (
                     signal_id TEXT PRIMARY KEY,
                     memory_id TEXT NOT NULL,
@@ -206,15 +212,15 @@ class SignalStore:
             """)
 
             # Indexes for common queries
-            self._conn.execute("""
+            self._connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_signals_memory
                 ON signals(memory_id, created_at DESC)
             """)
-            self._conn.execute("""
+            self._connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_signals_session
                 ON signals(session_id, created_at DESC)
             """)
-            self._conn.execute("""
+            self._connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_signals_created
                 ON signals(created_at DESC)
             """)
@@ -274,8 +280,8 @@ class SignalStore:
             context=context or {},
         )
 
-        with self._conn:
-            self._conn.execute(
+        with self._connection:
+            self._connection.execute(
                 """
                 INSERT INTO signals (
                     signal_id, memory_id, signal_type, signal_value, weighted_value,
@@ -331,7 +337,7 @@ class SignalStore:
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
 
-        cursor = self._conn.execute(query, params)
+        cursor = self._connection.execute(query, params)
         signals = []
 
         for row in cursor:
@@ -372,7 +378,7 @@ class SignalStore:
         """
         import json
 
-        cursor = self._conn.execute(
+        cursor = self._connection.execute(
             """
             SELECT * FROM signals
             WHERE session_id = ?
@@ -415,7 +421,7 @@ class SignalStore:
             SignalStats with aggregate information
         """
         # Basic aggregates
-        row = self._conn.execute(
+        row = self._connection.execute(
             """
             SELECT
                 COUNT(*) as total,
@@ -457,7 +463,7 @@ class SignalStore:
         # By source
         source_stats = {}
         for src in ["user", "llm", "automated"]:
-            src_row = self._conn.execute(
+            src_row = self._connection.execute(
                 """
                 SELECT COUNT(*) as cnt, AVG(signal_value) as avg_val
                 FROM signals
@@ -466,12 +472,12 @@ class SignalStore:
                 (memory_id, f"{src}%"),
             ).fetchone()
             source_stats[src] = {
-                "count": src_row["cnt"] or 0,
-                "avg": src_row["avg_val"] or 0.0,
+                "count": int(src_row["cnt"] or 0),
+                "avg": float(src_row["avg_val"] or 0.0),
             }
 
         # By type
-        type_cursor = self._conn.execute(
+        type_cursor = self._connection.execute(
             """
             SELECT signal_type, COUNT(*) as cnt, AVG(signal_value) as avg_val
             FROM signals
@@ -487,7 +493,7 @@ class SignalStore:
             type_avgs[type_row["signal_type"]] = type_row["avg_val"]
 
         # Recent trend (last 10 signals)
-        recent_rows = self._conn.execute(
+        recent_rows = self._connection.execute(
             """
             SELECT signal_value FROM signals
             WHERE memory_id = ?
@@ -550,8 +556,8 @@ class SignalStore:
         """
         cutoff = datetime.now(timezone.utc) - timedelta(days=self._retention_days)
 
-        with self._conn:
-            cursor = self._conn.execute(
+        with self._connection:
+            cursor = self._connection.execute(
                 "DELETE FROM signals WHERE created_at < ?",
                 (cutoff.isoformat(),),
             )
