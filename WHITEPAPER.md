@@ -1,28 +1,45 @@
-# MindCore: The Universal Memory Protocol Stack for AI Agents
+# Mindcore: Structured Memory for AI Agents
 
 ## A Technical White Paper
 
-**Version 1.0 | December 2025**
+**Version 2.0 | January 2026**
 
-**Authors**: MindCore Project Contributors
+**Authors**: Mindcore Team
 
 ---
 
 ## Abstract
 
-MindCore is an open-source memory protocol stack that solves the fundamental challenge of memory fragmentation in AI agent systems. As organizations deploy multiple AI agents across customer support, sales, and internal operations, each agent traditionally builds isolated, incompatible memory systems—leading to months of infrastructure work, inconsistent metadata schemas, and zero cross-agent learning.
+Mindcore is a memory platform for AI agents that eliminates the need for embeddings and vector databases. While RAG (Retrieval-Augmented Generation) has become the default approach for AI memory, it introduces significant costs, latency, and auditability challenges. Mindcore takes a fundamentally different approach: **structured memory with PostgreSQL-native scoring**.
 
-MindCore introduces three foundational protocols: **FLR** (Fast Learning Recall) for inference-time memory access with reinforcement learning, **CLST** (Cognitive Long-term Storage Transfer) for persistent hierarchical storage with session aggregation, and **SVL** (Shared Vocabulary Layer) for LLM-enforced metadata standardization. Together, these protocols enable organizations to "build once, deploy endlessly"—new agents inherit organizational knowledge from day one, benefiting from shared vocabulary, accumulated memories, and cross-agent reinforcement signals.
+### The Problem with RAG
 
-The framework achieves <160ms context assembly without embeddings through hierarchical weighted metadata retrieval, provides deterministic and traceable operations via controlled vocabulary and structured outputs, and includes enterprise-grade features for audit logging, encryption, compliance, and multi-agent federation. MindCore works with any LLM provider (OpenAI, Anthropic, Google, local models) and is MIT licensed with no vendor lock-in.
+| Challenge | RAG Approach | Cost |
+|-----------|--------------|------|
+| **Embeddings** | Generate vectors for every document | ~$0.0001/1K tokens |
+| **Vector Database** | Store and query embeddings | $50-500+/month |
+| **Latency** | Vector similarity search | 200-500ms P95 |
+| **Auditability** | Probabilistic cosine similarity | Black box |
+| **Schema** | Unstructured document chunks | No validation |
+
+### The Mindcore Solution
+
+Mindcore introduces three foundational protocols: **FLR** (Fast Learning Recall) for O(1) cache access, **CLST** (Cognitive Long-term Storage Transfer) for hierarchical session-based retrieval, and **SVL** (Shared Vocabulary Layer) for schema enforcement. Together, these protocols achieve:
+
+- **Zero embedding cost** - No vector generation required
+- **<160ms P95 latency** - PostgreSQL full-text search + indexes
+- **Full auditability** - Deterministic SQL scoring function
+- **Schema enforcement** - SVL validates all metadata
+
+Mindcore is **open-source** (MIT licensed) with an optional managed Enterprise version. It works with any LLM provider (OpenAI, Anthropic, Google, local models) and integrates with LangChain, CrewAI, and LlamaIndex.
 
 ---
 
 <div align="center">
 
-*"Build It Once, Deploy It Endlessly"*
+*"Build Once. Deploy Endlessly. Minutes, Not Months."*
 
-**The Open-Source Framework That Standardizes Memory for All AI Agents**
+**Open-Source Memory Layer for AI Agents**
 
 </div>
 
@@ -32,6 +49,7 @@ The framework achieves <160ms context assembly without embeddings through hierar
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.0.0 | January 2026 | Platform release, framework integrations, efficiency focus |
 | 1.0.0 | December 2025 | Initial release with FLR, CLST, SVL protocols |
 | 0.9.0 | November 2025 | Beta release, enterprise features |
 | 0.5.0 | October 2025 | Alpha release, core protocols |
@@ -67,18 +85,29 @@ The framework achieves <160ms context assembly without embeddings through hierar
 
 ## 1. Executive Summary
 
-**MindCore** is an open-source memory protocol stack that provides a universal, standardized approach to memory management for AI agents. Just as the Model Context Protocol (MCP) standardized tool connections for LLMs, MindCore standardizes how AI agents store, retrieve, learn from, and share memories.
+**Mindcore** is a memory platform for AI agents that provides structured, auditable memory without the cost and complexity of RAG. While RAG requires embedding generation and vector databases, Mindcore uses PostgreSQL-native full-text search and deterministic scoring.
+
+### Mindcore vs RAG
+
+| Metric | RAG | Mindcore |
+|--------|-----|----------|
+| **Embedding Cost** | ~$0.0001/1K tokens | $0 |
+| **Vector Database** | Required ($50-500+/mo) | Not needed |
+| **P95 Latency** | 200-500ms | <160ms |
+| **Scoring** | Probabilistic (cosine) | Deterministic (SQL) |
+| **Auditability** | Black box | Full SQL trace |
+| **Schema** | Unstructured | Enforced vocabulary |
 
 ### Key Value Propositions
 
 | Capability | Benefit |
 |------------|---------|
-| **Universal Protocol** | Works with any LLM provider (OpenAI, Anthropic, Google, local models) |
-| **Build Once, Deploy Endlessly** | Shared vocabulary (SVL) and storage (CLST) means new agents gain context from day one |
-| **Deterministic & Traceable** | Every memory operation is auditable with SVL-compliant metadata |
-| **Fast & Accurate** | Hierarchical retrieval without embeddings achieves <160ms context assembly |
-| **Failure Resilient** | Built-in strategies for graceful degradation and recovery |
-| **Open Source** | MIT licensed, community-driven, no vendor lock-in |
+| **Lower Cost** | No embeddings, no vector database fees |
+| **Faster** | Hierarchical retrieval with PostgreSQL indexes |
+| **Auditable** | Every decision traceable via SQL |
+| **Universal** | Works with OpenAI, Anthropic, Google, local models |
+| **Framework Integrations** | LangChain, CrewAI, LlamaIndex out of the box |
+| **Platform + SDK** | Managed cloud or self-hosted deployment |
 
 ### The Core Innovation
 

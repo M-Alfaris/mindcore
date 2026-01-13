@@ -25,27 +25,24 @@ import sys
 
 def cmd_init(args: argparse.Namespace) -> int:
     """Initialize database schema."""
-
     if args.postgres:
         return init_postgres(args.postgres)
-    else:
-        return init_sqlite(args.sqlite or "mindcore.db")
+    return init_sqlite(args.sqlite or "mindcore.db")
 
 
 def init_sqlite(db_path: str) -> int:
     """Initialize SQLite database."""
-
     print(f"Initializing SQLite database: {db_path}")
 
     try:
-        from mindcore.v2.storage import SQLiteStorage
+        from mindcore.storage import SQLiteStorage
 
-        storage = SQLiteStorage(db_path)
+        SQLiteStorage(db_path)  # Initialize DB (creates schema)
         print(f"  ✓ Database created: {db_path}")
-        print(f"  ✓ Schema initialized")
+        print("  ✓ Schema initialized")
         print()
         print("Next steps:")
-        print(f"  from mindcore.v2.storage import SQLiteStorage")
+        print("  from mindcore.storage import SQLiteStorage")
         print(f"  storage = SQLiteStorage('{db_path}')")
         return 0
 
@@ -56,36 +53,35 @@ def init_sqlite(db_path: str) -> int:
 
 def init_postgres(connection_string: str) -> int:
     """Initialize PostgreSQL database."""
-
-    print(f"Initializing PostgreSQL database...")
+    print("Initializing PostgreSQL database...")
 
     try:
-        from mindcore.v2.storage import PostgresStorage
+        from mindcore.storage import PostgresStorage
 
         # Connect
-        print(f"  Connecting to database...")
+        print("  Connecting to database...")
         storage = PostgresStorage(connection_string)
-        print(f"  ✓ Connected")
+        print("  ✓ Connected")
 
         # Initialize schema
-        print(f"  Initializing schema...")
+        print("  Initializing schema...")
         storage.initialize_full_schema()
-        print(f"  ✓ Schema created (tables, indexes, functions, triggers)")
+        print("  ✓ Schema created (tables, indexes, functions, triggers)")
 
         # Verify
-        print(f"  Verifying...")
+        print("  Verifying...")
         storage.initialize_functions()
-        print(f"  ✓ Functions loaded")
+        print("  ✓ Functions loaded")
 
         print()
         print("Database ready! Next steps:")
         print()
-        print("  from mindcore.v2.storage import PostgresStorage")
+        print("  from mindcore.storage import PostgresStorage")
         print(f"  storage = PostgresStorage('{_redact_password(connection_string)}')")
         print()
         print("Or use the SVL pipeline:")
         print()
-        print("  from mindcore.v2.svl import SVLPipeline")
+        print("  from mindcore.svl import SVLPipeline")
         print("  pipeline = SVLPipeline(storage=storage)")
         return 0
 
@@ -100,29 +96,26 @@ def init_postgres(connection_string: str) -> int:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """Check database connection and schema."""
-
     if args.postgres:
         return check_postgres(args.postgres)
-    else:
-        return check_sqlite(args.sqlite or "mindcore.db")
+    return check_sqlite(args.sqlite or "mindcore.db")
 
 
 def check_sqlite(db_path: str) -> int:
     """Check SQLite database."""
-
     import os
 
     if not os.path.exists(db_path):
         print(f"✗ Database not found: {db_path}")
-        print(f"  Run: mindcore init")
+        print("  Run: mindcore init")
         return 1
 
     try:
-        from mindcore.v2.storage import SQLiteStorage
+        from mindcore.storage import SQLiteStorage
 
         storage = SQLiteStorage(db_path)
         count = storage.count()
-        print(f"✓ SQLite database OK")
+        print("✓ SQLite database OK")
         print(f"  Path: {db_path}")
         print(f"  Memories: {count}")
         return 0
@@ -133,11 +126,10 @@ def check_sqlite(db_path: str) -> int:
 
 def check_postgres(connection_string: str) -> int:
     """Check PostgreSQL connection and schema."""
-
     print("Checking PostgreSQL connection...")
 
     try:
-        from mindcore.v2.storage import PostgresStorage
+        from mindcore.storage import PostgresStorage
 
         storage = PostgresStorage(connection_string)
 
@@ -192,7 +184,6 @@ def check_postgres(connection_string: str) -> int:
 
 def cmd_version(args: argparse.Namespace) -> int:
     """Show version."""
-
     try:
         from mindcore import __version__
 
@@ -208,7 +199,6 @@ def cmd_version(args: argparse.Namespace) -> int:
 
 def _redact_password(url: str) -> str:
     """Redact password from connection string for display."""
-
     import re
 
     return re.sub(r"(://[^:]+:)[^@]+(@)", r"\1***\2", url)
@@ -216,7 +206,6 @@ def _redact_password(url: str) -> str:
 
 def main() -> int:
     """Main CLI entry point."""
-
     parser = argparse.ArgumentParser(
         prog="mindcore",
         description="Mindcore SAGE - Structured Augmented Generation Engine",
@@ -226,9 +215,7 @@ def main() -> int:
 
     # init command
     init_parser = subparsers.add_parser("init", help="Initialize database")
-    init_parser.add_argument(
-        "--postgres", metavar="URL", help="PostgreSQL connection string"
-    )
+    init_parser.add_argument("--postgres", metavar="URL", help="PostgreSQL connection string")
     init_parser.add_argument(
         "--sqlite", metavar="PATH", help="SQLite database path (default: mindcore.db)"
     )
@@ -236,9 +223,7 @@ def main() -> int:
 
     # check command
     check_parser = subparsers.add_parser("check", help="Check database connection")
-    check_parser.add_argument(
-        "--postgres", metavar="URL", help="PostgreSQL connection string"
-    )
+    check_parser.add_argument("--postgres", metavar="URL", help="PostgreSQL connection string")
     check_parser.add_argument("--sqlite", metavar="PATH", help="SQLite database path")
     check_parser.set_defaults(func=cmd_check)
 
