@@ -21,6 +21,7 @@ import click
 from .demo import demo_command
 from .doctor import doctor_command
 from .init import init_command
+from .mcp import mcp_command
 
 
 class Colors:
@@ -59,6 +60,7 @@ def main():
 main.add_command(init_command, name="init")
 main.add_command(doctor_command, name="doctor")
 main.add_command(demo_command, name="demo")
+main.add_command(mcp_command, name="mcp")
 
 
 @main.command()
