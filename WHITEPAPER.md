@@ -1,4 +1,4 @@
-# MindCore: The Universal Memory Protocol Stack for AI Agents
+# MindCore: A Structured Augmented Generation Engine for AI Agents
 
 ## A Technical White Paper
 
@@ -10,19 +10,21 @@
 
 ## Abstract
 
-MindCore is an open-source memory protocol stack that solves the fundamental challenge of memory fragmentation in AI agent systems. As organizations deploy multiple AI agents across customer support, sales, and internal operations, each agent traditionally builds isolated, incompatible memory systems—leading to months of infrastructure work, inconsistent metadata schemas, and zero cross-agent learning.
+MindCore is an open-source Structured Augmented Generation Engine (SAGE) - a deterministic alternative to Retrieval-Augmented Generation (RAG) for AI agent systems. Where RAG depends on vector embeddings and similarity search for fuzzy, unexplainable retrieval, MindCore generates enriched metadata dimensions for every piece of content and uses PostgreSQL queries on those dimensions for deterministic, explainable retrieval.
 
-MindCore introduces three foundational protocols: **FLR** (Fast Learning Recall) for inference-time memory access with reinforcement learning, **CLST** (Cognitive Long-term Storage Transfer) for persistent hierarchical storage with session aggregation, and **SVL** (Structured Validation Layer) for LLM-enforced metadata standardization. Together, these protocols enable organizations to "build once, deploy endlessly"—new agents inherit organizational knowledge from day one, benefiting from shared vocabulary, accumulated memories, and cross-agent reinforcement signals.
+Every message - inbound and outbound - gets structured metadata extracted by the agent's LLM: message type, category, topic, intent, sentiment, section, chapter, and more. Retrieval matches the metadata of the user's prompt against the metadata of stored content. Results are ranked by metadata match quality, not vector cosine similarity. Outbound agent responses are also stored with metadata and versioning for future reference.
 
-The framework achieves <160ms context assembly without embeddings through hierarchical weighted metadata retrieval, provides deterministic and traceable operations via controlled vocabulary and structured outputs, and includes enterprise-grade features for audit logging, encryption, compliance, and multi-agent federation. MindCore works with any LLM provider (OpenAI, Anthropic, Google, local models) and is MIT licensed with no vendor lock-in.
+MindCore introduces three foundational protocols: **FLR** (Fast Learning Recall) for hot-path deterministic cache access, **CLST** (Cognitive Long-term Storage Transfer) for PostgreSQL-centric persistent storage with session aggregation, and **SVL** (Structured Validation Layer) for LLM-enforced metadata extraction and validation. Together, these protocols enable deterministic, explainable, and cost-effective retrieval that replaces RAG's vector-based approach.
+
+The framework achieves <160ms context assembly without embeddings through structured metadata queries, provides deterministic and traceable operations via controlled vocabulary and structured outputs, and includes enterprise-grade features for audit logging, encryption, compliance, and multi-agent federation. MindCore works with any LLM provider (OpenAI, Anthropic, Google, local models) and is MIT licensed with no vendor lock-in.
 
 ---
 
 <div align="center">
 
-*"Build It Once, Deploy It Endlessly"*
+*"Structured Metadata Replaces Vector Embeddings"*
 
-**The Open-Source Framework That Standardizes Memory for All AI Agents**
+**The Open-Source SAGE That Replaces RAG for AI Agents**
 
 </div>
 

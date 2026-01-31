@@ -1,6 +1,6 @@
 <div align="center">
 
-# Mindcore - The Memory Protocol for AI Agents
+# Mindcore - Structured Augmented Generation Engine
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,71 +8,112 @@
 [![Tests](https://img.shields.io/badge/tests-919%20passing-brightgreen.svg)](https://github.com/M-Alfaris/mindcore)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-**A modular memory layer framework built on three foundational protocols: FLR, CLST, and SVL.**
+**A deterministic alternative to RAG. Enriched metadata replaces vector embeddings.**
 
-Like MCP standardized tool connections, Mindcore standardizes AI agent memory.
+Every message - inbound and outbound - gets structured metadata dimensions.
+Retrieval is PostgreSQL queries on those dimensions, not fuzzy similarity search.
 
-[Quick Start](#quick-start) | [Protocols](#the-three-protocols) | [Enterprise](#enterprise-features) | [Architecture](#architecture)
+[Quick Start](#quick-start) | [How It Works](#how-it-works) | [SAGE vs RAG](#sage-vs-rag) | [Protocols](#the-three-protocols) | [Architecture](#architecture)
 
 ---
 
 </div>
 
-## The Problem
+## The Problem with RAG
 
-Every team building AI agents faces the same challenges:
+RAG depends on vector embeddings and similarity search:
 
-| Challenge | What Teams Do Today | The Pain |
-|-----------|---------------------|----------|
-| **Memory & Persistence** | Build custom storage, caching, retrieval | 2-4 weeks reinventing the wheel |
-| **Multi-Agent Consistency** | Each agent has its own memory silo | Agents contradict each other |
-| **Vocabulary Alignment** | Ad-hoc metadata, no schema | "Is it `topic` or `topics`?" |
-| **Production Features** | DIY rate limiting, audit, encryption | Security vulnerabilities |
+```
+Document → Chunk → Embed → Store in Vector DB → Similarity Search → Fuzzy Results
+```
 
-**Result**: Months of infrastructure work before you can focus on your actual product.
+| Problem | Why It Happens |
+|---------|---------------|
+| **Non-deterministic** | Same query returns different results depending on embedding model |
+| **Unexplainable** | "Why was this chunk retrieved?" - because cosine similarity was 0.82 |
+| **Expensive** | Embedding models, vector databases, re-indexing costs |
+| **No learning** | Static index - doesn't improve from agent interactions |
+| **Lossy** | Chunking destroys document structure (chapters, sections, context) |
 
-## The Solution
+## The SAGE Approach
 
-Mindcore provides **three foundational protocols** that standardize AI agent memory:
+Mindcore generates **enriched metadata dimensions** for every piece of content. Retrieval is deterministic PostgreSQL queries matching metadata of the user's prompt against metadata of stored content.
+
+```
+Content → SVL Metadata Extraction → Structured Dimensions → PostgreSQL → Ranked Results
+
+Metadata dimensions:
+  message_type, category, topic, intent, sentiment,
+  chapter, section, page, urgency, confidence,
+  is_preference, preferences[], memory_type, ...
+```
+
+**The flow:**
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              YOUR AI AGENTS                                  │
-│         (Support Bot, Sales Assistant, Internal Tools, etc.)                 │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              MINDCORE                                        │
-│                        The Memory Protocol Stack                             │
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    FLR (Fast Learning Recall)                        │   │
-│  │              Hot-path memory access for inference time               │   │
-│  │     query() | reinforce() | context() | promote() | cache           │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                       │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    CLST (Cognitive Long-term Storage)                │   │
-│  │              Cold-path persistence, compression, sync                │   │
-│  │     store() | compress() | sync() | transfer() | migrate()          │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                       │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    SVL (Structured Validation Layer)                 │   │
-│  │              Unified semantic system with migrations                 │   │
-│  │     validate() | map_source() | enrich() | migrate_memory()         │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                    ┌─────────────────┴─────────────────┐
-                    ▼                                   ▼
-          ┌─────────────────┐                 ┌─────────────────┐
-          │    PostgreSQL   │                 │     SQLite      │
-          │   (Production)  │                 │  (Development)  │
-          └─────────────────┘                 └─────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  INBOUND: User sends "How do I return my order?"                        │
+│                                                                          │
+│  SVL extracts metadata:                                                  │
+│    message_type: question                                                │
+│    intent: request_action                                                │
+│    topics: [returns, orders]                                             │
+│    category: support                                                     │
+│    urgency: normal                                                       │
+│                                                                          │
+│  PostgreSQL queries stored content matching these dimensions:            │
+│    → Past interactions with same user (topics: returns, orders)          │
+│    → Documents with matching metadata (category: support, returns)       │
+│    → User preferences (communication style, past issues)                │
+│    → Domain data (orders table triggered by topic "orders")              │
+│                                                                          │
+│  Results ranked by metadata match quality, returned structured           │
+│                                                                          │
+│  OUTBOUND: Agent response also gets metadata → stored with versioning   │
+│    message_type: answer                                                  │
+│    topics: [returns, orders, refund_policy]                              │
+│    category: support                                                     │
+│    references: [doc_id_123, memory_id_456]                              │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
+
+## SAGE vs RAG
+
+| | **RAG** | **SAGE (Mindcore)** |
+|---|---|---|
+| **Retrieval** | Vector similarity (cosine distance) | Metadata dimension matching (SQL) |
+| **Storage** | Vector database (Pinecone, Weaviate, etc.) | PostgreSQL |
+| **Indexing** | Chunk → Embed → Store | Content → Extract Metadata → Store |
+| **Determinism** | Non-deterministic (embedding drift) | Deterministic (same query = same results) |
+| **Explainability** | "Cosine similarity 0.82" | "Matched on topic:returns + category:support" |
+| **Learning** | Static (re-index to update) | Reinforcement signals, preference extraction |
+| **Cost** | Embedding model + vector DB | PostgreSQL only |
+| **Documents** | Chunks lose structure | Metadata preserves structure (chapter, section, page) |
+| **Outbound** | Not tracked | Agent responses stored with metadata + versioning |
+| **Multi-agent** | Each agent has own index | Shared metadata dimensions across agents |
+
+### How documents work in SAGE
+
+```
+PDF/Document → Extract per-section metadata:
+  Chapter 3, Section 2: "Return Policy"
+    → topics: [returns, refund_policy]
+    → category: policy
+    → message_type: reference
+    → page: 12
+    → section: "Return Policy"
+    → chapter: "Customer Service"
+
+User asks: "How do I return my order?"
+    → SVL extracts: topics: [returns, orders], intent: request_action
+
+PostgreSQL matches:
+  WHERE topics && ARRAY['returns', 'orders']
+    AND category = 'policy'
+  ORDER BY metadata_match_score DESC
+```
+
+No embeddings. No vector database. Just structured metadata and SQL.
 
 ---
 

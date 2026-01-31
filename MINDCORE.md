@@ -1,6 +1,6 @@
 # MindCore Documentation
 
-> Ground truth documentation for MindCore - a memory protocol stack for AI agents.
+> Ground truth documentation for MindCore - a Structured Augmented Generation Engine (SAGE) for AI agents.
 > Last updated: 2025-12-28
 
 ## Quick Reference
@@ -22,12 +22,18 @@
 
 ## 1. Overview
 
-MindCore is a **memory protocol stack** for AI agents that provides:
+MindCore is a **Structured Augmented Generation Engine (SAGE)** - a deterministic alternative to RAG for AI agents.
 
-- **Three-Layer Architecture**: FLR (hot) → CLST (cold) → SVL (vocabulary)
-- **Hierarchical Retrieval**: Sessions → Memories (reduces search space without embeddings)
-- **LLM-Enforced Metadata**: Main LLM tags memories with SVL-compliant vocabulary
-- **Robust Reinforcement**: Temporal decay, multi-signal types, exploration balancing
+Instead of vector embeddings and similarity search, Mindcore generates enriched metadata dimensions for every piece of content (messages, documents, interactions) and uses PostgreSQL queries on those dimensions for retrieval. Every inbound message gets metadata extracted, every outbound response gets metadata assigned and stored with versioning.
+
+**Core principles:**
+
+- **Metadata over Embeddings**: Content is indexed by structured dimensions (topic, category, intent, message_type, section, chapter, etc.), not vector embeddings
+- **Deterministic Retrieval**: PostgreSQL queries on metadata dimensions - same query always returns same results
+- **Bidirectional Tracking**: Both inbound (user) and outbound (agent) messages get metadata and are stored for future reference
+- **Three-Layer Architecture**: FLR (hot path) → CLST (cold path, PostgreSQL-centric) → SVL (metadata extraction and validation)
+- **LLM-Enforced Metadata**: The agent's LLM extracts SVL-compliant metadata as structured output
+- **Reinforcement Learning**: Memories improve over time through feedback signals
 - **Multi-Agent Federation**: Isolated FLRs with shared CLST/SVL and cross-agent signals
 - **Enterprise Features**: Audit trails, encryption, observability, rate limiting
 
